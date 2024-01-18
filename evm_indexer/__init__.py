@@ -1,9 +1,7 @@
 import base58
 from base58 import b58decode_check
 from dipdup.codegen.evm_subsquid import _abi_type_map
-from eth_abi.base import (
-    parse_type_str,
-)
+from eth_abi.base import parse_type_str
 from eth_abi.decoding import Fixed32ByteSizeDecoder
 from eth_abi.registry import BaseEquals
 from eth_abi.registry import encoding
