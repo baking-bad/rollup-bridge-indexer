@@ -1,6 +1,16 @@
 spec_version: 2.0
 package: tezos_indexer
 
+database:
+  kind: postgres
+  host: ${POSTGRES_HOST:-db}
+  port: ${POSTGRES_PORT:-5432}
+  user: ${POSTGRES_USER:-dipdup}
+  password: ${POSTGRES_PASSWORD:-changeme}
+  database: ${POSTGRES_DB:-dipdup}
+  schema_name: tezos_indexer
+
+
 datasources:
   tzkt:
     kind: tezos.tzkt
@@ -17,7 +27,6 @@ indexes:
     kind: tezos.tzkt.operations
     datasource: tzkt
     types:
-      #      - transaction
       - sr_execute
     contracts:
       - rollup

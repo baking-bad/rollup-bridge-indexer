@@ -811,7 +811,7 @@ web3 = ">=6.2,<7.0"
 type = "git"
 url = "https://github.com/dipdup-io/dipdup.git"
 reference = "next"
-resolved_reference = "c77ac528fdce09169558c6817d34d4490f82f905"
+resolved_reference = "8876c6c39e1a0e3a94b30a076fd587eb299aa1de"
 
 [[package]]
 name = "dnspython"
