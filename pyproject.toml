@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "etherlink"
+version = "0.1.0"
+description = ""
+authors = ["Igor Sereda <sereda.igor.s@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+dipdup = {git = "https://github.com/dipdup-io/dipdup.git", branch = "next"}
+base58 = "^2.1.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.isort]
+line_length = 140
+force_single_line = true
+group_by_package = true
+ensure_newline_before_comments = true
+
+[tool.black]
+line-length = 140
+target-version = ['py311']
+skip-string-normalization = true
+
+[tool.ruff]
+line-length = 140
+ignore = ["E501", "B905"]
+target-version = "py311"
+extend-select = ["B", "C4", "Q"]
+flake8-quotes = {inline-quotes = "single", multiline-quotes = "single"}

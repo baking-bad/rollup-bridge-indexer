@@ -1,0 +1,28 @@
+spec_version: 2.0
+package: tezos_indexer
+
+datasources:
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+contracts:
+  rollup:
+    kind: tezos
+    address: sr1BQvjNrvPLjPTHTTKLFNY6cNHrWFxc9wjB
+    typename: rollup
+
+indexes:
+  rollup_operations:
+    kind: tezos.tzkt.operations
+    datasource: tzkt
+    types:
+      #      - transaction
+      - sr_execute
+    contracts:
+      - rollup
+    handlers:
+      - callback: on_rollup_execute
+        pattern:
+          - type: sr_execute
+            destination: rollup

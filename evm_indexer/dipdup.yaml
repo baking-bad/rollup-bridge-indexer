@@ -1,0 +1,61 @@
+spec_version: 2.0
+package: evm_indexer
+
+database:
+  kind: postgres
+  host: ${POSTGRES_HOST:-db}
+  port: ${POSTGRES_PORT:-5432}
+  user: ${POSTGRES_USER:-dipdup}
+  password: ${POSTGRES_PASSWORD:-changeme}
+  database: ${POSTGRES_DB:-dipdup}
+  schema_name: evm_indexer
+
+
+datasources:
+  testnet_node:
+    kind: evm.node
+    url: https://etherlink.dipdup.net/
+    ws_url: wss://etherlink.dipdup.net/
+
+  testnet_subsquid:
+    kind: evm.subsquid
+    url: https://v2.archive.subsquid.io/network/astar-mainnet
+    node: testnet_node
+
+
+contracts:
+  kernel_address:
+    kind: evm
+    address: 0x0000000000000000000000000000000000000000
+    typename: kernel_address
+
+  fa12_token:
+    kind: evm
+    address: 0x87dcBf128677ba36E79D47dAf4eb4e51610e0150
+    typename: fa12_token
+
+
+indexes:
+  fa12_token_events:
+    kind: evm.subsquid.events
+    datasource: testnet_subsquid
+    node_only: true
+    first_level: 8838
+    handlers:
+      - callback: on_transfer
+        contract: fa12_token
+        name: Transfer
+
+  kernel_events:
+    kind: evm.subsquid.events
+    datasource: testnet_subsquid
+    node_only: true
+    first_level: 8838
+    handlers:
+      - callback: on_deposit
+        contract: kernel_address
+        name: Deposit
+
+      - callback: on_withdraw
+        contract: kernel_address
+        name: Withdrawal
