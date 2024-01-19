@@ -62,5 +62,11 @@ indexes:
         name: Deposit
 
       - callback: on_withdraw
-        contract: kernel_precompile
+        contract: kernel_module
         name: Withdrawal
+
+
+advanced:
+  reindex:
+    config_modified: wipe
+    schema_modified: wipe

@@ -37,7 +37,7 @@ class EventBasedModel:
     transaction_index = fields.IntField()
 
 
-class DepositEvent(EventBasedModel, Model):
+class DepositEvent(Model, EventBasedModel):
     class Meta:
         table = 'event_deposit'
         model = 'models.DepositEvent'
@@ -50,7 +50,7 @@ class DepositEvent(EventBasedModel, Model):
     inbox_msg_id = fields.IntField(index=True)
 
 
-class WithdrawEvent(EventBasedModel, Model):
+class WithdrawEvent(Model, EventBasedModel):
     class Meta:
         table = 'event_withdraw'
         model = 'models.WithdrawEvent'
