@@ -2,7 +2,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 
 from evm_indexer.models import DepositEvent
-from evm_indexer.types.kernel_address.evm_events.deposit import Deposit
+from evm_indexer.types.kernel_module.evm_events.deposit import Deposit
 
 
 async def on_deposit(

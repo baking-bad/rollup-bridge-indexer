@@ -2,7 +2,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 
 from evm_indexer.models import WithdrawEvent
-from evm_indexer.types.kernel_address.evm_events.withdrawal import Withdrawal
+from evm_indexer.types.kernel_precompile.evm_events.withdrawal import Withdrawal
 
 
 async def on_withdraw(

@@ -24,10 +24,15 @@ datasources:
 
 
 contracts:
-  kernel_address:
+  kernel_module:
     kind: evm
     address: 0x0000000000000000000000000000000000000000
-    typename: kernel_address
+    typename: kernel_module
+
+  kernel_precompile:
+    kind: evm
+    address: 0x0000000000000000000000000000000000000040
+    typename: kernel_precompile
 
   fa12_token:
     kind: evm
@@ -53,9 +58,9 @@ indexes:
     first_level: 8838
     handlers:
       - callback: on_deposit
-        contract: kernel_address
+        contract: kernel_module
         name: Deposit
 
       - callback: on_withdraw
-        contract: kernel_address
+        contract: kernel_precompile
         name: Withdrawal

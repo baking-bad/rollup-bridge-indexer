@@ -1,0 +1,36 @@
+{
+  "Withdrawal": {
+    "name": "Withdrawal",
+    "topic0": "0x64e765b73c0829c01c6f3026a840120142d5a0b83626c548cff3a44ca5299c98",
+    "inputs": [
+      [
+        "uint256",
+        true
+      ],
+      [
+        "address",
+        false
+      ],
+      [
+        "address",
+        false
+      ],
+      [
+        "bytes22",
+        false
+      ],
+      [
+        "uint256",
+        false
+      ],
+      [
+        "uint256",
+        false
+      ],
+      [
+        "uint256",
+        false
+      ]
+    ]
+  }
+}

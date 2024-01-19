@@ -1,0 +1,32 @@
+{
+  "Deposit": {
+    "name": "Deposit",
+    "topic0": "0x7ee7a1de9c18ce695c95b8b19fbdf26cce3544e3ca9e08c9f487776783d7599f",
+    "inputs": [
+      [
+        "uint256",
+        true
+      ],
+      [
+        "address",
+        false
+      ],
+      [
+        "address",
+        false
+      ],
+      [
+        "uint256",
+        false
+      ],
+      [
+        "uint256",
+        false
+      ],
+      [
+        "uint256",
+        false
+      ]
+    ]
+  }
+}
