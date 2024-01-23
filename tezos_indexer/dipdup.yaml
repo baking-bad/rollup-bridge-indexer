@@ -19,15 +19,45 @@ datasources:
 contracts:
   rollup:
     kind: tezos
-    address: sr1BQvjNrvPLjPTHTTKLFNY6cNHrWFxc9wjB
+    address: sr1QgYF6ARMSLcWyAX4wFDrWFaZTyy4twbqe
     typename: rollup
 
+  token_contract:
+    kind: tezos
+    address: KT1GM2AnBAJWdzrChp3hTYFTSb6Dmh61peBP
+    typename: token_contract
+
+  ticketer:
+    kind: tezos
+    address: KT1NxrHQFJ7YEgHp4jXYgfEWXHpqnbZ5F2Tn
+    typename: ticketer
+
+  ticket_helper:
+    kind: tezos
+    address: KT1TL2U9XFhDEuN1mR2iMPSBNWe769jDx5s9
+    typename: ticket_helper
+
 indexes:
-  rollup_operations:
+  deposit_request:
+    kind: tezos.tzkt.operations
+    datasource: tzkt
+    contracts:
+      - rollup
+      - ticketer
+    handlers:
+      - callback: on_rollup_call
+        pattern:
+          - type: transaction
+            source: ticketer
+            destination: rollup
+            entrypoint: default
+
+  withdraw_approval:
     kind: tezos.tzkt.operations
     datasource: tzkt
     types:
       - sr_execute
+      - transaction
     contracts:
       - rollup
     handlers:
@@ -35,3 +65,12 @@ indexes:
         pattern:
           - type: sr_execute
             destination: rollup
+          - type: transaction
+            source: rollup
+            destination: ticket_helper
+            entrypoint: withdraw
+
+advanced:
+  reindex:
+    config_modified: wipe
+    schema_modified: wipe
