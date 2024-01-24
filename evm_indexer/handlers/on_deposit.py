@@ -1,3 +1,6 @@
+from datetime import datetime
+from datetime import timezone
+
 from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 
@@ -9,8 +12,9 @@ async def on_deposit(
     ctx: HandlerContext,
     event: SubsquidEvent[Deposit],
 ) -> None:
+
     await DepositEvent.create(
-        timestamp=event.data.timestamp,
+        timestamp=datetime.fromtimestamp(event.data.timestamp, tz=timezone.utc),
         level=event.data.level,
         address=event.data.address,
         log_index=event.data.log_index,

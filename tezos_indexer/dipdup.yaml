@@ -16,6 +16,10 @@ datasources:
     kind: tezos.tzkt
     url: ${TZKT_URL}
 
+#  node:
+#    kind: tezos.tzkt
+#    url: ${TZKT_URL}
+
 contracts:
   rollup:
     kind: tezos
@@ -29,12 +33,12 @@ contracts:
 
   ticketer:
     kind: tezos
-    address: KT1NxrHQFJ7YEgHp4jXYgfEWXHpqnbZ5F2Tn
+    address: KT1PmYUomF3HDxsGWYQUCbLi2X8WvT7ZHv8o
     typename: ticketer
 
   ticket_helper:
     kind: tezos
-    address: KT1TL2U9XFhDEuN1mR2iMPSBNWe769jDx5s9
+    address: KT1TZg9EwGHKbfWvsHGsqBjm3J5NhJBtHPKX
     typename: ticket_helper
 
 indexes:
@@ -48,7 +52,7 @@ indexes:
       - callback: on_rollup_call
         pattern:
           - type: transaction
-            source: ticketer
+            source: ticket_helper
             destination: rollup
             entrypoint: default
 
@@ -67,7 +71,7 @@ indexes:
             destination: rollup
           - type: transaction
             source: rollup
-            destination: ticket_helper
+            destination: ticketer
             entrypoint: withdraw
 
 advanced:

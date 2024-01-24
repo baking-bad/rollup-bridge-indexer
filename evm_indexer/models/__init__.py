@@ -14,8 +14,8 @@ class TokenHolder(Model):
     id = fields.UUIDField(pk=True)
     token = fields.TextField(index=True)
     holder = fields.TextField(index=True)
-    balance = fields.DecimalField(decimal_places=6, max_digits=20, default=0)
-    turnover = fields.DecimalField(decimal_places=6, max_digits=20, default=0)
+    balance = fields.DecimalField(decimal_places=0, max_digits=78, default=0)
+    turnover = fields.DecimalField(decimal_places=0, max_digits=96, default=0)
     tx_count = fields.BigIntField(default=0)
     last_seen = fields.BigIntField(null=True)
 
@@ -45,7 +45,7 @@ class DepositEvent(Model, EventBasedModel):
     ticket_hash = fields.CharField(max_length=128)
     ticket_owner = fields.CharField(max_length=66)
     receiver = fields.CharField(max_length=66)
-    amount = fields.IntField()
+    amount = fields.DecimalField(decimal_places=0, max_digits=78)
     inbox_level = fields.IntField(index=True)
     inbox_msg_id = fields.IntField(index=True)
 
@@ -59,6 +59,6 @@ class WithdrawEvent(Model, EventBasedModel):
     ticket_hash = fields.CharField(max_length=128)
     ticket_owner = fields.CharField(max_length=66)
     receiver = fields.CharField(max_length=36)
-    amount = fields.IntField()
+    amount = fields.DecimalField(decimal_places=0, max_digits=78)
     outbox_level = fields.IntField(index=True)
     outbox_msg_id = fields.IntField(index=True)

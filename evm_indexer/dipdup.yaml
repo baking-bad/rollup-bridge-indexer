@@ -45,6 +45,7 @@ indexes:
     kind: evm.subsquid.events
     datasource: testnet_subsquid
     node_only: true
+    first_level: 2676
     handlers:
       - callback: on_transfer
         contract: fa12_token
@@ -54,6 +55,7 @@ indexes:
     kind: evm.subsquid.events
     datasource: testnet_subsquid
     node_only: true
+    first_level: 2676
     handlers:
       - callback: on_deposit
         contract: kernel_module

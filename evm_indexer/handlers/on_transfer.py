@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 from tortoise.exceptions import DoesNotExist
@@ -12,7 +10,7 @@ async def on_transfer(
     ctx: HandlerContext,
     event: SubsquidEvent[Transfer],
 ) -> None:
-    amount = Decimal(event.payload.value) / (10 ** 6)
+    amount = event.payload.value
     if not amount:
         return
 
@@ -34,7 +32,7 @@ async def on_transfer(
 async def on_balance_update(
     token: str,
     holder: str,
-    balance_update: Decimal,
+    balance_update: int,
     level: int,
 ) -> None:
     pk = TokenHolder.get_pk(token, holder)
