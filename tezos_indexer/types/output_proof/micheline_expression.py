@@ -1,3 +1,5 @@
+from typing import Any
+
 from tezos_indexer.types.output_proof.unpacker import BaseBinarySchema
 from vendor.pytezos.src.pytezos.michelson.forge import unforge_address
 
@@ -139,3 +141,28 @@ class OutboxMessage(BaseBinarySchema):
         ('size_of_message', 4, 'uint32'),
         ('message', '&size_of_message', 'Message'),
     ]
+
+
+class Transaction(BaseBinarySchema):
+    _schema = [
+        ('parameters', None, 'MichelineExpression'),
+        ('destination', 22, 'Originated'),
+        ('size_of_entrypoint', 4, 'uint32'),
+        ('entrypoint', '&size_of_entrypoint', 'hex'),
+    ]
+
+    def _handle_field_processed(self, name: str, value: Any):
+        if name == 'entrypoint':
+            assert self
+
+
+class TransactionsSequence(BaseBinarySchema):
+    def unpack(self):
+        self._unpacked: list[Transaction] = []
+        while len(self._packed):
+            unpacked_item, item_size = Transaction(self._packed).unpack()
+            self._size += item_size
+            self._unpacked.append(unpacked_item)
+            self._packed = self._packed[item_size:]
+
+        return self._unpacked, self._size
