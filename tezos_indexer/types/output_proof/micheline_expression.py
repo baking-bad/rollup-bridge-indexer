@@ -1,7 +1,7 @@
 from typing import Any
 
 from tezos_indexer.types.output_proof.unpacker import BaseBinarySchema
-from vendor.pytezos.src.pytezos.michelson.forge import unforge_address
+from pytezos.michelson.forge import unforge_address
 
 
 class MichelineExpression(BaseBinarySchema):

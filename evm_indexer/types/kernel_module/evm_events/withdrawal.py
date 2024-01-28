@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from pydantic import Extra
 from pydantic import root_validator
 
-from vendor.pytezos.src.pytezos.michelson.forge import unforge_address
+from pytezos.michelson.forge import unforge_address
 
 class Withdrawal(BaseModel):
     class Config:

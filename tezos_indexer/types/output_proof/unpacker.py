@@ -36,6 +36,7 @@ class BaseBinarySchema:
             'tezos_indexer.types.output_proof.x_n',
             'tezos_indexer.types.output_proof.micheline_expression',
             'tezos_indexer.types.output_proof.primitive',
+            'tezos_indexer.types.output_proof.output_proof',
             __name__,
         ]:
             if module_name not in sys.modules:

@@ -4,10 +4,10 @@ from dipdup.models.tezos_tzkt import TzktTransaction
 from tezos_indexer.models import DepositEvent
 from tezos_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 from tezos_indexer.types.rollup.tezos_storage import RollupStorage
-from vendor.pytezos.src.pytezos.michelson.forge import forge_address
-from vendor.pytezos.src.pytezos.michelson.forge import forge_micheline
-from vendor.pytezos.src.pytezos.michelson.forge import unforge_micheline
-from vendor.pytezos.src.pytezos.michelson.micheline import micheline_value_to_python_object
+from pytezos.michelson.forge import forge_address
+from pytezos.michelson.forge import forge_micheline
+from pytezos.michelson.forge import unforge_micheline
+from pytezos.michelson.micheline import micheline_value_to_python_object
 from web3.main import Web3
 from eth_abi import decode
 
@@ -34,9 +34,9 @@ async def on_rollup_call(
         value = micheline_value_to_python_object(unforge_micheline(value_forged[1:]))
         ticket_metadata.update({key: value})
     if 'token_id' not in ticket_metadata and ticket_metadata['token_type'] == 'FA1.2':
-        ticket_metadata['token_id'] = '0'
+        ticket_metadata['token_id'] = 0
 
-    asset_id = '_'.join([ticket_metadata['contract_address'], ticket_metadata['token_id']])
+    asset_id = '_'.join([ticket_metadata['contract_address'], str(ticket_metadata['token_id'])])
 
     ticket_content_micheline = {"prim": "Pair", "args": [
         {
