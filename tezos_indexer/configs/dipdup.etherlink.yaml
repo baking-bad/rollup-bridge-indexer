@@ -1,16 +1,3 @@
-spec_version: 2.0
-package: evm_indexer
-
-database:
-  kind: postgres
-  host: ${POSTGRES_HOST:-db}
-  port: ${POSTGRES_PORT:-5432}
-  user: ${POSTGRES_USER:-dipdup}
-  password: ${POSTGRES_PASSWORD:-changeme}
-  database: ${POSTGRES_DB:-dipdup}
-  schema_name: evm_indexer
-
-
 datasources:
   testnet_node:
     kind: evm.node
@@ -45,7 +32,7 @@ indexes:
     kind: evm.subsquid.events
     datasource: testnet_subsquid
     node_only: true
-    first_level: 2676
+#    first_level: 2676
     handlers:
       - callback: on_transfer
         contract: fa12_token
@@ -55,7 +42,7 @@ indexes:
     kind: evm.subsquid.events
     datasource: testnet_subsquid
     node_only: true
-    first_level: 2676
+#    first_level: 2676
     handlers:
       - callback: on_deposit
         contract: kernel_module

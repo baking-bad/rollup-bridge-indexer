@@ -1,0 +1,89 @@
+datasources:
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+  rpc:
+    kind: http
+    url: https://rpc.tzkt.io/nairobinet
+
+contracts:
+  rollup:
+    kind: tezos
+    address: sr1QgYF6ARMSLcWyAX4wFDrWFaZTyy4twbqe
+    typename: rollup
+
+  token_contract:
+    kind: tezos
+    address: KT1GM2AnBAJWdzrChp3hTYFTSb6Dmh61peBP
+    typename: token_contract
+  ticketer:
+    kind: tezos
+    address: KT1PmYUomF3HDxsGWYQUCbLi2X8WvT7ZHv8o
+    typename: ticketer
+  ticket_helper:
+    kind: tezos
+    address: KT1TZg9EwGHKbfWvsHGsqBjm3J5NhJBtHPKX
+    typename: ticket_helper
+
+  token_contract1:
+    kind: tezos
+    address: KT1GemMPvp2bV8TUV1DzWTwdhT27TtMgJiTw
+    typename: token_contract1
+  ticketer1:
+    kind: tezos
+    address: KT1GQEybCQffb6YJ5NH9GhPEeRyufrYP3amN
+    typename: ticketer1
+  ticket_helper1:
+    kind: tezos
+    address: KT1LstLU529PtDUQHo2x8WybNXBzLXnF6Tkv
+    typename: ticket_helper1
+
+
+
+indexes:
+  deposit_request:
+    kind: tezos.tzkt.operations
+    datasource: tzkt
+    contracts:
+      - rollup
+      - ticket_helper
+    handlers:
+      - callback: on_rollup_call
+        pattern:
+          - type: transaction
+            source: ticket_helper
+            destination: rollup
+            entrypoint: default
+
+  deposit_request1:
+    kind: tezos.tzkt.operations
+    datasource: tzkt
+    contracts:
+      - rollup
+      - ticket_helper1
+    handlers:
+      - callback: on_rollup_call
+        pattern:
+          - type: transaction
+            source: ticket_helper1
+            destination: rollup
+            entrypoint: default
+
+  withdraw_approval:
+    kind: tezos.tzkt.operations
+    datasource: tzkt
+    types:
+      - sr_execute
+      - transaction
+    contracts:
+      - rollup
+    handlers:
+      - callback: on_rollup_execute
+        pattern:
+          - type: sr_execute
+            destination: rollup
+          - type: transaction
+            source: rollup
+            destination: ticketer
+            entrypoint: withdraw

@@ -1,0 +1,8 @@
+database:
+  kind: postgres
+  host: ${POSTGRES_HOST:-db}
+  port: ${POSTGRES_PORT:-5432}
+  user: ${POSTGRES_USER:-dipdup}
+  password: ${POSTGRES_PASSWORD:-changeme}
+  database: ${POSTGRES_DB:-dipdup}
+  schema_name: tezos_indexer
