@@ -1,0 +1,7 @@
+spec_version: 2.0
+package: bridge_indexer
+
+advanced:
+  reindex:
+    config_modified: ignore
+    schema_modified: ignore

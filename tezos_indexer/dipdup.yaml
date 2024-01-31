@@ -1,7 +1,0 @@
-spec_version: 2.0
-package: tezos_indexer
-
-advanced:
-  reindex:
-    config_modified: wipe
-    schema_modified: wipe
