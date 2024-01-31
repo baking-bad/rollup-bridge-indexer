@@ -63,6 +63,13 @@ RUN useradd -ms /bin/bash $APP_USER
 
 FROM runtime-base as runtime
 
+RUN apt-get update \
+ && apt-get install --no-install-recommends -y \
+        libsodium-dev libsecp256k1-dev libgmp-dev pkg-config \
+    # cleanup
+ && rm -rf /tmp/* \
+ && rm -rf /root/.cache \
+ && rm -rf /var/lib/apt/lists/*
 
 ARG VENV_PATH
 COPY --from=builder-production ["$VENV_PATH", "$VENV_PATH"]

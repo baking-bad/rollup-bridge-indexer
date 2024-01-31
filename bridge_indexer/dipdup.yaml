@@ -18,26 +18,26 @@ datasources:
   metadata:
     kind: tzip_metadata
     network: nairobinet
-    url: https://metadata.dipdup.net
+    url: ${METADATA_URL}
 
   tezos_node:
     kind: http
-    url: https://rpc.tzkt.io/nairobinet
+    url: ${TEZOS_NODE_URL}
 
   etherlink_node:
     kind: evm.node
-    url: https://etherlink.dipdup.net/
-    ws_url: wss://etherlink.dipdup.net/
+    url: ${ETHERLINK_NODE_URL}
+    ws_url: ${ETHERLINK_NODE_WS}
 
   etherlink_subsquid:
     kind: evm.subsquid
-    url: https://v2.archive.subsquid.io/network/astar-mainnet
+    url: ${ETHERLINK_SUBSQUID_URL:-~}
     node: etherlink_node
 
 contracts:
   rollup:
     kind: tezos
-    address: sr1JZsZT5u27MUQXeTh1aHqZBo8NvyxRKnyv
+    address: ${SMART_ROLLUP_ADDRESS}
     typename: rollup
 
 #  token_contract:
