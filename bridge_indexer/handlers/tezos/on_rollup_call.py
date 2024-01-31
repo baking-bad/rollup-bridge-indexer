@@ -1,6 +1,7 @@
 from dipdup.context import HandlerContext
 from dipdup.models.tezos_tzkt import TzktTransaction
 
+from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosDepositEvent
 from bridge_indexer.models import TezosTicket
@@ -101,7 +102,7 @@ async def on_rollup_call(
     routing_info = bytes.fromhex(parameter.bytes)
     l2_receiver = routing_info[:20]
 
-    await TezosDepositEvent.create(
+    l1_transaction = await TezosDepositEvent.create(
         timestamp=default.data.timestamp,
         level=default.data.level,
         operation_hash=default.data.hash,
@@ -110,10 +111,13 @@ async def on_rollup_call(
         initiator=default.data.initiator_address,
         sender=default.data.sender_address,
         target=default.data.target_address,
-        ticket=ticket,
         l1_account=default.data.initiator_address,
         l2_account=l2_receiver.hex(),
+        ticket=ticket,
         amount=parameter.ticket.amount,
     )
 
     ctx.logger.info(f'Deposit Call registered: {default}')
+
+    await BridgeMatcher.check_pending_tezos_deposits()
+    await BridgeMatcher.check_pending_etherlink_deposits()

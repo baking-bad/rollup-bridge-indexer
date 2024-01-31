@@ -37,21 +37,21 @@ datasources:
 contracts:
   rollup:
     kind: tezos
-    address: sr1QgYF6ARMSLcWyAX4wFDrWFaZTyy4twbqe
+    address: sr1JZsZT5u27MUQXeTh1aHqZBo8NvyxRKnyv
     typename: rollup
 
-  token_contract:
-    kind: tezos
-    address: KT1GM2AnBAJWdzrChp3hTYFTSb6Dmh61peBP
-    typename: token_contract
-  ticketer:
-    kind: tezos
-    address: KT1PmYUomF3HDxsGWYQUCbLi2X8WvT7ZHv8o
-    typename: ticketer
-  ticket_helper:
-    kind: tezos
-    address: KT1TZg9EwGHKbfWvsHGsqBjm3J5NhJBtHPKX
-    typename: ticket_helper
+#  token_contract:
+#    kind: tezos
+#    address: KT1GM2AnBAJWdzrChp3hTYFTSb6Dmh61peBP
+#    typename: token_contract
+#  ticketer:
+#    kind: tezos
+#    address: KT1PmYUomF3HDxsGWYQUCbLi2X8WvT7ZHv8o
+#    typename: ticketer
+#  ticket_helper:
+#    kind: tezos
+#    address: KT1TZg9EwGHKbfWvsHGsqBjm3J5NhJBtHPKX
+#    typename: ticket_helper
 
   kernel_module:
     kind: evm

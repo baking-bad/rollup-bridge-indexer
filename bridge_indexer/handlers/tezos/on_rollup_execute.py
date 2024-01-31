@@ -2,6 +2,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos_tzkt import TzktSmartRollupExecute
 from dipdup.models.tezos_tzkt import TzktTransaction
 
+from bridge_indexer.models import TezosWithdrawEvent
 from bridge_indexer.types.output_proof.output_proof import OutputProofData
 from bridge_indexer.types.ticketer.tezos_parameters.withdraw import WithdrawParameter
 from bridge_indexer.types.ticketer.tezos_storage import TicketerStorage
@@ -38,4 +39,18 @@ async def on_rollup_execute(
     d = json.dumps(output_proof)
     assert output_proof
 
-
+    await TezosWithdrawEvent.create(
+        timestamp=execute.data.timestamp,
+        level=execute.data.level,
+        operation_hash=execute.data.hash,
+        counter=execute.data.counter,
+        nonce=execute.data.nonce,
+        initiator=execute.data.initiator_address,
+        sender=execute.data.sender_address,
+        target=execute.data.target_address,
+        # l1_account=...,
+        # ticket=...,
+        # amount=...,
+        outbox_level=output_proof['output_proof_output']['outbox_level'],
+        outbox_msg_id=output_proof['output_proof_output']['message_index'],
+    )

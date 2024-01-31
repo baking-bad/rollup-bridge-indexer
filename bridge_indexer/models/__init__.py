@@ -3,7 +3,6 @@ from dipdup.models import Model
 from tortoise import ForeignKeyFieldInstance
 
 
-
 class TezosToken(Model):
     class Meta:
         table = 'tezos_token'
@@ -56,7 +55,7 @@ class TezosAbstractOperation:
     level = fields.IntField(index=True)
     operation_hash = fields.CharField(max_length=64)
     counter = fields.IntField()
-    nonce = fields.IntField()
+    nonce = fields.IntField(null=True)
     initiator = fields.CharField(max_length=36)
     sender = fields.CharField(max_length=36)
     target = fields.CharField(max_length=36)
@@ -67,13 +66,13 @@ class TezosDepositEvent(TezosAbstractOperation, Model):
         table = 'l1_deposit'
         model = 'models.TezosDepositEvent'
 
+    l1_account = fields.CharField(max_length=36)
+    l2_account = fields.CharField(max_length=40)
     ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
         source_field='ticket_id',
         to_field='id',
     )
-    l1_account = fields.CharField(max_length=36)
-    l2_account = fields.CharField(max_length=40)
     amount = fields.TextField()
 
 
@@ -82,11 +81,13 @@ class TezosWithdrawEvent(TezosAbstractOperation, Model):
         table = 'l1_withdraw'
         model = 'models.TezosWithdrawEvent'
 
-    sender = fields.CharField(max_length=66)
-    ticket_hash = fields.CharField(max_length=78)
-    ticket_owner = fields.CharField(max_length=66)
-    receiver = fields.CharField(max_length=36)
-    amount = fields.IntField()
+    # l1_account = fields.CharField(max_length=36)
+    # ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
+    #     model_name=TezosTicket.Meta.model,
+    #     source_field='ticket_id',
+    #     to_field='id',
+    # )
+    # amount = fields.TextField()
     outbox_level = fields.IntField(index=True)
     outbox_msg_id = fields.IntField(index=True)
 
@@ -127,7 +128,53 @@ class EtherlinkWithdrawEvent(Model, EtherlinkEventBasedModel):
 
     l2_account = fields.CharField(max_length=40)
     l1_account = fields.CharField(max_length=36)
-    l2_token = fields.CharField(max_length=40)
+    l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
+        model_name=EtherlinkToken.Meta.model,
+        source_field='token_id',
+        to_field='id',
+    )
     amount = fields.TextField()
     outbox_level = fields.IntField(index=True)
     outbox_msg_id = fields.IntField(index=True)
+
+
+class BridgeDepositTransaction(Model):
+    class Meta:
+        table = 'bridge_deposit'
+        model = 'models.BridgeDepositTransaction'
+
+    id = fields.UUIDField(pk=True)
+    l1_transaction: ForeignKeyFieldInstance[TezosDepositEvent] = fields.ForeignKeyField(
+        model_name=TezosDepositEvent.Meta.model,
+        source_field='l1_transaction_id',
+        to_field='id',
+        unique=True,
+    )
+    l2_transaction: ForeignKeyFieldInstance[EtherlinkDepositEvent] = fields.ForeignKeyField(
+        model_name=EtherlinkDepositEvent.Meta.model,
+        source_field='l2_transaction_id',
+        to_field='id',
+        null=True,
+        unique=True,
+    )
+
+
+class BridgeWithdrawTransaction(Model):
+    class Meta:
+        table = 'bridge_withdrawal'
+        model = 'models.BridgeWithdrawTransaction'
+
+    id = fields.UUIDField(pk=True)
+    l1_transaction: ForeignKeyFieldInstance[TezosWithdrawEvent] = fields.ForeignKeyField(
+        model_name=TezosWithdrawEvent.Meta.model,
+        source_field='l1_transaction_id',
+        to_field='id',
+        null=True,
+        unique=True,
+    )
+    l2_transaction: ForeignKeyFieldInstance[EtherlinkWithdrawEvent] = fields.ForeignKeyField(
+        model_name=EtherlinkWithdrawEvent.Meta.model,
+        source_field='l2_transaction_id',
+        to_field='id',
+        unique=True,
+    )
