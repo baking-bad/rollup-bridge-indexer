@@ -1,6 +1,6 @@
 from typing import Any
 
-from tezos_indexer.types.output_proof.unpacker import BaseBinarySchema
+from bridge_indexer.types.output_proof.unpacker import BaseBinarySchema
 from pytezos.michelson.forge import unforge_address
 
 

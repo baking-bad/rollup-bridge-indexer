@@ -1,4 +1,4 @@
-from tezos_indexer.types.output_proof.unpacker import BaseBinarySchema
+from bridge_indexer.types.output_proof.unpacker import BaseBinarySchema
 
 
 class Primitive0(BaseBinarySchema):

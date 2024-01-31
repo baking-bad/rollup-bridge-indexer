@@ -5,7 +5,7 @@ from typing import Type
 
 from pydantic import BaseModel
 
-from tezos_indexer.types.output_proof.decoder import decode
+from bridge_indexer.types.output_proof.decoder import decode
 
 
 class Part(BaseModel):
@@ -31,12 +31,12 @@ class BaseBinarySchema:
     @staticmethod
     def _import(type_name):
         for module_name in [
-            'tezos_indexer.types.output_proof.inode_tree',
-            'tezos_indexer.types.output_proof.tree_encoding',
-            'tezos_indexer.types.output_proof.x_n',
-            'tezos_indexer.types.output_proof.micheline_expression',
-            'tezos_indexer.types.output_proof.primitive',
-            'tezos_indexer.types.output_proof.output_proof',
+            'bridge_indexer.types.output_proof.inode_tree',
+            'bridge_indexer.types.output_proof.tree_encoding',
+            'bridge_indexer.types.output_proof.x_n',
+            'bridge_indexer.types.output_proof.micheline_expression',
+            'bridge_indexer.types.output_proof.primitive',
+            'bridge_indexer.types.output_proof.output_proof',
             __name__,
         ]:
             if module_name not in sys.modules:
