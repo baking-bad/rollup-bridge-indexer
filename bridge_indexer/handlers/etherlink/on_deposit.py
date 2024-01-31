@@ -4,8 +4,8 @@ from datetime import timezone
 from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 
-from evm_indexer.models import DepositEvent
-from evm_indexer.types.kernel_module.evm_events.deposit import Deposit
+from bridge_indexer.models import EtherlinkDepositEvent
+from bridge_indexer.types.kernel_module.evm_events.deposit import Deposit
 
 
 async def on_deposit(
@@ -13,7 +13,7 @@ async def on_deposit(
     event: SubsquidEvent[Deposit],
 ) -> None:
 
-    await DepositEvent.create(
+    await EtherlinkDepositEvent.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=timezone.utc),
         level=event.data.level,
         address=event.data.address,

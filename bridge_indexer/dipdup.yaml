@@ -1,7 +1,133 @@
 spec_version: 2.0
 package: bridge_indexer
 
+database:
+  kind: postgres
+  host: ${POSTGRES_HOST:-db}
+  port: ${POSTGRES_PORT:-5432}
+  user: ${POSTGRES_USER:-dipdup}
+  password: ${POSTGRES_PASSWORD:-changeme}
+  database: ${POSTGRES_DB:-dipdup}
+
+
+datasources:
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+  tezos_node:
+    kind: http
+    url: https://rpc.tzkt.io/nairobinet
+
+  etherlink_node:
+    kind: evm.node
+    url: https://etherlink.dipdup.net/
+    ws_url: wss://etherlink.dipdup.net/
+
+  etherlink_subsquid:
+    kind: evm.subsquid
+    url: https://v2.archive.subsquid.io/network/astar-mainnet
+    node: etherlink_node
+
+contracts:
+  rollup:
+    kind: tezos
+    address: sr1QgYF6ARMSLcWyAX4wFDrWFaZTyy4twbqe
+    typename: rollup
+
+  token_contract:
+    kind: tezos
+    address: KT1GM2AnBAJWdzrChp3hTYFTSb6Dmh61peBP
+    typename: token_contract
+  ticketer:
+    kind: tezos
+    address: KT1PmYUomF3HDxsGWYQUCbLi2X8WvT7ZHv8o
+    typename: ticketer
+  ticket_helper:
+    kind: tezos
+    address: KT1TZg9EwGHKbfWvsHGsqBjm3J5NhJBtHPKX
+    typename: ticket_helper
+
+  kernel_module:
+    kind: evm
+    address: 0x0000000000000000000000000000000000000000
+    typename: kernel_module
+
+
+indexes:
+  deposit_request:
+    kind: tezos.tzkt.operations
+    datasource: tzkt
+    contracts:
+      - rollup
+#      - ticket_helper
+    handlers:
+      - callback: tezos.on_rollup_call
+        pattern:
+          - type: transaction
+#            source: ticket_helper
+            destination: rollup
+            entrypoint: default
+
+  withdraw_approval:
+    kind: tezos.tzkt.operations
+    datasource: tzkt
+    types:
+      - sr_execute
+      - transaction
+    contracts:
+      - rollup
+    handlers:
+      - callback: tezos.on_rollup_execute
+        pattern:
+          - type: sr_execute
+            destination: rollup
+          - type: transaction
+            source: rollup
+#            destination: ticketer
+            entrypoint: withdraw
+
+  kernel_events:
+    kind: evm.subsquid.events
+    datasource: etherlink_subsquid
+    node_only: true
+#    first_level: 2676
+    handlers:
+      - callback: etherlink.on_deposit
+        contract: kernel_module
+        name: Deposit
+
+      - callback: etherlink.on_withdraw
+        contract: kernel_module
+        name: Withdrawal
+
 advanced:
   reindex:
     config_modified: ignore
     schema_modified: ignore
+
+
+
+
+#  kernel_precompile:
+#    kind: evm
+#    address: 0x0000000000000000000000000000000000000040
+#    typename: kernel_precompile
+
+#  fa12_token:
+#    kind: evm
+#    address: 0x8554cD57C0C3E5Ab9d1782c9063279fA9bFA4680
+#    typename: fa12_token
+
+
+#indexes:
+#  token_transfers:
+#    kind: evm.subsquid.events
+#    datasource: testnet_subsquid
+#    node_only: true
+##    first_level: 2676
+#    handlers:
+#      - callback: etherlink.on_transfer
+#        contract: fa12_token
+#        name: Transfer
+

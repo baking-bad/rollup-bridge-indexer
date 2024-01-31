@@ -1,15 +1,15 @@
 from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 
-from evm_indexer.models import WithdrawEvent
-from evm_indexer.types.kernel_module.evm_events.withdrawal import Withdrawal
+from bridge_indexer.models import EtherlinkWithdrawEvent
+from bridge_indexer.types.kernel_module.evm_events.withdrawal import Withdrawal
 
 
 async def on_withdraw(
     ctx: HandlerContext,
     event: SubsquidEvent[Withdrawal],
 ) -> None:
-    await WithdrawEvent.create(
+    await EtherlinkWithdrawEvent.create(
         timestamp=event.data.timestamp,
         level=event.data.level,
         address=event.data.address,

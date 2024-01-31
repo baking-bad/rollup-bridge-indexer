@@ -10,8 +10,8 @@ services:
       - POSTGRES_USER=dipdup
       - POSTGRES_DB=dipdup
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
-    volumes:
-      - ./deploy/timescaledb/002_init-db.sh:/docker-entrypoint-initdb.d/002_init-db.sh
+#    volumes:
+#      - ./deploy/timescaledb/002_init-db.sh:/docker-entrypoint-initdb.d/002_init-db.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dipdup"]
       interval: 10s

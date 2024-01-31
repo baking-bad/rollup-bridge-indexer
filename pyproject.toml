@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "etherlink"
+name = "Tezos to Etherlink Bridge Indexer"
 version = "0.1.0"
 description = ""
 authors = ["Igor Sereda <sereda.igor.s@gmail.com>"]

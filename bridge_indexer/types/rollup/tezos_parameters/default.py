@@ -29,7 +29,7 @@ class LL(BaseModel):
     ticket: Ticket
 
 
-class DefaultParameter1(BaseModel):
+class DepositParameter(BaseModel):
     class Config:
         extra = Extra.forbid
 
@@ -51,4 +51,4 @@ class DefaultParameter3(BaseModel):
 
 
 class DefaultParameter(BaseModel):
-    __root__: DefaultParameter1 | DefaultParameter2 | DefaultParameter3
+    __root__: DepositParameter | DefaultParameter2 | DefaultParameter3
