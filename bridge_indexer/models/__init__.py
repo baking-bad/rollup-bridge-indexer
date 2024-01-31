@@ -110,7 +110,7 @@ class EtherlinkDepositEvent(Model, EtherlinkEventBasedModel):
         model = 'models.EtherlinkDepositEvent'
 
     l2_account = fields.CharField(max_length=40)
-    token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
+    l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
         model_name=EtherlinkToken.Meta.model,
         source_field='token_id',
         to_field='id',
@@ -125,10 +125,9 @@ class EtherlinkWithdrawEvent(Model, EtherlinkEventBasedModel):
         table = 'l2_withdraw'
         model = 'models.EtherlinkWithdrawEvent'
 
-    sender = fields.CharField(max_length=66)
-    ticket_hash = fields.CharField(max_length=128)
-    ticket_owner = fields.CharField(max_length=66)
-    receiver = fields.CharField(max_length=36)
-    amount = fields.DecimalField(decimal_places=0, max_digits=78)
+    l2_account = fields.CharField(max_length=40)
+    l1_account = fields.CharField(max_length=36)
+    l2_token = fields.CharField(max_length=40)
+    amount = fields.TextField()
     outbox_level = fields.IntField(index=True)
     outbox_msg_id = fields.IntField(index=True)
