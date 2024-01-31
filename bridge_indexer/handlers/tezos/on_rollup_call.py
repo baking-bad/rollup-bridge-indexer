@@ -1,8 +1,12 @@
 from dipdup.context import HandlerContext
 from dipdup.models.tezos_tzkt import TzktTransaction
 
+from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosDepositEvent
+from bridge_indexer.models import TezosTicket
+from bridge_indexer.models import TezosToken
 from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
+from bridge_indexer.types.rollup.tezos_parameters.default import LL
 from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 from pytezos.michelson.forge import forge_address
 from pytezos.michelson.forge import forge_micheline
@@ -12,13 +16,7 @@ from web3.main import Web3
 from eth_abi import decode
 
 
-async def on_rollup_call(
-    ctx: HandlerContext,
-    default: TzktTransaction[DefaultParameter, RollupStorage],
-) -> None:
-    print(default.data.level)
-
-    parameter = default.parameter.__root__.LL
+async def validate_ticket(parameter: LL, ctx: HandlerContext):
     routing_info = bytes.fromhex(parameter.bytes)
     l2_receiver = routing_info[:20]
     l2_proxy = routing_info[20:40] or None
@@ -51,6 +49,27 @@ async def on_rollup_call(
                 "bytes": ticket_content.bytes,
             }]}
         ]}
+    ticket_id = f'{ticket_identifier.address}_{ticket_content.nat}'
+    ticket = await TezosTicket.get_or_none(pk=ticket_id)
+    if ticket:
+        return ticket
+    token = await TezosToken.get_or_none(pk=asset_id)
+    if not token:
+        metadata_datasource = ctx.get_metadata_datasource('metadata')
+        token_metadata = await metadata_datasource.get_token_metadata(
+            ticket_metadata['contract_address'],
+            str(ticket_metadata['token_id']),
+        )
+        if token_metadata is None:
+            token_metadata = {}
+        token = await TezosToken.create(
+            id=asset_id,
+            contract_address=ticket_metadata['contract_address'],
+            token_id=ticket_metadata['token_id'],
+            name=token_metadata.get('name', None),
+            symbol=token_metadata.get('symbol', None),
+            decimals=token_metadata.get('decimals', 0),
+        )
 
     data = Web3.solidity_keccak(
         ['bytes22', 'bytes'],
@@ -62,6 +81,26 @@ async def on_rollup_call(
 
     ticket_hash = decode(["uint256"], data)[0]
 
+    ticket = await TezosTicket.create(
+        id=ticket_id,
+        token=token,
+        ticketer_address=ticket_identifier.address,
+        ticket_id=ticket_content.nat,
+        ticket_hash=ticket_hash,
+    )
+
+    return ticket
+
+async def on_rollup_call(
+    ctx: HandlerContext,
+    default: TzktTransaction[DefaultParameter, RollupStorage],
+) -> None:
+    parameter = default.parameter.__root__.LL
+    ticket = await validate_ticket(parameter, ctx)
+
+    routing_info = bytes.fromhex(parameter.bytes)
+    l2_receiver = routing_info[:20]
+
     await TezosDepositEvent.create(
         timestamp=default.data.timestamp,
         level=default.data.level,
@@ -71,13 +110,9 @@ async def on_rollup_call(
         initiator=default.data.initiator_address,
         sender=default.data.sender_address,
         target=default.data.target_address,
-        ticket_hash=ticket_hash,
-        ticket_owner=default.data.initiator_address,
-        ticketer=ticket_identifier.address,
-        asset_id=asset_id,
+        ticket=ticket,
         l2_receiver=l2_receiver.hex(),
-        l2_proxy=l2_proxy.hex() if l2_proxy else None,
-        amount=ticket_identifier.amount,
+        amount=parameter.ticket.amount,
     )
 
     ctx.logger.info(f'Deposit Call registered: {default}')

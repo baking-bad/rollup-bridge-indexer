@@ -15,6 +15,11 @@ datasources:
     kind: tezos.tzkt
     url: ${TZKT_URL}
 
+  metadata:
+    kind: tzip_metadata
+    network: nairobinet
+    url: https://metadata.dipdup.net
+
   tezos_node:
     kind: http
     url: https://rpc.tzkt.io/nairobinet

@@ -1,50 +1,6 @@
 from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
 from dipdup.models import Model
-from dipdup.models import Model
-from dipdup.models import Model
-from dipdup.models import Model
+from tortoise import ForeignKeyFieldInstance
 
 
 class EtherlinkEventBasedModel:
@@ -87,6 +43,49 @@ class EtherlinkWithdrawEvent(Model, EtherlinkEventBasedModel):
     outbox_msg_id = fields.IntField(index=True)
 
 
+class TezosToken(Model):
+    class Meta:
+        table = 'tezos_token'
+        model = 'models.TezosToken'
+
+    id = fields.TextField(pk=True)
+    contract_address = fields.CharField(max_length=36)
+    token_id = fields.TextField(default='0')
+    name = fields.TextField(null=True)
+    symbol = fields.TextField(null=True)
+    decimals = fields.IntField(default=0)
+
+
+class TezosTicket(Model):
+    class Meta:
+        table = 'tezos_ticket'
+        model = 'models.TezosTicket'
+
+    id = fields.TextField(pk=True)
+    token: ForeignKeyFieldInstance[TezosToken] = fields.ForeignKeyField(
+        model_name=TezosToken.Meta.model,
+        source_field='token_id',
+        to_field='id',
+    )
+    ticketer_address = fields.CharField(max_length=36)
+    ticket_id = fields.TextField(default='0')
+    ticket_hash = fields.CharField(max_length=78)
+
+
+class EtherlinkToken(Model):
+    class Meta:
+        table = 'etherlink_token'
+        model = 'models.EtherlinkToken'
+
+    id = fields.CharField(max_length=40, pk=True)
+    name = fields.TextField(null=True)
+    ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
+        model_name=TezosTicket.Meta.model,
+        source_field='ticket_id',
+        to_field='id',
+    )
+
+
 class TezosAbstractOperation:
     class Meta:
         abstract = True
@@ -107,13 +106,13 @@ class TezosDepositEvent(TezosAbstractOperation, Model):
         table = 'l1_deposit'
         model = 'models.TezosDepositEvent'
 
-    ticket_hash = fields.CharField(max_length=78)
-    ticket_owner = fields.CharField(max_length=66)
-    ticketer = fields.CharField(max_length=66)
-    asset_id = fields.TextField()
+    ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
+        model_name=TezosTicket.Meta.model,
+        source_field='ticket_id',
+        to_field='id',
+    )
     l2_receiver = fields.CharField(max_length=66)
-    l2_proxy = fields.CharField(max_length=66, null=True)
-    amount = fields.IntField()
+    amount = fields.TextField()
 
 
 class TezosWithdrawEvent(TezosAbstractOperation, Model):
@@ -122,7 +121,7 @@ class TezosWithdrawEvent(TezosAbstractOperation, Model):
         model = 'models.TezosWithdrawEvent'
 
     sender = fields.CharField(max_length=66)
-    ticket_hash = fields.CharField(max_length=128)
+    ticket_hash = fields.CharField(max_length=78)
     ticket_owner = fields.CharField(max_length=66)
     receiver = fields.CharField(max_length=36)
     amount = fields.IntField()
