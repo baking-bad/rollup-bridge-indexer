@@ -2,7 +2,7 @@
 *
 
 # Add metadata and build files
-!evm_indexer
+!bridge_indexer
 !pyproject.toml
 !*.lock
 !README.md

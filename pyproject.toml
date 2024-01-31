@@ -9,7 +9,7 @@ readme = "README.md"
 python = ">=3.11,<3.12"
 dipdup = "7.3.0"
 base58 = "^2.1.1"
-pytezos = {git = "git@github.com:baking-bad/pytezos.git", branch = "master"}
+pytezos = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.4"
