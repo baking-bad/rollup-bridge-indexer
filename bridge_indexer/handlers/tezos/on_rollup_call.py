@@ -111,7 +111,8 @@ async def on_rollup_call(
         sender=default.data.sender_address,
         target=default.data.target_address,
         ticket=ticket,
-        l2_receiver=l2_receiver.hex(),
+        l1_account=default.data.initiator_address,
+        l2_account=l2_receiver.hex(),
         amount=parameter.ticket.amount,
     )
 
