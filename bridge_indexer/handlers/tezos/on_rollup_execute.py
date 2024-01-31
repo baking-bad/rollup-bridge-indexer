@@ -2,6 +2,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos_tzkt import TzktSmartRollupExecute
 from dipdup.models.tezos_tzkt import TzktTransaction
 
+from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import TezosWithdrawEvent
 from bridge_indexer.types.output_proof.output_proof import OutputProofData
 from bridge_indexer.types.ticketer.tezos_parameters.withdraw import WithdrawParameter
@@ -30,14 +31,7 @@ async def on_rollup_execute(
             message_hex = operation['output_proof']
             break
     decoder = OutputProofData(bytes.fromhex(message_hex))
-    try:
-        output_proof, _ = decoder.unpack()
-    except Exception as e:
-        assert e
-
-    import json
-    d = json.dumps(output_proof)
-    assert output_proof
+    output_proof, _ = decoder.unpack()
 
     await TezosWithdrawEvent.create(
         timestamp=execute.data.timestamp,
@@ -54,3 +48,5 @@ async def on_rollup_execute(
         outbox_level=output_proof['output_proof_output']['outbox_level'],
         outbox_msg_id=output_proof['output_proof_output']['message_index'],
     )
+
+    await BridgeMatcher.check_pending_tezos_withdrawals()

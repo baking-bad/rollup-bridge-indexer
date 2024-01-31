@@ -1,6 +1,7 @@
 from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 
+from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawEvent
 from bridge_indexer.models import TezosTicket
@@ -35,3 +36,6 @@ async def on_withdraw(
     )
 
     ctx.logger.info(f'Withdraw Event registered: {event}')
+
+    await BridgeMatcher.check_pending_etherlink_withdrawals()
+    await BridgeMatcher.check_pending_tezos_withdrawals()
