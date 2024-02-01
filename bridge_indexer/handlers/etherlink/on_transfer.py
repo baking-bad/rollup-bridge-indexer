@@ -53,4 +53,3 @@ async def on_balance_update(
     token_holder.tx_count += 1
     token_holder.last_seen = level
     await token_holder.save()
-

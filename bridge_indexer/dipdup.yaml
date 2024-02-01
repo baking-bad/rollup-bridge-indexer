@@ -40,28 +40,15 @@ contracts:
     address: ${SMART_ROLLUP_ADDRESS}
     typename: rollup
 
-#  token_contract:
-#    kind: tezos
-#    address: KT1GM2AnBAJWdzrChp3hTYFTSb6Dmh61peBP
-#    typename: token_contract
-#  ticketer:
-#    kind: tezos
-#    address: KT1PmYUomF3HDxsGWYQUCbLi2X8WvT7ZHv8o
-#    typename: ticketer
-#  ticket_helper:
-#    kind: tezos
-#    address: KT1TZg9EwGHKbfWvsHGsqBjm3J5NhJBtHPKX
-#    typename: ticket_helper
-
   kernel_module:
     kind: evm
     address: 0x0000000000000000000000000000000000000000
     typename: kernel_module
 
-#  fa12_token:
-#    kind: evm
-#    address: 0x8554cD57C0C3E5Ab9d1782c9063279fA9bFA4680
-#    typename: fa12_token
+  l2_token:
+    kind: evm
+    address: 0x8554cD57C0C3E5Ab9d1782c9063279fA9bFA4680
+    typename: l2_token
 
 
 indexes:
@@ -73,12 +60,10 @@ indexes:
       - transaction
     contracts:
       - rollup
-#      - ticket_helper
     handlers:
       - callback: tezos.on_rollup_call
         pattern:
           - type: transaction
-#            source: ticket_helper
             destination: rollup
             entrypoint: default
       - callback: tezos.on_rollup_execute
@@ -87,14 +72,12 @@ indexes:
             destination: rollup
           - type: transaction
             source: rollup
-#            destination: ticketer
             entrypoint: withdraw
 
   kernel_events:
     kind: evm.subsquid.events
     datasource: etherlink_subsquid
     node_only: true
-#    first_level: 2676
     handlers:
       - callback: etherlink.on_deposit
         contract: kernel_module
@@ -105,7 +88,7 @@ indexes:
         name: Withdrawal
 
       - callback: etherlink.on_transfer
-        contract: fa12_token
+        contract: l2_token
         name: Transfer
 
 
@@ -113,15 +96,3 @@ advanced:
   reindex:
     config_modified: ignore
     schema_modified: ignore
-
-
-
-
-#  kernel_precompile:
-#    kind: evm
-#    address: 0x0000000000000000000000000000000000000040
-#    typename: kernel_precompile
-
-
-
-#indexes:
