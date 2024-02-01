@@ -1,6 +1,7 @@
 spec_version: 2.0
 package: bridge_indexer
 
+
 database:
   kind: postgres
   host: ${POSTGRES_HOST:-db}
@@ -8,6 +9,14 @@ database:
   user: ${POSTGRES_USER:-dipdup}
   password: ${POSTGRES_PASSWORD:-changeme}
   database: ${POSTGRES_DB:-dipdup}
+
+
+hasura:
+  url: http://hasura:8080
+  admin_secret: ${ADMIN_SECRET:-changeme}
+  select_limit: ${SELECT_LIMIT:-1000}
+  allow_aggregations: true
+  rest: true
 
 
 datasources:
