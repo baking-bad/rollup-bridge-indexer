@@ -1,4 +1,4 @@
-from bridge_indexer.types.kernel_module.evm_events.withdrawal import Withdrawal
+from bridge_indexer.types.kernel.evm_events.withdrawal import Withdrawal
 
 
 class TestTezosTypes:

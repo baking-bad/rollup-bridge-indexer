@@ -5,7 +5,7 @@ from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawEvent
 from bridge_indexer.models import TezosTicket
-from bridge_indexer.types.kernel_module.evm_events.withdrawal import Withdrawal
+from bridge_indexer.types.kernel.evm_events.withdrawal import Withdrawal
 
 
 async def on_withdraw(

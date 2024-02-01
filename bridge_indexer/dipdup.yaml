@@ -44,60 +44,68 @@ datasources:
     node: etherlink_node
 
 contracts:
-  rollup:
+  tezos_smart_rollup:
     kind: tezos
     address: ${SMART_ROLLUP_ADDRESS}
-    typename: rollup
+    typename: tezos_smart_rollup
 
-  kernel_module:
+  etherlink_rollup_kernel:
     kind: evm
     address: 0x0000000000000000000000000000000000000000
-    typename: kernel_module
+    typename: kernel
 
-  l2_token:
+  l2_fa12_token:
     kind: evm
-    address: 0x8554cD57C0C3E5Ab9d1782c9063279fA9bFA4680
+    address: 0xe448b46E3c9167961ae4bD498E8dFb78Ae97da8a
+    typename: l2_token
+  l2_fa2_token:
+    kind: evm
+    address: 0xcb5d40c6b1bdf5cd51b3801351b0a68d101a561b
     typename: l2_token
 
 
 indexes:
-  deposit_request:
+  tezos_rollup_operations:
     kind: tezos.tzkt.operations
     datasource: tzkt
     types:
       - sr_execute
       - transaction
     contracts:
-      - rollup
+      - tezos_smart_rollup
     handlers:
       - callback: tezos.on_rollup_call
         pattern:
           - type: transaction
-            destination: rollup
+            destination: tezos_smart_rollup
             entrypoint: default
       - callback: tezos.on_rollup_execute
         pattern:
           - type: sr_execute
-            destination: rollup
+            destination: tezos_smart_rollup
           - type: transaction
-            source: rollup
+            source: tezos_smart_rollup
             entrypoint: withdraw
 
-  kernel_events:
+  etherlink_events:
     kind: evm.subsquid.events
     datasource: etherlink_subsquid
     node_only: true
     handlers:
       - callback: etherlink.on_deposit
-        contract: kernel_module
+        contract: etherlink_rollup_kernel
         name: Deposit
 
       - callback: etherlink.on_withdraw
-        contract: kernel_module
+        contract: etherlink_rollup_kernel
         name: Withdrawal
 
       - callback: etherlink.on_transfer
-        contract: l2_token
+        contract: l2_fa12_token
+        name: Transfer
+
+      - callback: etherlink.on_transfer
+        contract: l2_fa2_token
         name: Transfer
 
 
