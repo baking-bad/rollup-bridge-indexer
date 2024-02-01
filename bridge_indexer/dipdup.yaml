@@ -58,11 +58,19 @@ contracts:
     address: 0x0000000000000000000000000000000000000000
     typename: kernel_module
 
+#  fa12_token:
+#    kind: evm
+#    address: 0x8554cD57C0C3E5Ab9d1782c9063279fA9bFA4680
+#    typename: fa12_token
+
 
 indexes:
   deposit_request:
     kind: tezos.tzkt.operations
     datasource: tzkt
+    types:
+      - sr_execute
+      - transaction
     contracts:
       - rollup
 #      - ticket_helper
@@ -73,16 +81,6 @@ indexes:
 #            source: ticket_helper
             destination: rollup
             entrypoint: default
-
-  withdraw_approval:
-    kind: tezos.tzkt.operations
-    datasource: tzkt
-    types:
-      - sr_execute
-      - transaction
-    contracts:
-      - rollup
-    handlers:
       - callback: tezos.on_rollup_execute
         pattern:
           - type: sr_execute
@@ -106,6 +104,11 @@ indexes:
         contract: kernel_module
         name: Withdrawal
 
+      - callback: etherlink.on_transfer
+        contract: fa12_token
+        name: Transfer
+
+
 advanced:
   reindex:
     config_modified: ignore
@@ -119,20 +122,6 @@ advanced:
 #    address: 0x0000000000000000000000000000000000000040
 #    typename: kernel_precompile
 
-#  fa12_token:
-#    kind: evm
-#    address: 0x8554cD57C0C3E5Ab9d1782c9063279fA9bFA4680
-#    typename: fa12_token
 
 
 #indexes:
-#  token_transfers:
-#    kind: evm.subsquid.events
-#    datasource: testnet_subsquid
-#    node_only: true
-##    first_level: 2676
-#    handlers:
-#      - callback: etherlink.on_transfer
-#        contract: fa12_token
-#        name: Transfer
-
