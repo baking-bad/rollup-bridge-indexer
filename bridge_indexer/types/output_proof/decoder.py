@@ -3,8 +3,6 @@
 # from eth_abi.encoding import TextStringEncoder
 from eth_abi.base import parse_type_str
 from eth_abi.decoding import SingleDecoder
-from eth_abi.decoding import BytesDecoder
-from eth_abi.decoding import ByteStringDecoder
 from eth_abi.decoding import SignedIntegerDecoder
 from eth_abi.decoding import UnsignedIntegerDecoder
 from eth_abi.registry import ABIRegistry
@@ -14,14 +12,14 @@ from eth_abi.codec import (
 )
 
 class FixedUnsignedIntegerDecoder(UnsignedIntegerDecoder):
-    @parse_type_str("uint")
+    @parse_type_str('uint')
     def from_type_str(cls, abi_type, registry):
         assert abi_type
         return cls(value_bit_size=abi_type.sub, data_byte_size=abi_type.sub // 8)
 
 
 class FixedSignedIntegerDecoder(SignedIntegerDecoder):
-    @parse_type_str("int")
+    @parse_type_str('int')
     def from_type_str(cls, abi_type, registry):
         assert abi_type
         return cls(value_bit_size=abi_type.sub, data_byte_size=abi_type.sub // 8)
@@ -59,7 +57,7 @@ class BytesToTextDecoder(SingleDecoder):
 
         return '0x'+data.hex()
 
-    @parse_type_str("hex")
+    @parse_type_str('hex')
     def from_type_str(cls, abi_type, registry):
         return cls(size=abi_type.sub)
 

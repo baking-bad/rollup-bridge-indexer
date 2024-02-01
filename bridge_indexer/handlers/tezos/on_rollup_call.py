@@ -2,7 +2,6 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos_tzkt import TzktTransaction
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
-from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosDepositEvent
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
@@ -26,8 +25,8 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
 
     if ticket_content.bytes is None:
         asset_id = 'xtz'
-        ticket_content_micheline = {"prim": "Pair", "args": [
-            {"int": ticket_content.nat}, {"prim": "None"}
+        ticket_content_micheline = {'prim': 'Pair', 'args': [
+            {'int': ticket_content.nat}, {'prim': 'None'}
         ]}
     else:
         ticket_metadata_forged = bytes.fromhex(ticket_content.bytes)
@@ -43,11 +42,11 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
 
         asset_id = '_'.join([ticket_metadata['contract_address'], str(ticket_metadata['token_id'])])
 
-        ticket_content_micheline = {"prim": "Pair", "args": [
+        ticket_content_micheline = {'prim': 'Pair', 'args': [
             {
-                "int": ticket_content.nat
-            }, {"prim": "Some", "args": [{
-                "bytes": ticket_content.bytes,
+                'int': ticket_content.nat
+            }, {'prim': 'Some', 'args': [{
+                'bytes': ticket_content.bytes,
             }]}
         ]}
     ticket_id = f'{ticket_identifier.address}_{ticket_content.nat}'
@@ -80,7 +79,7 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
         ]
     )
 
-    ticket_hash = decode(["uint256"], data)[0]
+    ticket_hash = decode(['uint256'], data)[0]
 
     ticket = await TezosTicket.create(
         id=ticket_id,
