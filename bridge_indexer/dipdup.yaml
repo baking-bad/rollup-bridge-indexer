@@ -24,6 +24,10 @@ datasources:
     kind: tezos.tzkt
     url: ${TZKT_URL}
 
+  tzkt_head:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
   metadata:
     kind: tzip_metadata
     network: nairobinet
