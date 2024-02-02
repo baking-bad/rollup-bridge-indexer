@@ -10,15 +10,17 @@ async def update_commitment(ctx):
     rollup = ctx.config.get_tezos_contract('tezos_smart_rollup')
     commitment_data = await datasource.request(
         'GET',
-        f'https://api.nairobinet.tzkt.io/v1/smart_rollups/commitments?rollup={rollup.address}&sort.desc=id&limit=2',
+        f'https://api.nairobinet.tzkt.io/v1/smart_rollups/commitments?rollup={rollup.address}&sort.desc=id&status=cemented&limit=1',
     )
-    await RollupCommitment.create(
+    new_record, _ = await RollupCommitment.update_or_create(
         id=commitment_data[0]['id'],
-        inbox_level=commitment_data[0]['inboxLevel'],
-        first_level=commitment_data[0]['firstLevel'],
-        last_level=commitment_data[0]['firstLevel'] + (commitment_data[1]['lastLevel'] - commitment_data[1]['firstLevel']),
-        state=commitment_data[0]['state'],
-        hash=commitment_data[0]['hash'],
+        defaults={
+            'inbox_level': commitment_data[0]['inboxLevel'],
+            'first_level': commitment_data[0]['firstLevel'],
+            'last_level': commitment_data[0]['lastLevel'],
+            'state': commitment_data[0]['state'],
+            'hash': commitment_data[0]['hash'],
+        },
     )
 
     await OutboxMessageService.update_proof(ctx)
@@ -32,5 +34,5 @@ async def on_head(
     if not commitment:
         await update_commitment(ctx)
         return
-    if commitment.last_level < head.level:
+    if commitment.last_level+40 <= head.level:
         await update_commitment(ctx)

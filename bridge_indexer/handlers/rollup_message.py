@@ -1,6 +1,7 @@
 from dipdup.context import DipDupContext
 from dipdup.models.tezos_tzkt import TzktOperationData
 
+from bridge_indexer.models import RollupCommitment
 from bridge_indexer.models import RollupInboxMessage
 from bridge_indexer.models import RollupOutboxMessage
 
@@ -104,4 +105,6 @@ class OutboxMessageService:
                 f'global/block/head/helpers/proofs/outbox/{outbox_message.level}/messages?index={outbox_message.index}',
             )
             outbox_message.proof = proof_data['proof']
+            outbox_message.commitment = await RollupCommitment.get_or_none(hash=proof_data['commitment'])
+
             await outbox_message.save()

@@ -106,6 +106,13 @@ class RollupOutboxMessage(AbstractRollupMessage):
     message = fields.JSONField()
     proof = fields.TextField(null=True)
 
+    commitment: ForeignKeyFieldInstance[RollupCommitment] = fields.ForeignKeyField(
+        model_name=RollupCommitment.Meta.model,
+        source_field='commitment_id',
+        to_field='id',
+        null=True,
+    )
+
     l1_withdrawals: fields.ReverseRelation['TezosWithdrawEvent']
     l2_withdrawals: fields.ReverseRelation['EtherlinkWithdrawEvent']
 
