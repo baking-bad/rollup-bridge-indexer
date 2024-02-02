@@ -36,7 +36,16 @@ datasources:
   etherlink_node:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
-    ws_url: ${ETHERLINK_NODE_WS}
+#    ws_url: ${ETHERLINK_NODE_WS}
+#    http:
+#      retry_count: 5
+#      retry_sleep: 5
+##      retry_multiplier:
+##      ratelimit_rate:
+##      ratelimit_period:
+#      connection_limit: 100
+#      connection_timeout: 10
+#      batch_size: 2
 
   etherlink_subsquid:
     kind: evm.subsquid
@@ -68,13 +77,13 @@ contracts:
     address: 0xcb5d40c6b1bdf5cd51b3801351b0a68d101a561b
     typename: l2_token
 
-
-indexes:
-  tezos_head:
+templates:
+  tezos_head_index_template:
     kind: tezos.tzkt.head
     datasource: tzkt
     callback: tezos.on_head
 
+indexes:
   tezos_rollup_operations:
     kind: tezos.tzkt.operations
     datasource: tzkt
