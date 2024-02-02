@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
-dipdup = "7.3.0"
+dipdup = "7.3.1"
 base58 = "^2.1.1"
 pytezos = "*"
 
