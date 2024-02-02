@@ -1,5 +1,7 @@
 from dipdup.context import HookContext
 
+from bridge_indexer.handlers.tezos.on_head import update_commitment
+
 
 async def on_synchronized(
     ctx: HookContext,
