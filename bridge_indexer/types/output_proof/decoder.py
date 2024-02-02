@@ -2,14 +2,13 @@
 # from eth_abi.decoding import StringDecoder
 # from eth_abi.encoding import TextStringEncoder
 from eth_abi.base import parse_type_str
-from eth_abi.decoding import SingleDecoder
+from eth_abi.codec import ABICodec
 from eth_abi.decoding import SignedIntegerDecoder
+from eth_abi.decoding import SingleDecoder
 from eth_abi.decoding import UnsignedIntegerDecoder
 from eth_abi.registry import ABIRegistry
 from eth_abi.registry import BaseEquals
-from eth_abi.codec import (
-    ABICodec,
-)
+
 
 class FixedUnsignedIntegerDecoder(UnsignedIntegerDecoder):
     @parse_type_str('uint')
@@ -26,10 +25,11 @@ class FixedSignedIntegerDecoder(SignedIntegerDecoder):
 
 
 class BytesToTextDecoder(SingleDecoder):
+    size: int
+
     def __init__(self, size, **kwargs):
         super().__init__(**kwargs)
-        self.size=size
-    size: int
+        self.size = size
 
     def read_data_from_stream(self, stream):
         data_length = self.size
@@ -55,7 +55,7 @@ class BytesToTextDecoder(SingleDecoder):
         except (UnicodeDecodeError, AssertionError):
             pass
 
-        return '0x'+data.hex()
+        return '0x' + data.hex()
 
     @parse_type_str('hex')
     def from_type_str(cls, abi_type, registry):

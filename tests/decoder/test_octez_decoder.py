@@ -1,9 +1,6 @@
 import pytest
 
 from bridge_indexer.types.output_proof.output_proof import OutputProofData
-import pytest
-
-from bridge_indexer.types.output_proof.output_proof import OutputProofData
 
 
 @pytest.fixture()

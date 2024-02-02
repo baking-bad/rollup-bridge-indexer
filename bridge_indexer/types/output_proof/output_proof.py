@@ -87,6 +87,7 @@ class Proof(BaseBinarySchema):
         # ('input_proof', None, 'X2'),
     ]
 
+
 class X2v0(BaseBinarySchema):
     _schema = [
         ('inbox proof (tag 0)', 1, 'uint8'),
@@ -96,16 +97,19 @@ class X2v0(BaseBinarySchema):
         ('serialized_proof', '&size_of_serialized_proof', 'hex'),
     ]
 
+
 class X2v1(BaseBinarySchema):
     _schema = [
         ('reveal proof (tag 1)', 1, 'uint8'),
         ('reveal_proof', None, 'X1'),
     ]
 
+
 class X2v2(BaseBinarySchema):
     _schema = [
         ('first input (tag 2)', 1, 'uint8'),
     ]
+
 
 class X2(BaseBinarySchema):
     _tag = True

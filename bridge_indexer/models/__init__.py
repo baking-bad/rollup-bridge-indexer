@@ -1,16 +1,17 @@
 import uuid
 
 from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup import fields
-from dipdup.models import Model
 from dipdup.models import Model
 from tortoise import ForeignKeyFieldInstance
+
+
+class BlockchainAbstractOperation(Model):
+    class Meta:
+        abstract = True
+
+    id = fields.UUIDField(pk=True)
+    timestamp = fields.DatetimeField(index=True)
+    level = fields.IntField(index=True)
 
 
 class TezosToken(Model):
@@ -56,13 +57,50 @@ class EtherlinkToken(Model):
     )
 
 
-class TezosAbstractOperation:
+class AbstractRollupMessage(Model):
+    class Meta:
+        abstract = True
+        unique_together = (
+            'level',
+            'index',
+        )
+
+    id = fields.BigIntField(pk=True)
+    level = fields.IntField(index=True)
+    index = fields.IntField(index=True)
+
+
+class RollupInboxMessage(AbstractRollupMessage):
+    class Meta:
+        table = 'rollup_inbox_message'
+        model = 'models.RollupInboxMessage'
+
+    type = fields.TextField()  # todo: fix type
+    parameter = fields.JSONField()
+    payload = fields.TextField(null=True)
+
+    l1_deposits: fields.ReverseRelation['TezosDepositEvent']
+    l2_deposits: fields.ReverseRelation['EtherlinkDepositEvent']
+
+
+class RollupOutboxMessage(AbstractRollupMessage):
+    class Meta:
+        table = 'rollup_outbox_message'
+        model = 'models.RollupOutboxMessage'
+
+    id = fields.UUIDField(pk=True)
+
+    message = fields.JSONField()
+    proof = fields.TextField(null=True)
+
+    l1_withdrawals: fields.ReverseRelation['TezosWithdrawEvent']
+    l2_withdrawals: fields.ReverseRelation['EtherlinkWithdrawEvent']
+
+
+class TezosAbstractOperation(BlockchainAbstractOperation):
     class Meta:
         abstract = True
 
-    id = fields.UUIDField(pk=True)
-    timestamp = fields.DatetimeField(index=True)
-    level = fields.IntField(index=True)
     operation_hash = fields.CharField(max_length=64)
     counter = fields.IntField()
     nonce = fields.IntField(null=True)
@@ -71,7 +109,7 @@ class TezosAbstractOperation:
     target = fields.CharField(max_length=36)
 
 
-class TezosDepositEvent(TezosAbstractOperation, Model):
+class TezosDepositEvent(TezosAbstractOperation):
     class Meta:
         table = 'l1_deposit'
         model = 'models.TezosDepositEvent'
@@ -84,38 +122,42 @@ class TezosDepositEvent(TezosAbstractOperation, Model):
         to_field='id',
     )
     amount = fields.TextField()
+    inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
+        model_name=RollupInboxMessage.Meta.model,
+        source_field='inbox_message_id',
+        to_field='id',
+        unique=True,
+    )
+
+    bridge_deposits: fields.ReverseRelation['BridgeDepositTransaction']
 
 
-class TezosWithdrawEvent(TezosAbstractOperation, Model):
+class TezosWithdrawEvent(TezosAbstractOperation):
     class Meta:
-        table = 'l1_withdraw'
+        table = 'l1_withdrawal'
         model = 'models.TezosWithdrawEvent'
 
-    # l1_account = fields.CharField(max_length=36)
-    # ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
-    #     model_name=TezosTicket.Meta.model,
-    #     source_field='ticket_id',
-    #     to_field='id',
-    # )
-    # amount = fields.TextField()
-    outbox_level = fields.IntField(index=True)
-    outbox_msg_id = fields.IntField(index=True)
+    outbox_message: ForeignKeyFieldInstance[RollupOutboxMessage] = fields.ForeignKeyField(
+        model_name=RollupOutboxMessage.Meta.model,
+        source_field='outbox_message_id',
+        to_field='id',
+        unique=True,
+    )
+
+    bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawTransaction']
 
 
-class EtherlinkEventBasedModel:
+class EtherlinkAbstractEvent(BlockchainAbstractOperation):
     class Meta:
         abstract = True
 
-    id = fields.UUIDField(pk=True)
-    timestamp = fields.DatetimeField(index=True)
-    level = fields.IntField(index=True)
-    address = fields.CharField(max_length=40)
-    log_index = fields.IntField()
     transaction_hash = fields.CharField(max_length=64)
     transaction_index = fields.IntField()
+    log_index = fields.IntField()
+    address = fields.CharField(max_length=40)
 
 
-class EtherlinkDepositEvent(Model, EtherlinkEventBasedModel):
+class EtherlinkDepositEvent(EtherlinkAbstractEvent):
     class Meta:
         table = 'l2_deposit'
         model = 'models.EtherlinkDepositEvent'
@@ -127,13 +169,19 @@ class EtherlinkDepositEvent(Model, EtherlinkEventBasedModel):
         to_field='id',
     )
     amount = fields.TextField()
-    inbox_level = fields.IntField(index=True)
-    inbox_msg_id = fields.IntField(index=True)
+    inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
+        model_name=RollupInboxMessage.Meta.model,
+        source_field='inbox_message_id',
+        to_field='id',
+        unique=True,
+    )
+
+    bridge_deposits: fields.ReverseRelation['BridgeDepositTransaction']
 
 
-class EtherlinkWithdrawEvent(Model, EtherlinkEventBasedModel):
+class EtherlinkWithdrawEvent(EtherlinkAbstractEvent):
     class Meta:
-        table = 'l2_withdraw'
+        table = 'l2_withdrawal'
         model = 'models.EtherlinkWithdrawEvent'
 
     l2_account = fields.CharField(max_length=40)
@@ -144,9 +192,14 @@ class EtherlinkWithdrawEvent(Model, EtherlinkEventBasedModel):
         to_field='id',
     )
     amount = fields.TextField()
-    outbox_level = fields.IntField(index=True)
-    outbox_msg_id = fields.IntField(index=True)
+    outbox_message: ForeignKeyFieldInstance[RollupOutboxMessage] = fields.ForeignKeyField(
+        model_name=RollupOutboxMessage.Meta.model,
+        source_field='outbox_message_id',
+        to_field='id',
+        unique=True,
+    )
 
+    bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawTransaction']
 
 class BridgeDepositTransaction(Model):
     class Meta:
@@ -193,9 +246,12 @@ class BridgeWithdrawTransaction(Model):
 class EtherlinkTokenHolder(Model):
     class Meta:
         table = 'l2_token_holder'
-        model = 'models.etherlink.TokenHolder'
-        maxsize = 2 ** 20
-        unique_together = ('token', 'holder',)
+        model = 'models.TokenHolder'
+        maxsize = 2**20
+        unique_together = (
+            'token',
+            'holder',
+        )
 
     id = fields.UUIDField(pk=True)
     token = fields.TextField(index=True)

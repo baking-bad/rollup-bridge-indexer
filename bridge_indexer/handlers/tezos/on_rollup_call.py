@@ -1,19 +1,20 @@
 from dipdup.context import HandlerContext
 from dipdup.models.tezos_tzkt import TzktTransaction
-
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
-from bridge_indexer.models import TezosDepositEvent
-from bridge_indexer.models import TezosTicket
-from bridge_indexer.models import TezosToken
-from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
-from bridge_indexer.types.rollup.tezos_parameters.default import LL
-from bridge_indexer.types.rollup.tezos_storage import RollupStorage
+from eth_abi import decode
 from pytezos.michelson.forge import forge_address
 from pytezos.michelson.forge import forge_micheline
 from pytezos.michelson.forge import unforge_micheline
 from pytezos.michelson.micheline import micheline_value_to_python_object
 from web3.main import Web3
-from eth_abi import decode
+
+from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.rollup_message import InboxMessageService
+from bridge_indexer.models import TezosDepositEvent
+from bridge_indexer.models import TezosTicket
+from bridge_indexer.models import TezosToken
+from bridge_indexer.types.rollup.tezos_parameters.default import LL
+from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
+from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
 
 async def validate_ticket(parameter: LL, ctx: HandlerContext):
@@ -23,11 +24,9 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
     ticket_identifier = parameter.ticket
     ticket_content = ticket_identifier.data
 
-    if ticket_content.bytes is None:
+    if ticket_content.bytes is None and l2_proxy is None:
         asset_id = 'xtz'
-        ticket_content_micheline = {'prim': 'Pair', 'args': [
-            {'int': ticket_content.nat}, {'prim': 'None'}
-        ]}
+        ticket_content_micheline = {'prim': 'Pair', 'args': [{'int': ticket_content.nat}, {'prim': 'None'}]}
     else:
         ticket_metadata_forged = bytes.fromhex(ticket_content.bytes)
         ticket_metadata_map = unforge_micheline(ticket_metadata_forged[1:])
@@ -42,13 +41,20 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
 
         asset_id = '_'.join([ticket_metadata['contract_address'], str(ticket_metadata['token_id'])])
 
-        ticket_content_micheline = {'prim': 'Pair', 'args': [
-            {
-                'int': ticket_content.nat
-            }, {'prim': 'Some', 'args': [{
-                'bytes': ticket_content.bytes,
-            }]}
-        ]}
+        ticket_content_micheline = {
+            'prim': 'Pair',
+            'args': [
+                {'int': ticket_content.nat},
+                {
+                    'prim': 'Some',
+                    'args': [
+                        {
+                            'bytes': ticket_content.bytes,
+                        }
+                    ],
+                },
+            ],
+        }
     ticket_id = f'{ticket_identifier.address}_{ticket_content.nat}'
     ticket = await TezosTicket.get_or_none(pk=ticket_id)
     if ticket:
@@ -76,7 +82,7 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
         [
             forge_address(ticket_identifier.address),
             forge_micheline(ticket_content_micheline),
-        ]
+        ],
     )
 
     ticket_hash = decode(['uint256'], data)[0]
@@ -91,6 +97,7 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
 
     return ticket
 
+
 async def on_rollup_call(
     ctx: HandlerContext,
     default: TzktTransaction[DefaultParameter, RollupStorage],
@@ -101,7 +108,9 @@ async def on_rollup_call(
     routing_info = bytes.fromhex(parameter.bytes)
     l2_receiver = routing_info[:20]
 
-    l1_transaction = await TezosDepositEvent.create(
+    inbox_message = await InboxMessageService.match_transaction_with_inbox(default.data, ctx)
+
+    await TezosDepositEvent.create(
         timestamp=default.data.timestamp,
         level=default.data.level,
         operation_hash=default.data.hash,
@@ -114,6 +123,7 @@ async def on_rollup_call(
         l2_account=l2_receiver.hex(),
         ticket=ticket,
         amount=parameter.ticket.amount,
+        inbox_message=inbox_message,
     )
 
     ctx.logger.info(f'Deposit Call registered: {default}')

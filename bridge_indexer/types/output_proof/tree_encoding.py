@@ -101,7 +101,6 @@ class TreeEncoding208(BaseBinarySchema):
 
 class TreeEncoding216(BaseBinarySchema):
     _schema = [
-
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 1, 'uint8'),
         ('Unnamed field 1', None, 'X0'),
@@ -120,7 +119,6 @@ class TreeEncoding217(BaseBinarySchema):
 
 class TreeEncoding218(BaseBinarySchema):
     _schema = [
-
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 4, 'int32'),
         ('Unnamed field 1', None, 'X0'),
@@ -130,7 +128,6 @@ class TreeEncoding218(BaseBinarySchema):
 
 class TreeEncoding219(BaseBinarySchema):
     _schema = [
-
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 8, 'int64'),
         ('Unnamed field 1', None, 'X0'),

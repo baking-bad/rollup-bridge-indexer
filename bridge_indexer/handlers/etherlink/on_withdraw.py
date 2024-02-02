@@ -2,6 +2,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawEvent
 from bridge_indexer.models import TezosTicket
@@ -20,6 +21,8 @@ async def on_withdraw(
     ticket = await TezosTicket.get_or_none(ticket_hash=event.payload.ticket_hash)
     assert ticket.id == etherlink_token.ticket_id
 
+    outbox_message = await OutboxMessageService.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id, ctx)
+
     await EtherlinkWithdrawEvent.create(
         timestamp=event.data.timestamp,
         level=event.data.level,
@@ -31,8 +34,7 @@ async def on_withdraw(
         l1_account=event.payload.receiver,
         l2_token=etherlink_token,
         amount=event.payload.amount,
-        outbox_level=event.payload.outbox_level,
-        outbox_msg_id=event.payload.outbox_msg_id,
+        outbox_message=outbox_message,
     )
 
     ctx.logger.info(f'Withdraw Event registered: {event}')

@@ -19,14 +19,14 @@ class BaseBinarySchema:
     _tag: bool = False
     _tag_map: dict
 
-    @property
-    def buffer(self):
-        return self._packed
-
     def __init__(self, value: bytes):
         self._packed: bytes = value
         self._unpacked = OrderedDict()
         self._size: int = 0
+
+    @property
+    def buffer(self):
+        return self._packed
 
     @staticmethod
     def _import(type_name):
@@ -43,7 +43,7 @@ class BaseBinarySchema:
                 __import__(module_name)
             try:
                 return getattr(sys.modules[module_name], type_name)
-            except (AttributeError):
+            except AttributeError:
                 pass
         raise ImportError(type_name)
 
@@ -56,6 +56,9 @@ class BaseBinarySchema:
         subtype = self._import(subtype_name)
         part_schema = subtype(self._packed)
         return part_schema.unpack()
+
+    def _handle_field_processed(self, name: str, value: Any):
+        pass
 
     def unpack(self):
         if self._tag:
@@ -75,7 +78,7 @@ class BaseBinarySchema:
                     part.type += str(part.size)
 
             if part.size:
-                packed_part = self._packed[:part.size]
+                packed_part = self._packed[: part.size]
             else:
                 packed_part = self._packed
 
@@ -94,6 +97,3 @@ class BaseBinarySchema:
             self._size += part_size
             self._handle_field_processed(name=part.name, value=unpacked_part)
         return self._unpacked, self._size
-
-    def _handle_field_processed(self, name: str, value: Any):
-        pass

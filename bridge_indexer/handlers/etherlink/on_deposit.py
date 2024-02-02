@@ -5,6 +5,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.rollup_message import InboxMessageService
 from bridge_indexer.models import EtherlinkDepositEvent
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
@@ -28,6 +29,8 @@ async def on_deposit(
             ticket=ticket,
         )
 
+    inbox_message = await InboxMessageService.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id, ctx)
+
     await EtherlinkDepositEvent.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=timezone.utc),
         level=event.data.level,
@@ -38,11 +41,9 @@ async def on_deposit(
         l2_account=event.payload.receiver[-40:],
         l2_token=etherlink_token,
         amount=event.payload.amount,
-        inbox_level=event.payload.inbox_level,
-        inbox_msg_id=event.payload.inbox_msg_id,
+        inbox_message=inbox_message,
     )
 
     ctx.logger.info(f'Deposit Event registered: {event}')
 
     await BridgeMatcher.check_pending_etherlink_deposits()
-

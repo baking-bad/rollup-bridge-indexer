@@ -1,7 +1,8 @@
 from typing import Any
 
-from bridge_indexer.types.output_proof.unpacker import BaseBinarySchema
 from pytezos.michelson.forge import unforge_address
+
+from bridge_indexer.types.output_proof.unpacker import BaseBinarySchema
 
 
 class MichelineExpression(BaseBinarySchema):

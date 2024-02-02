@@ -1,5 +1,6 @@
 from pytezos.michelson.forge import unforge_address
 
+
 # OriginatedAccount = SmartContractAccount | SmartRollupAccount
 # Account = ImplicitAccount | OriginatedAccount
 class ForgedTezosAccount:
@@ -8,9 +9,6 @@ class ForgedTezosAccount:
         self.value = value
         self._base58 = None
 
-    def __repr__(self):
-        return f'Account<{self._base58}>'
-
     @classmethod
     def validate(cls, value):
         return unforge_address(value)
@@ -18,3 +16,6 @@ class ForgedTezosAccount:
     @classmethod
     def __get_validators__(cls):
         yield cls.validate
+
+    def __repr__(self):
+        return f'Account<{self._base58}>'

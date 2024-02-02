@@ -43,11 +43,16 @@ datasources:
     url: ${ETHERLINK_SUBSQUID_URL:-~}
     node: etherlink_node
 
+  rollup_node:
+    kind: http
+    url: ${ROLLUP_NODE_URL}
+
+
 contracts:
   tezos_smart_rollup:
     kind: tezos
     address: ${SMART_ROLLUP_ADDRESS}
-    typename: tezos_smart_rollup
+    typename: rollup
 
   etherlink_rollup_kernel:
     kind: evm

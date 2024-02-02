@@ -6,29 +6,6 @@ from bridge_indexer.models import EtherlinkTokenHolder
 from bridge_indexer.types.l2_token.evm_events.transfer import Transfer
 
 
-async def on_transfer(
-    ctx: HandlerContext,
-    event: SubsquidEvent[Transfer],
-) -> None:
-    amount = event.payload.value
-    if not amount:
-        return
-
-    await on_balance_update(
-        token=event.data.address,
-        holder=event.payload.from_,
-        balance_update=-amount,
-        level=event.data.level,
-    )
-    await on_balance_update(
-        token=event.data.address,
-        holder=event.payload.to,
-        balance_update=amount,
-        level=event.data.level,
-    )
-    ctx.logger.info(f'Token Transfer registered: {event}')
-
-
 async def on_balance_update(
     token: str,
     holder: str,
@@ -53,3 +30,26 @@ async def on_balance_update(
     token_holder.tx_count += 1
     token_holder.last_seen = level
     await token_holder.save()
+
+
+async def on_transfer(
+    ctx: HandlerContext,
+    event: SubsquidEvent[Transfer],
+) -> None:
+    amount = event.payload.value
+    if not amount:
+        return
+
+    await on_balance_update(
+        token=event.data.address,
+        holder=event.payload.from_,
+        balance_update=-amount,
+        level=event.data.level,
+    )
+    await on_balance_update(
+        token=event.data.address,
+        holder=event.payload.to,
+        balance_update=amount,
+        level=event.data.level,
+    )
+    ctx.logger.info(f'Token Transfer registered: {event}')
