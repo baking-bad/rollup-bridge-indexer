@@ -12,4 +12,3 @@ async def on_restart(
 
     await BridgeMatcher.check_pending_etherlink_deposits()
     await BridgeMatcher.check_pending_tezos_withdrawals()
-

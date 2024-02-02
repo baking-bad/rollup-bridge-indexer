@@ -57,6 +57,19 @@ class EtherlinkToken(Model):
     )
 
 
+class RollupCommitment(Model):
+    class Meta:
+        table = 'rollup_commitment'
+        model = 'models.RollupCommitment'
+
+    id = fields.BigIntField(pk=True)
+    inbox_level = fields.IntField()
+    first_level = fields.IntField()
+    last_level = fields.IntField()
+    state = fields.CharField(max_length=54)
+    hash = fields.CharField(max_length=54)
+
+
 class AbstractRollupMessage(Model):
     class Meta:
         abstract = True
@@ -200,6 +213,7 @@ class EtherlinkWithdrawEvent(EtherlinkAbstractEvent):
     )
 
     bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawTransaction']
+
 
 class BridgeDepositTransaction(Model):
     class Meta:

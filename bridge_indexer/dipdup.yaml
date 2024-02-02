@@ -70,6 +70,11 @@ contracts:
 
 
 indexes:
+  tezos_head:
+    kind: tezos.tzkt.head
+    datasource: tzkt
+    callback: tezos.on_head
+
   tezos_rollup_operations:
     kind: tezos.tzkt.operations
     datasource: tzkt
@@ -112,7 +117,6 @@ indexes:
       - callback: etherlink.on_transfer
         contract: l2_fa2_token
         name: Transfer
-
 
 advanced:
   reindex:

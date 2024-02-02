@@ -105,4 +105,3 @@ class OutboxMessageService:
             )
             outbox_message.proof = proof_data['proof']
             await outbox_message.save()
-
