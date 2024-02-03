@@ -96,6 +96,7 @@ class OutboxMessageService:
     @classmethod
     async def update_proof(cls, ctx: DipDupContext):
         datasource = ctx.get_http_datasource('rollup_node')
+        # todo: ensure that incomplete withdrawals are not expired
         async for outbox_message in RollupOutboxMessage.filter(
             l1_withdrawals__isnull=True,
             l2_withdrawals__isnull=False,

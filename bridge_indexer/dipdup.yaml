@@ -36,21 +36,39 @@ datasources:
   etherlink_node:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
-#    ws_url: ${ETHERLINK_NODE_WS}
-#    http:
-#      retry_count: 5
-#      retry_sleep: 5
-##      retry_multiplier:
-##      ratelimit_rate:
-##      ratelimit_period:
-#      connection_limit: 100
-#      connection_timeout: 10
-#      batch_size: 2
+    http:
+      retry_count: 6
+      retry_sleep: 10
+      retry_multiplier: 1
+
+      ratelimit_rate: 60
+      ratelimit_period: 10
+      ratelimit_sleep: 2
+
+      connection_limit: 5
+      connection_timeout: 10
+      request_timeout: 5
+      batch_size: 32
 
   etherlink_subsquid:
     kind: evm.subsquid
     url: ${ETHERLINK_SUBSQUID_URL:-~}
     node: etherlink_node
+    http:
+      retry_count: 6
+      retry_sleep: 10
+      retry_multiplier: 1
+
+      ratelimit_rate: 60
+      ratelimit_period: 10
+      ratelimit_sleep: 2
+
+      connection_limit: 5
+      connection_timeout: 10
+      request_timeout: 5
+      batch_size: 32
+
+
 
   rollup_node:
     kind: http
