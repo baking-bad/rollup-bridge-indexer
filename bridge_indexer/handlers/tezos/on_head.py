@@ -32,9 +32,12 @@ async def update_commitment(ctx):
         defaults={
             'inbox_level': commitment_data[0]['inboxLevel'],
             'first_level': commitment_data[0]['firstLevel'],
+            'first_time': commitment_data[0]['firstTime'],
             'last_level': commitment_data[0]['lastLevel'],
+            'last_time': commitment_data[0]['lastTime'],
             'state': commitment_data[0]['state'],
             'hash': commitment_data[0]['hash'],
+            'status': commitment_data[0]['status'],
         },
     )
 

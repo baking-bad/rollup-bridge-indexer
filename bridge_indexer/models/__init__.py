@@ -65,9 +65,12 @@ class RollupCommitment(Model):
     id = fields.BigIntField(pk=True)
     inbox_level = fields.IntField()
     first_level = fields.IntField()
+    first_time = fields.DatetimeField()
     last_level = fields.IntField()
+    last_time = fields.DatetimeField()
     state = fields.CharField(max_length=54)
     hash = fields.CharField(max_length=54)
+    status = fields.CharField(max_length=16)
 
 
 class AbstractRollupMessage(Model):
@@ -77,6 +80,7 @@ class AbstractRollupMessage(Model):
             'level',
             'index',
         )
+        ordering = ['level', 'index']
 
     id = fields.BigIntField(pk=True)
     level = fields.IntField(index=True)

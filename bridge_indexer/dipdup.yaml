@@ -41,33 +41,19 @@ datasources:
       retry_sleep: 10
       retry_multiplier: 1
 
-      ratelimit_rate: 60
+      ratelimit_rate: 50
       ratelimit_period: 10
-      ratelimit_sleep: 2
+      ratelimit_sleep: .2
 
       connection_limit: 5
       connection_timeout: 10
-      request_timeout: 5
-      batch_size: 32
+      request_timeout: 10
+      batch_size: 99
 
   etherlink_subsquid:
     kind: evm.subsquid
     url: ${ETHERLINK_SUBSQUID_URL:-~}
     node: etherlink_node
-    http:
-      retry_count: 6
-      retry_sleep: 10
-      retry_multiplier: 1
-
-      ratelimit_rate: 60
-      ratelimit_period: 10
-      ratelimit_sleep: 2
-
-      connection_limit: 5
-      connection_timeout: 10
-      request_timeout: 5
-      batch_size: 32
-
 
 
   rollup_node:
