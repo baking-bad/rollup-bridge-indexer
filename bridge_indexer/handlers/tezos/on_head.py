@@ -7,19 +7,6 @@ from bridge_indexer.models import RollupCommitment
 ROLLUP_STATE_REFRESH_INTERVAL = 20  # todo: replace with expression
 
 
-async def on_head(
-    ctx: HandlerContext,
-    head: TzktHeadBlockData,
-) -> None:
-    # todo: ensure that incomplete withdrawals exist
-    commitment = await RollupCommitment.all().order_by('-id').first()
-    if not commitment:
-        await update_commitment(ctx)
-        return
-    if commitment.last_level + ROLLUP_STATE_REFRESH_INTERVAL <= head.level:
-        await update_commitment(ctx)
-
-
 async def update_commitment(ctx):
     datasource = ctx.get_tzkt_datasource('tzkt')
     rollup = ctx.config.get_tezos_contract('tezos_smart_rollup')
@@ -42,3 +29,16 @@ async def update_commitment(ctx):
     )
 
     await OutboxMessageService.update_proof(ctx)
+
+
+async def on_head(
+    ctx: HandlerContext,
+    head: TzktHeadBlockData,
+) -> None:
+    # todo: ensure that incomplete withdrawals exist
+    commitment = await RollupCommitment.all().order_by('-id').first()
+    if not commitment:
+        await update_commitment(ctx)
+        return
+    if commitment.last_level + ROLLUP_STATE_REFRESH_INTERVAL <= head.level:
+        await update_commitment(ctx)

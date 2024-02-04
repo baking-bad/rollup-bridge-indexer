@@ -1,10 +1,7 @@
-import logging
-
 from dipdup.context import HookContext
 from dipdup.models import Index
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
-from bridge_indexer.handlers.tezos.on_head import update_commitment
 
 
 async def on_restart(

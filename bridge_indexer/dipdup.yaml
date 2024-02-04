@@ -55,7 +55,6 @@ datasources:
     url: ${ETHERLINK_SUBSQUID_URL:-~}
     node: etherlink_node
 
-
   rollup_node:
     kind: http
     url: ${ROLLUP_NODE_URL}
@@ -81,11 +80,13 @@ contracts:
     address: 0xcb5d40c6b1bdf5cd51b3801351b0a68d101a561b
     typename: l2_token
 
+
 templates:
   tezos_head_index_template:
     kind: tezos.tzkt.head
     datasource: tzkt
     callback: tezos.on_head
+
 
 indexes:
   tezos_rollup_operations:
@@ -110,7 +111,7 @@ indexes:
             source: tezos_smart_rollup
             entrypoint: withdraw
 
-  etherlink_events:
+  etherlink_kernel_events:
     kind: evm.subsquid.events
     datasource: etherlink_subsquid
     node_only: true
@@ -123,6 +124,11 @@ indexes:
         contract: etherlink_rollup_kernel
         name: Withdrawal
 
+  etherlink_token_events:
+    kind: evm.subsquid.events
+    datasource: etherlink_subsquid
+    node_only: true
+    handlers:
       - callback: etherlink.on_transfer
         contract: l2_fa12_token
         name: Transfer
@@ -130,6 +136,7 @@ indexes:
       - callback: etherlink.on_transfer
         contract: l2_fa2_token
         name: Transfer
+
 
 advanced:
   reindex:

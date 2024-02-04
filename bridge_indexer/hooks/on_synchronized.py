@@ -1,5 +1,5 @@
-from dipdup.exceptions import IndexAlreadyExistsError
 from dipdup.context import HookContext
+from dipdup.exceptions import IndexAlreadyExistsError
 
 
 async def on_synchronized(
@@ -10,4 +10,3 @@ async def on_synchronized(
         await ctx.add_index('tezos_head', 'tezos_head_index_template', values={})
     except IndexAlreadyExistsError:
         pass
-

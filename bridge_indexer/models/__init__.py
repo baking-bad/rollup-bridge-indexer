@@ -72,6 +72,8 @@ class RollupCommitment(Model):
     hash = fields.CharField(max_length=54)
     status = fields.CharField(max_length=16)
 
+    outbox_messages: fields.ReverseRelation['RollupOutboxMessage']
+
 
 class AbstractRollupMessage(Model):
     class Meta:
