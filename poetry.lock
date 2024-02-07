@@ -1138,7 +1138,7 @@ packaging = "*"
 
 [[package]]
 name = "dipdup"
-version = "7.3.1"
+version = "7.3.2"
 description = "Modular framework for creating selective indexers and featureful backends for dapps"
 optional = false
 python-versions = "<3.12,>=3.11"
@@ -1177,8 +1177,8 @@ web3 = ">=6.2,<7.0"
 [package.source]
 type = "git"
 url = "https://github.com/dipdup-io/dipdup.git"
-reference = "19753cda"
-resolved_reference = "19753cda9fabceed152be8e1c1f341fc12ff0d3a"
+reference = "4637c86f"
+resolved_reference = "4637c86f568191a8ca5dc407652c3fb557ce849d"
 
 [[package]]
 name = "dnspython"
@@ -4676,4 +4676,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.12"
-content-hash = "99008603e57aad235d1b9cb24c3eea0a7bb14b88208bf8b13cd261e1b433990b"
+content-hash = "e753b23fc6b2c71286362522126ec83e3aff675c202b55883a9ec54df026cc25"

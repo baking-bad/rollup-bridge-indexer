@@ -1,4 +1,6 @@
 from dipdup.context import HandlerContext
+from dipdup.models import Index
+from dipdup.models import IndexStatus
 from dipdup.models.evm_subsquid import SubsquidEvent
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
@@ -18,9 +20,6 @@ async def on_withdraw(
     if not etherlink_token:
         raise ValueError('L2 token not found!')
 
-    ticket = await TezosTicket.get_or_none(ticket_hash=event.payload.ticket_hash)
-    assert ticket.id == etherlink_token.ticket_id
-
     outbox_message = await OutboxMessageService.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id, ctx)
 
     await EtherlinkWithdrawEvent.create(
@@ -39,5 +38,7 @@ async def on_withdraw(
 
     ctx.logger.info(f'Withdraw Event registered: {event}')
 
-    await BridgeMatcher.check_pending_etherlink_withdrawals()
-    await BridgeMatcher.check_pending_tezos_withdrawals()
+    status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
+    if status == IndexStatus.realtime:
+        await BridgeMatcher.check_pending_etherlink_withdrawals()
+        await BridgeMatcher.check_pending_tezos_withdrawals()

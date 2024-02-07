@@ -2,6 +2,8 @@ from datetime import datetime
 from datetime import timezone
 
 from dipdup.context import HandlerContext
+from dipdup.models import Index
+from dipdup.models import IndexStatus
 from dipdup.models.evm_subsquid import SubsquidEvent
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
@@ -12,22 +14,32 @@ from bridge_indexer.models import TezosTicket
 from bridge_indexer.types.kernel.evm_events.deposit import Deposit
 
 
+async def register_etherlink_token(token_contract: str, tezos_ticket_hash: int) -> EtherlinkToken:
+    etherlink_token = await EtherlinkToken.get_or_none(id=token_contract)
+    tezos_ticket = await TezosTicket.get_or_none(ticket_hash=tezos_ticket_hash)
+    if etherlink_token:
+        if etherlink_token.tezos_ticket:
+            pass
+        else:
+            if tezos_ticket:
+                etherlink_token.tezos_ticket = tezos_ticket
+                await etherlink_token.save()
+    else:
+        etherlink_token = await EtherlinkToken.create(
+            id=token_contract,
+            tezos_ticket=tezos_ticket,
+            tezos_ticket_hash=tezos_ticket_hash,
+        )
+
+    return etherlink_token
+
+
 async def on_deposit(
     ctx: HandlerContext,
     event: SubsquidEvent[Deposit],
 ) -> None:
-    ticket = await TezosTicket.get_or_none(ticket_hash=event.payload.ticket_hash)
     token_contract = event.payload.ticket_owner[-40:]
-    etherlink_token = await EtherlinkToken.get_or_none(id=token_contract)
-    if etherlink_token and not etherlink_token.ticket:
-        etherlink_token.ticket = ticket
-        await etherlink_token.save()
-    if not etherlink_token:
-        etherlink_token = await EtherlinkToken.create(
-            id=token_contract,
-            # name = ?
-            ticket=ticket,
-        )
+    etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
 
     inbox_message = await InboxMessageService.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id, ctx)
 
@@ -46,4 +58,6 @@ async def on_deposit(
 
     ctx.logger.info(f'Deposit Event registered: {event}')
 
-    await BridgeMatcher.check_pending_etherlink_deposits()
+    status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
+    if status == IndexStatus.realtime:
+        await BridgeMatcher.check_pending_etherlink_deposits()

@@ -1,4 +1,6 @@
 from dipdup.context import HandlerContext
+from dipdup.models import Index
+from dipdup.models import IndexStatus
 from dipdup.models.tezos_tzkt import TzktSmartRollupExecute
 from dipdup.models.tezos_tzkt import TzktTransaction
 
@@ -52,4 +54,6 @@ async def on_rollup_execute(
         outbox_message=outbox_message,
     )
 
-    await BridgeMatcher.check_pending_tezos_withdrawals()
+    status = await Index.get(name='tezos_rollup_operations').only('status').values_list('status', flat=True)
+    if status == IndexStatus.realtime:
+        await BridgeMatcher.check_pending_tezos_withdrawals()

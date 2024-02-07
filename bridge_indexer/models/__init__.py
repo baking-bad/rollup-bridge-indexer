@@ -25,6 +25,7 @@ class TezosToken(Model):
     name = fields.TextField(null=True)
     symbol = fields.TextField(null=True)
     decimals = fields.IntField(default=0)
+    type = fields.CharField(max_length=10)
 
 
 class TezosTicket(Model):
@@ -40,7 +41,7 @@ class TezosTicket(Model):
     )
     ticketer_address = fields.CharField(max_length=36)
     ticket_id = fields.TextField(default='0')
-    ticket_hash = fields.CharField(max_length=78, index=True)
+    ticket_hash = fields.CharField(max_length=78, index=True, unique=True)
 
 
 class EtherlinkToken(Model):
@@ -50,11 +51,13 @@ class EtherlinkToken(Model):
 
     id = fields.CharField(max_length=40, pk=True)
     name = fields.TextField(null=True)
-    ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
+    tezos_ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
-        source_field='ticket_id',
+        source_field='tezos_ticket_id',
         to_field='id',
+        null=True,
     )
+    tezos_ticket_hash = fields.CharField(max_length=78, index=True)
 
 
 class RollupCommitment(Model):

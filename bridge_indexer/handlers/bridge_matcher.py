@@ -24,7 +24,6 @@ class BridgeMatcher:
         qs = (
             EtherlinkDepositEvent.filter(bridge_deposits__isnull=True)
             .order_by('level', 'transaction_index')
-            .prefetch_related('l2_token', 'l2_token__ticket')
         )
         async for l2_deposit in qs:
             bridge_deposit = (

@@ -1,6 +1,8 @@
 from dipdup.context import HookContext
 from dipdup.exceptions import IndexAlreadyExistsError
 
+from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+
 
 async def on_synchronized(
     ctx: HookContext,
@@ -10,3 +12,9 @@ async def on_synchronized(
         await ctx.add_index('tezos_head', 'tezos_head_index_template', values={})
     except IndexAlreadyExistsError:
         pass
+
+    await BridgeMatcher.check_pending_tezos_deposits()
+    await BridgeMatcher.check_pending_etherlink_withdrawals()
+
+    await BridgeMatcher.check_pending_etherlink_deposits()
+    await BridgeMatcher.check_pending_tezos_withdrawals()

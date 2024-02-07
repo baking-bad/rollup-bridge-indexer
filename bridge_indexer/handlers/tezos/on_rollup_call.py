@@ -1,4 +1,6 @@
 from dipdup.context import HandlerContext
+from dipdup.models import Index
+from dipdup.models import IndexStatus
 from dipdup.models.tezos_tzkt import TzktTransaction
 from eth_abi import decode
 from pytezos.michelson.forge import forge_address
@@ -9,11 +11,12 @@ from web3.main import Web3
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import InboxMessageService
+from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosDepositEvent
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
-from bridge_indexer.types.rollup.tezos_parameters.default import LL
 from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
+from bridge_indexer.types.rollup.tezos_parameters.default import LL
 from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
 
@@ -75,6 +78,7 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
             name=token_metadata.get('name', None),
             symbol=token_metadata.get('symbol', None),
             decimals=token_metadata.get('decimals', 0),
+            type=ticket_metadata['token_type'],
         )
 
     data = Web3.solidity_keccak(
@@ -94,6 +98,10 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
         ticket_id=ticket_content.nat,
         ticket_hash=ticket_hash,
     )
+
+    async for orphan_etherlink_token in EtherlinkToken.filter(tezos_ticket_hash=ticket_hash, tezos_ticket=None):
+        orphan_etherlink_token.tezos_ticket = ticket
+        await orphan_etherlink_token.save()
 
     return ticket
 
@@ -128,5 +136,7 @@ async def on_rollup_call(
 
     ctx.logger.info(f'Deposit Call registered: {default}')
 
-    await BridgeMatcher.check_pending_tezos_deposits()
-    await BridgeMatcher.check_pending_etherlink_deposits()
+    status = await Index.get(name='tezos_rollup_operations').only('status').values_list('status', flat=True)
+    if status == IndexStatus.realtime:
+        await BridgeMatcher.check_pending_tezos_deposits()
+        await BridgeMatcher.check_pending_etherlink_deposits()
