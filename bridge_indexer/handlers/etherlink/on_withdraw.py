@@ -2,6 +2,7 @@ from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
 from dipdup.models.evm_subsquid import SubsquidEvent
+from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import OutboxMessageService
@@ -20,7 +21,15 @@ async def on_withdraw(
     if not etherlink_token:
         raise ValueError('L2 token not found!')
 
-    outbox_message = await OutboxMessageService.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id, ctx)
+    try:
+        outbox_message = await OutboxMessageService.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id, ctx)
+    except DoesNotExist:
+        ctx.logger.error(
+            'Failed to fetch Outbox Message with level %d and index %d.',
+            event.payload.outbox_level,
+            event.payload.outbox_msg_id,
+        )
+        return
 
     await EtherlinkWithdrawEvent.create(
         timestamp=event.data.timestamp,

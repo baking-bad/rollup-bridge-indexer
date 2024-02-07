@@ -3,6 +3,7 @@ from dipdup.models import Index
 from dipdup.models import IndexStatus
 from dipdup.models.tezos_tzkt import TzktSmartRollupExecute
 from dipdup.models.tezos_tzkt import TzktTransaction
+from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import OutboxMessageService
@@ -36,11 +37,19 @@ async def on_rollup_execute(
     decoder = OutputProofData(bytes.fromhex(message_hex))
     output_proof, _ = decoder.unpack()
 
-    outbox_message = await OutboxMessageService.find_by_index(
-        output_proof['output_proof_output']['outbox_level'],
-        output_proof['output_proof_output']['message_index'],
-        ctx,
-    )
+    try:
+        outbox_message = await OutboxMessageService.find_by_index(
+            output_proof['output_proof_output']['outbox_level'],
+            output_proof['output_proof_output']['message_index'],
+            ctx,
+        )
+    except DoesNotExist:
+        ctx.logger.error(
+            'Failed to fetch Outbox Message with level %d and index %d.',
+            output_proof['output_proof_output']['outbox_level'],
+            output_proof['output_proof_output']['message_index'],
+        )
+        return
 
     await TezosWithdrawEvent.create(
         timestamp=execute.data.timestamp,
