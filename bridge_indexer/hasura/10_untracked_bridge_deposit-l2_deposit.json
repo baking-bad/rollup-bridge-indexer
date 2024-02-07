@@ -1,0 +1,20 @@
+{
+    "type": "pg_create_array_relationship",
+    "args": {
+        "name": "bridge_deposits",
+        "table": {
+            "name": "l2_deposit",
+            "schema": "public"
+        },
+        "using": {
+            "foreign_key_constraint_on": {
+                "table": {
+                    "name": "bridge_deposit",
+                    "schema": "public"
+                },
+                "column": "l2_transaction_id"
+            }
+        },
+        "source": "default"
+    }
+}

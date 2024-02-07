@@ -72,7 +72,7 @@ class OutboxMessageService:
     @classmethod
     async def _fetch_outbox(cls, outbox_level: int, ctx: DipDupContext):
         datasource = ctx.get_http_datasource('rollup_node')
-        for message_data in await datasource.request('GET', f'global/block/head/outbox/{outbox_level}/messages'):
+        for message_data in await datasource.request('GET', f'global/block/{outbox_level}/outbox/{outbox_level}/messages'):
             yield RollupOutboxMessage(
                 level=message_data['outbox_level'],
                 index=message_data['message_index'],
