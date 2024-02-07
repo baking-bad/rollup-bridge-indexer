@@ -8,10 +8,7 @@ async def on_restart(
     ctx: HookContext,
 ) -> None:
     await ctx.execute_sql('on_restart')
+
+    await BridgeMatcher.check_pending_transactions()
+
     await Index.filter(name='tezos_head').delete()
-
-    await BridgeMatcher.check_pending_tezos_deposits()
-    await BridgeMatcher.check_pending_etherlink_withdrawals()
-
-    await BridgeMatcher.check_pending_etherlink_deposits()
-    await BridgeMatcher.check_pending_tezos_withdrawals()

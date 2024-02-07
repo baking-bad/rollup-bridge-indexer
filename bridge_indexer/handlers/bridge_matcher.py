@@ -54,3 +54,12 @@ class BridgeMatcher:
 
             bridge_withdrawal.l1_transaction = l1_withdrawal
             await bridge_withdrawal.save()
+
+    @staticmethod
+    async def check_pending_transactions():
+        await BridgeMatcher.check_pending_tezos_deposits()
+        await BridgeMatcher.check_pending_etherlink_withdrawals()
+
+        await BridgeMatcher.check_pending_etherlink_deposits()
+        await BridgeMatcher.check_pending_tezos_withdrawals()
+

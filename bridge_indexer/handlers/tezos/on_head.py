@@ -1,6 +1,7 @@
 from dipdup.context import HandlerContext
 from dipdup.models.tezos_tzkt import TzktHeadBlockData
 
+from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.models import RollupCommitment
 
@@ -42,3 +43,5 @@ async def on_head(
         return
     if commitment.last_level + ROLLUP_STATE_REFRESH_INTERVAL <= head.level:
         await update_commitment(ctx)
+
+        await BridgeMatcher.check_pending_transactions()

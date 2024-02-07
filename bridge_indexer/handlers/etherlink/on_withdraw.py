@@ -47,7 +47,7 @@ async def on_withdraw(
 
     ctx.logger.info(f'Withdraw Event registered: {event}')
 
-    status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
-    if status == IndexStatus.realtime:
-        await BridgeMatcher.check_pending_etherlink_withdrawals()
-        await BridgeMatcher.check_pending_tezos_withdrawals()
+    # status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
+    # if status == IndexStatus.realtime:
+    await BridgeMatcher.check_pending_etherlink_withdrawals()
+    await BridgeMatcher.check_pending_tezos_withdrawals()
