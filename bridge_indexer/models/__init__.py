@@ -252,6 +252,7 @@ class BridgeDepositTransaction(Model):
     )
     updated_at = fields.DatetimeField(index=True, auto_now=True)
 
+
 class BridgeWithdrawTransaction(Model):
     class Meta:
         table = 'bridge_withdrawal'
@@ -272,6 +273,7 @@ class BridgeWithdrawTransaction(Model):
         unique=True,
     )
     updated_at = fields.DatetimeField(index=True, auto_now=True)
+
 
 class EtherlinkTokenHolder(Model):
     class Meta:

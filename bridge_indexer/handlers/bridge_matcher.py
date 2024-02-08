@@ -21,10 +21,7 @@ class BridgeMatcher:
 
     @staticmethod
     async def check_pending_etherlink_deposits():
-        qs = (
-            EtherlinkDepositEvent.filter(bridge_deposits__isnull=True)
-            .order_by('level', 'transaction_index')
-        )
+        qs = EtherlinkDepositEvent.filter(bridge_deposits__isnull=True).order_by('level', 'transaction_index')
         async for l2_deposit in qs:
             bridge_deposit = (
                 await BridgeDepositTransaction.filter(
@@ -62,4 +59,3 @@ class BridgeMatcher:
 
         await BridgeMatcher.check_pending_etherlink_deposits()
         await BridgeMatcher.check_pending_tezos_withdrawals()
-

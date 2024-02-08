@@ -15,8 +15,8 @@ from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosDepositEvent
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
-from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 from bridge_indexer.types.rollup.tezos_parameters.default import LL
+from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
 

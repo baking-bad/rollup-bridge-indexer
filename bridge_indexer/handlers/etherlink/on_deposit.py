@@ -58,6 +58,7 @@ async def on_deposit(
 
     ctx.logger.info(f'Deposit Event registered: {event}')
 
-    # status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
-    # if status == IndexStatus.realtime:
-    await BridgeMatcher.check_pending_etherlink_deposits()
+    sync_level = ctx.datasources['etherlink_node']._subscriptions._subscriptions[None]
+    status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
+    if status == IndexStatus.realtime or sync_level - event.data.level < 5:
+        await BridgeMatcher.check_pending_etherlink_deposits()

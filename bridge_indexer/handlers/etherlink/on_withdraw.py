@@ -8,7 +8,6 @@ from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawEvent
-from bridge_indexer.models import TezosTicket
 from bridge_indexer.types.kernel.evm_events.withdrawal import Withdrawal
 
 
@@ -47,7 +46,8 @@ async def on_withdraw(
 
     ctx.logger.info(f'Withdraw Event registered: {event}')
 
-    # status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
-    # if status == IndexStatus.realtime:
-    await BridgeMatcher.check_pending_etherlink_withdrawals()
-    await BridgeMatcher.check_pending_tezos_withdrawals()
+    sync_level = ctx.datasources['etherlink_node']._subscriptions._subscriptions[None]
+    status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
+    if status == IndexStatus.realtime or sync_level - event.data.level < 5:
+        await BridgeMatcher.check_pending_etherlink_withdrawals()
+        await BridgeMatcher.check_pending_tezos_withdrawals()
