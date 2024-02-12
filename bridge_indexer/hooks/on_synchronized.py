@@ -10,8 +10,3 @@ async def on_synchronized(
     await ctx.execute_sql('on_synchronized')
 
     await BridgeMatcher.check_pending_transactions()
-
-    try:
-        await ctx.add_index('tezos_head', 'tezos_head_index_template', values={})
-    except IndexAlreadyExistsError:
-        pass

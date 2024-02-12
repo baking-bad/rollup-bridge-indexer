@@ -26,7 +26,7 @@ datasources:
 
   metadata:
     kind: tzip_metadata
-    network: nairobinet
+    network: oxfordnet
     url: ${METADATA_URL}
 
   tezos_node:
@@ -81,14 +81,20 @@ contracts:
     typename: l2_token
 
 
-templates:
-  tezos_head_index_template:
-    kind: tezos.tzkt.head
-    datasource: tzkt
-    callback: tezos.on_head
-
-
 indexes:
+  tezos_rollup_cement:
+    kind: tezos.tzkt.operations
+    datasource: tzkt
+    types:
+      - sr_cement
+    contracts:
+      - tezos_smart_rollup
+    handlers:
+      - callback: tezos.on_cement_commitment
+        pattern:
+          - type: sr_cement
+            destination: tezos_smart_rollup
+
   tezos_rollup_operations:
     kind: tezos.tzkt.operations
     datasource: tzkt

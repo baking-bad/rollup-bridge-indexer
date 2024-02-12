@@ -1177,8 +1177,8 @@ web3 = ">=6.2,<7.0"
 [package.source]
 type = "git"
 url = "https://github.com/dipdup-io/dipdup.git"
-reference = "fc0a722e"
-resolved_reference = "fc0a722eb5c0ed6f36fdfe0d172508006eb3046a"
+reference = "b35ce34d"
+resolved_reference = "b35ce34d979c12c7d933216ceb312c11292b6a9f"
 
 [[package]]
 name = "dnspython"
@@ -4676,4 +4676,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.12"
-content-hash = "161d476cc83aef94d633eae837f04d9512e4a283ed40aac71c8d17b0eb42b27f"
+content-hash = "91a9936bf16daa97f04a638da88f900de6bd56ec7f411f428eaeba43ab1e78cb"

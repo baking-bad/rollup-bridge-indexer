@@ -10,5 +10,3 @@ async def on_restart(
     await ctx.execute_sql('on_restart')
 
     await BridgeMatcher.check_pending_transactions()
-
-    await Index.filter(name='tezos_head').delete()
