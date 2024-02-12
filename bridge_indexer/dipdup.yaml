@@ -73,7 +73,7 @@ contracts:
 
   l2_fa12_token:
     kind: evm
-    address: 0xe448b46E3c9167961ae4bD498E8dFb78Ae97da8a
+    address: 0x87dcbf128677ba36e79d47daf4eb4e51610e0150
     typename: l2_token
   l2_fa2_token:
     kind: evm
