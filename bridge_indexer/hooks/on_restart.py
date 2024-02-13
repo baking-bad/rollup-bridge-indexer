@@ -1,5 +1,4 @@
 from dipdup.context import HookContext
-from dipdup.models import Index
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 

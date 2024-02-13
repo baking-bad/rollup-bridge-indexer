@@ -36,19 +36,6 @@ datasources:
   etherlink_node:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
-    http:
-      retry_count: 6
-      retry_sleep: 10
-      retry_multiplier: 1
-
-      ratelimit_rate: 50
-      ratelimit_period: 10
-      ratelimit_sleep: .2
-
-      connection_limit: 5
-      connection_timeout: 10
-      request_timeout: 10
-      batch_size: 99
 
   etherlink_subsquid:
     kind: evm.subsquid
@@ -142,6 +129,15 @@ indexes:
       - callback: etherlink.on_transfer
         contract: l2_fa2_token
         name: Transfer
+
+
+  etherlink_kernel_transactions:
+    kind: evm.subsquid.transactions
+    datasource: etherlink_subsquid
+    node_only: true
+    handlers:
+      - callback: etherlink.on_xtz_deposit
+        from: etherlink_rollup_kernel
 
 
 advanced:

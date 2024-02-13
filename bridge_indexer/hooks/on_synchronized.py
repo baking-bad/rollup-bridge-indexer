@@ -1,5 +1,4 @@
 from dipdup.context import HookContext
-from dipdup.exceptions import IndexAlreadyExistsError
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 

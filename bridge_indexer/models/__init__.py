@@ -55,6 +55,7 @@ class EtherlinkToken(Model):
         model_name=TezosTicket.Meta.model,
         source_field='tezos_ticket_id',
         to_field='id',
+        unique=True,
         null=True,
     )
     tezos_ticket_hash = fields.CharField(max_length=78, index=True)
@@ -196,6 +197,7 @@ class EtherlinkDepositEvent(EtherlinkAbstractEvent):
         model_name=EtherlinkToken.Meta.model,
         source_field='token_id',
         to_field='id',
+        null=True,
     )
     amount = fields.TextField()
     inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
@@ -203,6 +205,7 @@ class EtherlinkDepositEvent(EtherlinkAbstractEvent):
         source_field='inbox_message_id',
         to_field='id',
         unique=True,
+        null=True,
     )
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositTransaction']

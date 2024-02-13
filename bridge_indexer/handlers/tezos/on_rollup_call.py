@@ -116,6 +116,10 @@ async def on_rollup_call(
     routing_info = bytes.fromhex(parameter.bytes)
     l2_receiver = routing_info[:20]
 
+    if len(routing_info) not in [20, 40]:
+        ctx.logger.warning('Invalid routing_info', parameter)
+        return
+
     inbox_message = await InboxMessageService.match_transaction_with_inbox(default.data, ctx)
 
     await TezosDepositEvent.create(

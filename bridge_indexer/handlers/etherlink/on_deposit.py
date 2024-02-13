@@ -38,8 +38,12 @@ async def on_deposit(
     ctx: HandlerContext,
     event: SubsquidEvent[Deposit],
 ) -> None:
-    token_contract = event.payload.ticket_owner[-40:]
-    etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
+    if event.payload.ticket_owner == event.payload.receiver:
+        ctx.logger.warning('Deposit routing info seems wrong')
+        etherlink_token = None
+    else:
+        token_contract = event.payload.ticket_owner[-40:]
+        etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
 
     inbox_message = await InboxMessageService.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id, ctx)
 

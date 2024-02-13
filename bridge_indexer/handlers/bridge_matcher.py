@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from bridge_indexer.models import BridgeDepositTransaction
 from bridge_indexer.models import BridgeWithdrawTransaction
 from bridge_indexer.models import EtherlinkDepositEvent
@@ -34,6 +36,36 @@ class BridgeMatcher:
 
             if not bridge_deposit:
                 continue
+            bridge_deposit.l2_transaction = l2_deposit
+            await bridge_deposit.save()
+
+        qs = EtherlinkDepositEvent.filter(
+            bridge_deposits__isnull=True,
+            inbox_message_id__isnull=True,
+            l2_token_id='xtz',
+        ).order_by('level', 'transaction_index')
+        async for l2_deposit in qs:
+            await l2_deposit.fetch_related('l2_token', 'l2_token__tezos_ticket')
+            bridge_deposit = (
+                await BridgeDepositTransaction.filter(
+                    l2_transaction=None,
+                    l1_transaction__inbox_message_id__gt=0,
+                    l1_transaction__ticket=l2_deposit.l2_token.tezos_ticket,
+                    l1_transaction__timestamp__gt=l2_deposit.timestamp - timedelta(minutes=5),
+                    l1_transaction__timestamp__lt=l2_deposit.timestamp + timedelta(minutes=5),
+                    l1_transaction__l2_account=l2_deposit.l2_account,
+                    l1_transaction__amount=l2_deposit.amount[:-12],
+                )
+                .prefetch_related('l1_transaction__inbox_message')
+                .first()
+            )
+
+            if not bridge_deposit:
+                continue
+
+            l2_deposit.inbox_message = bridge_deposit.l1_transaction.inbox_message
+            await l2_deposit.save()
+
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
 

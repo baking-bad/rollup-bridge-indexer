@@ -1,9 +1,10 @@
+from dipdup.context import HandlerContext
+from dipdup.models.tezos_tzkt import TzktSmartRollupCement
+
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.models import RollupCommitment
 from bridge_indexer.models import RollupOutboxMessage
-from dipdup.context import HandlerContext
-from dipdup.models.tezos_tzkt import TzktSmartRollupCement
 
 
 async def on_cement_commitment(
