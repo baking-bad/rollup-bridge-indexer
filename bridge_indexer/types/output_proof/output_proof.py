@@ -7,7 +7,6 @@ from bridge_indexer.types.output_proof.unpacker import BaseBinarySchema
 class OutputProofData(BaseBinarySchema):
     _schema = [
         ('output_proof', None, 'OutputProof'),
-        ('output_proof_state', 32, 'hex32'),
         ('output_proof_output', None, 'OutputProofOutput'),
     ]
 
