@@ -1,0 +1,22 @@
+{
+    "type": "postgres_create_object_relationship",
+    "args": {
+        "table": {
+            "name": "bridge_operation",
+            "schema": "public"
+        },
+        "name": "deposit",
+        "source": "default",
+        "using": {
+            "manual_configuration": {
+                "remote_table": {
+                    "name": "bridge_deposit",
+                    "schema": "public"
+                },
+                "column_mapping": {
+                    "id": "id"
+                }
+            }
+        }
+    }
+}

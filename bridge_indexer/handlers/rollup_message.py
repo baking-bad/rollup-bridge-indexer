@@ -106,6 +106,9 @@ class OutboxMessageService:
                 # todo: mark expired transaction with terminal status "failed"
                 continue
 
+            if outbox_message.level > sync_level:
+                continue
+
             proof_data = await datasource.request(
                 'GET',
                 f'global/block/head/helpers/proofs/outbox/{outbox_message.level}/messages?index={outbox_message.index}',
