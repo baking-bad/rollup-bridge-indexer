@@ -7,7 +7,7 @@ from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import OutboxMessageService
-from bridge_indexer.models import TezosWithdrawEvent
+from bridge_indexer.models import TezosWithdrawOperation
 from bridge_indexer.types.output_proof.output_proof import OutputProofData
 from bridge_indexer.types.ticketer.tezos_parameters.withdraw import WithdrawParameter
 from bridge_indexer.types.ticketer.tezos_storage import TicketerStorage
@@ -51,7 +51,7 @@ async def on_rollup_execute(
         )
         return
 
-    await TezosWithdrawEvent.create(
+    await TezosWithdrawOperation.create(
         timestamp=execute.data.timestamp,
         level=execute.data.level,
         operation_hash=execute.data.hash,

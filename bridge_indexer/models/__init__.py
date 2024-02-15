@@ -1,11 +1,17 @@
 import uuid
+from enum import Enum
 
 from dipdup import fields
 from dipdup.models import Model
 from tortoise import ForeignKeyFieldInstance
 
 
-class BlockchainAbstractOperation(Model):
+class DatetimeModelMixin:
+    created_at = fields.DatetimeField(index=True, auto_now_add=True)
+    updated_at = fields.DatetimeField(index=True, auto_now=True)
+
+
+class AbstractBlockchainOperation(Model):
     class Meta:
         abstract = True
 
@@ -58,7 +64,7 @@ class EtherlinkToken(Model):
     )
 
 
-class RollupCommitment(Model):
+class RollupCommitment(DatetimeModelMixin, Model):
     class Meta:
         table = 'rollup_commitment'
         model = 'models.RollupCommitment'
@@ -76,7 +82,7 @@ class RollupCommitment(Model):
     outbox_messages: fields.ReverseRelation['RollupOutboxMessage']
 
 
-class AbstractRollupMessage(Model):
+class AbstractRollupMessage(DatetimeModelMixin, Model):
     class Meta:
         abstract = True
         unique_together = (
@@ -99,8 +105,8 @@ class RollupInboxMessage(AbstractRollupMessage):
     parameter = fields.JSONField()
     payload = fields.TextField(null=True)
 
-    l1_deposits: fields.ReverseRelation['TezosDepositEvent']
-    l2_deposits: fields.ReverseRelation['EtherlinkDepositEvent']
+    l1_deposits: fields.ReverseRelation['TezosDepositOperation']
+    l2_deposits: fields.ReverseRelation['EtherlinkDepositOperation']
 
 
 class RollupOutboxMessage(AbstractRollupMessage):
@@ -120,11 +126,11 @@ class RollupOutboxMessage(AbstractRollupMessage):
         null=True,
     )
 
-    l1_withdrawals: fields.ReverseRelation['TezosWithdrawEvent']
-    l2_withdrawals: fields.ReverseRelation['EtherlinkWithdrawEvent']
+    l1_withdrawals: fields.ReverseRelation['TezosWithdrawOperation']
+    l2_withdrawals: fields.ReverseRelation['EtherlinkWithdrawOperation']
 
 
-class TezosAbstractOperation(BlockchainAbstractOperation):
+class AbstractTezosOperation(AbstractBlockchainOperation):
     class Meta:
         abstract = True
 
@@ -136,10 +142,10 @@ class TezosAbstractOperation(BlockchainAbstractOperation):
     target = fields.CharField(max_length=36)
 
 
-class TezosDepositEvent(TezosAbstractOperation):
+class TezosDepositOperation(AbstractTezosOperation):
     class Meta:
         table = 'l1_deposit'
-        model = 'models.TezosDepositEvent'
+        model = 'models.TezosDepositOperation'
 
     l1_account = fields.CharField(max_length=36)
     l2_account = fields.CharField(max_length=40)
@@ -156,13 +162,13 @@ class TezosDepositEvent(TezosAbstractOperation):
         unique=True,
     )
 
-    bridge_deposits: fields.ReverseRelation['BridgeDepositTransaction']
+    bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 
 
-class TezosWithdrawEvent(TezosAbstractOperation):
+class TezosWithdrawOperation(AbstractTezosOperation):
     class Meta:
         table = 'l1_withdrawal'
-        model = 'models.TezosWithdrawEvent'
+        model = 'models.TezosWithdrawOperation'
 
     outbox_message: ForeignKeyFieldInstance[RollupOutboxMessage] = fields.ForeignKeyField(
         model_name=RollupOutboxMessage.Meta.model,
@@ -171,10 +177,10 @@ class TezosWithdrawEvent(TezosAbstractOperation):
         unique=True,
     )
 
-    bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawTransaction']
+    bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
 
 
-class EtherlinkAbstractEvent(BlockchainAbstractOperation):
+class AbstractEtherlinkOperation(AbstractBlockchainOperation):
     class Meta:
         abstract = True
 
@@ -184,10 +190,10 @@ class EtherlinkAbstractEvent(BlockchainAbstractOperation):
     address = fields.CharField(max_length=40)
 
 
-class EtherlinkDepositEvent(EtherlinkAbstractEvent):
+class EtherlinkDepositOperation(AbstractEtherlinkOperation):
     class Meta:
         table = 'l2_deposit'
-        model = 'models.EtherlinkDepositEvent'
+        model = 'models.EtherlinkDepositOperation'
 
     l2_account = fields.CharField(max_length=40)
     l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
@@ -210,13 +216,13 @@ class EtherlinkDepositEvent(EtherlinkAbstractEvent):
         null=True,
     )
 
-    bridge_deposits: fields.ReverseRelation['BridgeDepositTransaction']
+    bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 
 
-class EtherlinkWithdrawEvent(EtherlinkAbstractEvent):
+class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
     class Meta:
         table = 'l2_withdrawal'
-        model = 'models.EtherlinkWithdrawEvent'
+        model = 'models.EtherlinkWithdrawOperation'
 
     l2_account = fields.CharField(max_length=40)
     l1_account = fields.CharField(max_length=36)
@@ -239,51 +245,72 @@ class EtherlinkWithdrawEvent(EtherlinkAbstractEvent):
         unique=True,
     )
 
-    bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawTransaction']
+    bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
 
 
-class BridgeDepositTransaction(Model):
+class AbstractBridgeOperation(DatetimeModelMixin, Model):
+    class Meta:
+        abstract = True
+        ordering = ['-created_at']
+
+    id = fields.UUIDField(pk=True)
+
+
+class BridgeOperationType(Enum):
+    deposit: str = 'deposit'
+    withdrawal: str = 'withdrawal'
+
+
+class BridgeOperation(AbstractBridgeOperation):
+    class Meta:
+        table = 'bridge_operation'
+        model = 'models.BridgeOperation'
+
+    l1_account = fields.CharField(max_length=36, index=True)
+    l2_account = fields.CharField(max_length=40, index=True)
+    type = fields.EnumField(enum_type=BridgeOperationType, index=True)
+    is_completed = fields.BooleanField(default=False, index=True)
+    is_successful = fields.BooleanField(default=False, index=True)
+
+
+class BridgeDepositOperation(AbstractBridgeOperation):
     class Meta:
         table = 'bridge_deposit'
-        model = 'models.BridgeDepositTransaction'
+        model = 'models.BridgeDepositOperation'
 
-    id = fields.UUIDField(pk=True)
-    l1_transaction: ForeignKeyFieldInstance[TezosDepositEvent] = fields.ForeignKeyField(
-        model_name=TezosDepositEvent.Meta.model,
+    l1_transaction: ForeignKeyFieldInstance[TezosDepositOperation] = fields.ForeignKeyField(
+        model_name=TezosDepositOperation.Meta.model,
         source_field='l1_transaction_id',
         to_field='id',
         unique=True,
     )
-    l2_transaction: ForeignKeyFieldInstance[EtherlinkDepositEvent] = fields.ForeignKeyField(
-        model_name=EtherlinkDepositEvent.Meta.model,
+    l2_transaction: ForeignKeyFieldInstance[EtherlinkDepositOperation] = fields.ForeignKeyField(
+        model_name=EtherlinkDepositOperation.Meta.model,
         source_field='l2_transaction_id',
         to_field='id',
         null=True,
         unique=True,
     )
-    updated_at = fields.DatetimeField(index=True, auto_now=True)
 
 
-class BridgeWithdrawTransaction(Model):
+class BridgeWithdrawOperation(AbstractBridgeOperation):
     class Meta:
         table = 'bridge_withdrawal'
-        model = 'models.BridgeWithdrawTransaction'
+        model = 'models.BridgeWithdrawOperation'
 
-    id = fields.UUIDField(pk=True)
-    l1_transaction: ForeignKeyFieldInstance[TezosWithdrawEvent] = fields.ForeignKeyField(
-        model_name=TezosWithdrawEvent.Meta.model,
+    l1_transaction: ForeignKeyFieldInstance[TezosWithdrawOperation] = fields.ForeignKeyField(
+        model_name=TezosWithdrawOperation.Meta.model,
         source_field='l1_transaction_id',
         to_field='id',
         null=True,
         unique=True,
     )
-    l2_transaction: ForeignKeyFieldInstance[EtherlinkWithdrawEvent] = fields.ForeignKeyField(
-        model_name=EtherlinkWithdrawEvent.Meta.model,
+    l2_transaction: ForeignKeyFieldInstance[EtherlinkWithdrawOperation] = fields.ForeignKeyField(
+        model_name=EtherlinkWithdrawOperation.Meta.model,
         source_field='l2_transaction_id',
         to_field='id',
         unique=True,
     )
-    updated_at = fields.DatetimeField(index=True, auto_now=True)
 
 
 class EtherlinkTokenHolder(Model):

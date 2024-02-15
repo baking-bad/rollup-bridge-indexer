@@ -8,7 +8,7 @@ from dipdup.models.evm_subsquid import SubsquidEvent
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import InboxMessageService
-from bridge_indexer.models import EtherlinkDepositEvent
+from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.types.kernel.evm_events.deposit import Deposit
@@ -44,7 +44,7 @@ async def on_deposit(
 
     inbox_message = await InboxMessageService.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id, ctx)
 
-    await EtherlinkDepositEvent.create(
+    await EtherlinkDepositOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=timezone.utc),
         level=event.data.level,
         address=event.data.address[-40:],

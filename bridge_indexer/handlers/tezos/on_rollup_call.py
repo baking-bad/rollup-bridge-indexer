@@ -11,7 +11,7 @@ from web3.main import Web3
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import InboxMessageService
-from bridge_indexer.models import TezosDepositEvent
+from bridge_indexer.models import TezosDepositOperation
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
 from bridge_indexer.types.rollup.tezos_parameters.default import LL
@@ -116,7 +116,7 @@ async def on_rollup_call(
 
     inbox_message = await InboxMessageService.match_transaction_with_inbox(default.data, ctx)
 
-    await TezosDepositEvent.create(
+    await TezosDepositOperation.create(
         timestamp=default.data.timestamp,
         level=default.data.level,
         operation_hash=default.data.hash,

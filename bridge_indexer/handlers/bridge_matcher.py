@@ -1,32 +1,52 @@
 from datetime import timedelta
 
-from bridge_indexer.models import BridgeDepositTransaction
-from bridge_indexer.models import BridgeWithdrawTransaction
-from bridge_indexer.models import EtherlinkDepositEvent
-from bridge_indexer.models import EtherlinkWithdrawEvent
-from bridge_indexer.models import TezosDepositEvent
-from bridge_indexer.models import TezosWithdrawEvent
+from bridge_indexer.models import BridgeDepositOperation
+from bridge_indexer.models import BridgeOperation
+from bridge_indexer.models import BridgeOperationType
+from bridge_indexer.models import BridgeWithdrawOperation
+from bridge_indexer.models import EtherlinkDepositOperation
+from bridge_indexer.models import EtherlinkWithdrawOperation
+from bridge_indexer.models import TezosDepositOperation
+from bridge_indexer.models import TezosWithdrawOperation
+
+LAYERS_TIMESTAMP_GAP = timedelta(minutes=5)
 
 
 class BridgeMatcher:
     @staticmethod
     async def check_pending_tezos_deposits():
-        qs = TezosDepositEvent.filter(bridge_deposits__isnull=True)
+        qs = TezosDepositOperation.filter(bridge_deposits__isnull=True)
         async for l1_deposit in qs:
-            await BridgeDepositTransaction.create(l1_transaction=l1_deposit)
+            bridge_deposit = await BridgeDepositOperation.create(l1_transaction=l1_deposit)
+            await BridgeOperation.create(
+                id=bridge_deposit.id,
+                type=BridgeOperationType.deposit,
+                l1_account=l1_deposit.l1_account,
+                l2_account=l1_deposit.l2_account,
+                created_at=l1_deposit.timestamp,
+                updated_at=l1_deposit.timestamp,
+            )
 
     @staticmethod
     async def check_pending_etherlink_withdrawals():
-        qs = EtherlinkWithdrawEvent.filter(bridge_withdrawals__isnull=True)
+        qs = EtherlinkWithdrawOperation.filter(bridge_withdrawals__isnull=True)
         async for l2_withdrawal in qs:
-            await BridgeWithdrawTransaction.create(l2_transaction=l2_withdrawal)
+            bridge_withdrawal = await BridgeWithdrawOperation.create(l2_transaction=l2_withdrawal)
+            await BridgeOperation.create(
+                id=bridge_withdrawal.id,
+                type=BridgeOperationType.withdrawal,
+                l1_account=l2_withdrawal.l1_account,
+                l2_account=l2_withdrawal.l2_account,
+                created_at=l2_withdrawal.timestamp,
+                updated_at=l2_withdrawal.timestamp,
+            )
 
     @staticmethod
     async def check_pending_etherlink_deposits():
-        qs = EtherlinkDepositEvent.filter(bridge_deposits__isnull=True).order_by('level', 'transaction_index')
+        qs = EtherlinkDepositOperation.filter(bridge_deposits__isnull=True).order_by('level', 'transaction_index')
         async for l2_deposit in qs:
             bridge_deposit = (
-                await BridgeDepositTransaction.filter(
+                await BridgeDepositOperation.filter(
                     l2_transaction=None,
                     l1_transaction__inbox_message_id=l2_deposit.inbox_message_id,
                 )
@@ -39,7 +59,15 @@ class BridgeMatcher:
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
 
-        qs = EtherlinkDepositEvent.filter(
+            bridge_operation = await BridgeOperation.get(id=bridge_deposit.id)
+            bridge_operation.is_completed = True
+            bridge_operation.is_successful = l2_deposit.l2_token is not None
+            bridge_operation.updated_at = max(bridge_operation.created_at, l2_deposit.timestamp)
+            await bridge_operation.save()
+
+    @staticmethod
+    async def check_pending_etherlink_xtz_deposits():
+        qs = EtherlinkDepositOperation.filter(
             bridge_deposits__isnull=True,
             inbox_message_id__isnull=True,
             l2_token_id='xtz',
@@ -47,7 +75,7 @@ class BridgeMatcher:
         async for l2_deposit in qs:
             await l2_deposit.fetch_related('l2_token', 'l2_token__ticket')
             bridge_deposit = (
-                await BridgeDepositTransaction.filter(
+                await BridgeDepositOperation.filter(
                     l2_transaction=None,
                     l1_transaction__inbox_message_id__gt=0,
                     l1_transaction__ticket=l2_deposit.l2_token.ticket,
@@ -69,11 +97,17 @@ class BridgeMatcher:
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
 
+            bridge_operation = await BridgeOperation.get(id=bridge_deposit.id)
+            bridge_operation.is_completed = True
+            bridge_operation.is_successful = l2_deposit.l2_token is not None
+            bridge_operation.updated_at = max(bridge_operation.created_at, l2_deposit.timestamp)
+            await bridge_operation.save()
+
     @staticmethod
     async def check_pending_tezos_withdrawals():
-        qs = TezosWithdrawEvent.filter(bridge_withdrawals__isnull=True).order_by('level')
+        qs = TezosWithdrawOperation.filter(bridge_withdrawals__isnull=True).order_by('level')
         async for l1_withdrawal in qs:
-            bridge_withdrawal = await BridgeWithdrawTransaction.filter(
+            bridge_withdrawal = await BridgeWithdrawOperation.filter(
                 l1_transaction=None,
                 l2_transaction__outbox_message_id=l1_withdrawal.outbox_message_id,
             ).first()
@@ -83,6 +117,12 @@ class BridgeMatcher:
 
             bridge_withdrawal.l1_transaction = l1_withdrawal
             await bridge_withdrawal.save()
+
+            bridge_operation = await BridgeOperation.get(id=bridge_withdrawal.id)
+            bridge_operation.is_completed = True
+            bridge_operation.is_successful = True
+            bridge_operation.updated_at = l1_withdrawal.timestamp
+            await bridge_operation.save()
 
     @staticmethod
     async def check_pending_transactions():
