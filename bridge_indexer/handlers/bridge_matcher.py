@@ -79,8 +79,8 @@ class BridgeMatcher:
                     l2_transaction=None,
                     l1_transaction__inbox_message_id__gt=0,
                     l1_transaction__ticket=l2_deposit.l2_token.ticket,
-                    l1_transaction__timestamp__gt=l2_deposit.timestamp - timedelta(minutes=5),
-                    l1_transaction__timestamp__lt=l2_deposit.timestamp + timedelta(minutes=5),
+                    l1_transaction__timestamp__gt=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP,
+                    l1_transaction__timestamp__lt=l2_deposit.timestamp + LAYERS_TIMESTAMP_GAP,
                     l1_transaction__l2_account=l2_deposit.l2_account,
                     l1_transaction__amount=l2_deposit.amount[:-12],
                 )
@@ -130,4 +130,5 @@ class BridgeMatcher:
         await BridgeMatcher.check_pending_etherlink_withdrawals()
 
         await BridgeMatcher.check_pending_etherlink_deposits()
+        await BridgeMatcher.check_pending_etherlink_xtz_deposits()
         await BridgeMatcher.check_pending_tezos_withdrawals()

@@ -11,20 +11,6 @@ async def on_cement_commitment(
     ctx: HandlerContext,
     cement: TzktSmartRollupCement,
 ) -> None:
-    if not ctx.datasource._signalr_client:
-        ctx.logger.info('Skip syncing message with level %d', cement.data.level)
-        return
-
-    await BridgeMatcher.check_pending_transactions()
-
-    pending_count = await RollupOutboxMessage.filter(
-        l1_withdrawals__isnull=True,
-        l2_withdrawals__isnull=False,
-        level__gt=cement.commitment.first_level - 80640,  # todo: avoid magic numbers
-    ).count()
-    if not pending_count:
-        return
-
     new_record, _ = await RollupCommitment.update_or_create(
         id=cement.commitment.id,
         defaults={
@@ -38,5 +24,19 @@ async def on_cement_commitment(
             'status': 'cemented',
         },
     )
+
+    if not ctx.datasource._signalr_client:
+        ctx.logger.info('Skip syncing message with level %d', cement.data.level)
+        return
+
+    await BridgeMatcher.check_pending_transactions()
+
+    pending_count = await RollupOutboxMessage.filter(
+        l1_withdrawals__isnull=True,
+        l2_withdrawals__isnull=False,
+        level__gt=cement.commitment.first_level - 80640,  # todo: avoid magic numbers
+    ).count()
+    if not pending_count:
+        return
 
     await OutboxMessageService.update_proof(ctx)
