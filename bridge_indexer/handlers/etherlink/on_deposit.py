@@ -14,24 +14,21 @@ from bridge_indexer.models import TezosTicket
 from bridge_indexer.types.kernel.evm_events.deposit import Deposit
 
 
-async def register_etherlink_token(token_contract: str, tezos_ticket_hash: int) -> EtherlinkToken:
+async def register_etherlink_token(token_contract: str, ticket_hash: int) -> EtherlinkToken:
     etherlink_token = await EtherlinkToken.get_or_none(id=token_contract)
-    tezos_ticket = await TezosTicket.get_or_none(ticket_hash=tezos_ticket_hash)
+
     if etherlink_token:
-        if etherlink_token.tezos_ticket:
-            pass
-        else:
-            if tezos_ticket:
-                etherlink_token.tezos_ticket = tezos_ticket
-                await etherlink_token.save()
-    else:
+        return etherlink_token
+
+    tezos_ticket = await TezosTicket.get_or_none(pk=ticket_hash)
+    if tezos_ticket:
         etherlink_token = await EtherlinkToken.create(
             id=token_contract,
-            tezos_ticket=tezos_ticket,
-            tezos_ticket_hash=tezos_ticket_hash,
+            ticket_id=ticket_hash,
         )
+        return etherlink_token
 
-    return etherlink_token
+    raise ValueError('Ticket with given hash not found', ticket_hash)
 
 
 async def on_deposit(
@@ -56,6 +53,7 @@ async def on_deposit(
         transaction_index=event.data.transaction_index,
         l2_account=event.payload.receiver[-40:],
         l2_token=etherlink_token,
+        ticket_id=event.payload.ticket_hash,
         amount=event.payload.amount,
         inbox_message=inbox_message,
     )

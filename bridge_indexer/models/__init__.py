@@ -33,15 +33,14 @@ class TezosTicket(Model):
         table = 'tezos_ticket'
         model = 'models.TezosTicket'
 
-    id = fields.TextField(pk=True)
+    hash = fields.CharField(pk=True, max_length=78)
+    ticketer_address = fields.CharField(max_length=36)
+    ticket_id = fields.TextField(default='0')
     token: ForeignKeyFieldInstance[TezosToken] = fields.ForeignKeyField(
         model_name=TezosToken.Meta.model,
         source_field='token_id',
         to_field='id',
     )
-    ticketer_address = fields.CharField(max_length=36)
-    ticket_id = fields.TextField(default='0')
-    ticket_hash = fields.CharField(max_length=78, index=True, unique=True)
 
 
 class EtherlinkToken(Model):
@@ -51,14 +50,12 @@ class EtherlinkToken(Model):
 
     id = fields.CharField(max_length=40, pk=True)
     name = fields.TextField(null=True)
-    tezos_ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
+    ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
-        source_field='tezos_ticket_id',
-        to_field='id',
+        source_field='ticket_hash',
+        to_field='hash',
         unique=True,
-        null=True,
     )
-    tezos_ticket_hash = fields.CharField(max_length=78, index=True)
 
 
 class RollupCommitment(Model):
@@ -73,7 +70,7 @@ class RollupCommitment(Model):
     # last_level = fields.IntField()
     # last_time = fields.DatetimeField()
     state = fields.CharField(max_length=54)
-    hash = fields.CharField(max_length=54)
+    hash = fields.CharField(max_length=54, index=True)
     status = fields.CharField(max_length=16)
 
     outbox_messages: fields.ReverseRelation['RollupOutboxMessage']
@@ -148,8 +145,8 @@ class TezosDepositEvent(TezosAbstractOperation):
     l2_account = fields.CharField(max_length=40)
     ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
-        source_field='ticket_id',
-        to_field='id',
+        source_field='ticket_hash',
+        to_field='hash',
     )
     amount = fields.TextField()
     inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
@@ -199,6 +196,11 @@ class EtherlinkDepositEvent(EtherlinkAbstractEvent):
         to_field='id',
         null=True,
     )
+    ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
+        model_name=TezosTicket.Meta.model,
+        source_field='ticket_hash',
+        to_field='hash',
+    )
     amount = fields.TextField()
     inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
         model_name=RollupInboxMessage.Meta.model,
@@ -222,6 +224,12 @@ class EtherlinkWithdrawEvent(EtherlinkAbstractEvent):
         model_name=EtherlinkToken.Meta.model,
         source_field='token_id',
         to_field='id',
+        null=True,
+    )
+    ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
+        model_name=TezosTicket.Meta.model,
+        source_field='ticket_hash',
+        to_field='hash',
     )
     amount = fields.TextField()
     outbox_message: ForeignKeyFieldInstance[RollupOutboxMessage] = fields.ForeignKeyField(

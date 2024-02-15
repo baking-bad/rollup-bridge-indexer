@@ -1,6 +1,7 @@
 from datetime import datetime
 from datetime import timezone
 
+from bridge_indexer.models import TezosTicket
 from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
@@ -28,6 +29,7 @@ async def on_xtz_deposit(
         return
 
     etherlink_token = await EtherlinkToken.get(id='xtz')
+    tezos_ticket = await TezosTicket.get(token_id='xtz')
 
     await EtherlinkDepositEvent.create(
         timestamp=datetime.fromtimestamp(transaction.timestamp, tz=timezone.utc),
@@ -38,6 +40,7 @@ async def on_xtz_deposit(
         transaction_index=transaction.transaction_index,
         l2_account=transaction.to[-40:],
         l2_token=etherlink_token,
+        ticket=tezos_ticket,
         amount=transaction.value,
         inbox_message=None,
     )

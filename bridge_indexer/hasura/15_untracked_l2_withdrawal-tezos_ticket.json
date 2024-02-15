@@ -1,7 +1,7 @@
 {
     "type": "pg_create_array_relationship",
     "args": {
-        "name": "etherlink_tokens",
+        "name": "l2_withdrawals",
         "table": {
             "name": "tezos_ticket",
             "schema": "public"
@@ -9,7 +9,7 @@
         "using": {
             "foreign_key_constraint_on": {
                 "table": {
-                    "name": "etherlink_token",
+                    "name": "l2_withdrawal",
                     "schema": "public"
                 },
                 "column": "ticket_hash"

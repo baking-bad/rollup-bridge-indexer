@@ -1,7 +1,3 @@
-from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
-from dipdup.models.evm_subsquid import SubsquidEvent
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
@@ -9,6 +5,10 @@ from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawEvent
 from bridge_indexer.types.kernel.evm_events.withdrawal import Withdrawal
+from dipdup.context import HandlerContext
+from dipdup.models import Index
+from dipdup.models import IndexStatus
+from dipdup.models.evm_subsquid import SubsquidEvent
 
 
 async def on_withdraw(
@@ -18,7 +18,10 @@ async def on_withdraw(
     token_contract = event.payload.ticket_owner[-40:]
     etherlink_token = await EtherlinkToken.get_or_none(id=token_contract)
     if not etherlink_token:
-        raise ValueError('L2 token not found!')
+        if event.payload.sender == event.payload.ticket_owner:
+            ctx.logger.info('Deposit revert found', event)
+        else:
+            raise ValueError('L2 token not found!')
 
     try:
         outbox_message = await OutboxMessageService.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id, ctx)
@@ -40,6 +43,7 @@ async def on_withdraw(
         l2_account=event.payload.sender[-40:],
         l1_account=event.payload.receiver,
         l2_token=etherlink_token,
+        ticket_id=event.payload.ticket_hash,
         amount=event.payload.amount,
         outbox_message=outbox_message,
     )

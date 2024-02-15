@@ -11,7 +11,6 @@ from web3.main import Web3
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import InboxMessageService
-from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosDepositEvent
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
@@ -22,7 +21,6 @@ from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
 async def validate_ticket(parameter: LL, ctx: HandlerContext):
     routing_info = bytes.fromhex(parameter.bytes)
-    l2_receiver = routing_info[:20]
     l2_proxy = routing_info[20:40] or None
     ticket_identifier = parameter.ticket
     ticket_content = ticket_identifier.data
@@ -58,10 +56,20 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
                 },
             ],
         }
-    ticket_id = f'{ticket_identifier.address}_{ticket_content.nat}'
-    ticket = await TezosTicket.get_or_none(pk=ticket_id)
+
+    data = Web3.solidity_keccak(
+        ['bytes22', 'bytes'],
+        [
+            forge_address(ticket_identifier.address),
+            forge_micheline(ticket_content_micheline),
+        ],
+    )
+
+    ticket_hash = decode(['uint256'], data)[0]
+    ticket = await TezosTicket.get_or_none(pk=ticket_hash)
     if ticket:
         return ticket
+
     token = await TezosToken.get_or_none(pk=asset_id)
     if not token:
         metadata_datasource = ctx.get_metadata_datasource('metadata')
@@ -81,27 +89,12 @@ async def validate_ticket(parameter: LL, ctx: HandlerContext):
             type=ticket_metadata['token_type'],
         )
 
-    data = Web3.solidity_keccak(
-        ['bytes22', 'bytes'],
-        [
-            forge_address(ticket_identifier.address),
-            forge_micheline(ticket_content_micheline),
-        ],
-    )
-
-    ticket_hash = decode(['uint256'], data)[0]
-
     ticket = await TezosTicket.create(
-        id=ticket_id,
-        token=token,
+        hash=ticket_hash,
         ticketer_address=ticket_identifier.address,
         ticket_id=ticket_content.nat,
-        ticket_hash=ticket_hash,
+        token=token,
     )
-
-    async for orphan_etherlink_token in EtherlinkToken.filter(tezos_ticket_hash=ticket_hash, tezos_ticket=None):
-        orphan_etherlink_token.tezos_ticket = ticket
-        await orphan_etherlink_token.save()
 
     return ticket
 
@@ -111,7 +104,6 @@ async def on_rollup_call(
     default: TzktTransaction[DefaultParameter, RollupStorage],
 ) -> None:
     parameter = default.parameter.__root__.LL
-    ticket = await validate_ticket(parameter, ctx)
 
     routing_info = bytes.fromhex(parameter.bytes)
     l2_receiver = routing_info[:20]
@@ -119,6 +111,8 @@ async def on_rollup_call(
     if len(routing_info) not in [20, 40]:
         ctx.logger.warning('Invalid routing_info', parameter)
         return
+
+    ticket = await validate_ticket(parameter, ctx)
 
     inbox_message = await InboxMessageService.match_transaction_with_inbox(default.data, ctx)
 

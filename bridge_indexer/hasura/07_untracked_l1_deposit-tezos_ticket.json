@@ -12,7 +12,7 @@
                     "name": "l1_deposit",
                     "schema": "public"
                 },
-                "column": "ticket_id"
+                "column": "ticket_hash"
             }
         },
         "source": "default"
