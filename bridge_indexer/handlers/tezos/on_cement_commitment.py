@@ -17,8 +17,6 @@ async def on_cement_commitment(
             'inbox_level': cement.commitment.inbox_level,
             'first_level': cement.commitment.first_level,
             'first_time': cement.commitment.first_time,
-            # 'last_level': commitment_data[0]['lastLevel'],
-            # 'last_time': commitment_data[0]['lastTime'],
             'state': cement.commitment.state,
             'hash': cement.commitment.hash,
             'status': 'cemented',

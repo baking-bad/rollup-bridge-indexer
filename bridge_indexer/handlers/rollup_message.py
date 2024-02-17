@@ -106,7 +106,7 @@ class OutboxMessageService:
                 # todo: mark expired transaction with terminal status "failed"
                 continue
 
-            if outbox_message.level > sync_level:
+            if await RollupCommitment.filter(inbox_level__gte=outbox_message.level).count() == 0:
                 continue
 
             proof_data = await datasource.request(

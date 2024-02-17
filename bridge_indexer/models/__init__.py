@@ -70,7 +70,7 @@ class RollupCommitment(DatetimeModelMixin, Model):
         model = 'models.RollupCommitment'
 
     id = fields.BigIntField(pk=True)
-    inbox_level = fields.IntField()
+    inbox_level = fields.IntField(index=True)
     first_level = fields.IntField()
     first_time = fields.DatetimeField()
     # last_level = fields.IntField()
