@@ -1,9 +1,10 @@
-from dipdup.context import DipDupContext
-from dipdup.models.tezos_tzkt import TzktOperationData
-
-from bridge_indexer.models import RollupCommitment
+from bridge_indexer.models import BridgeOperation
+from bridge_indexer.models import BridgeWithdrawOperation
+from bridge_indexer.models import RollupCementedCommitment
 from bridge_indexer.models import RollupInboxMessage
 from bridge_indexer.models import RollupOutboxMessage
+from dipdup.context import DipDupContext
+from dipdup.models.tezos_tzkt import TzktOperationData
 
 
 class InboxMessageService:

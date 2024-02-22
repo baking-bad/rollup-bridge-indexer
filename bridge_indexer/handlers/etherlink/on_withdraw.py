@@ -21,7 +21,9 @@ async def on_withdraw(
         if event.payload.sender == event.payload.ticket_owner:
             ctx.logger.info('Deposit revert found', event)
         else:
-            raise ValueError('L2 token not found!')
+            ctx.logger.warning('Withdraw with not whitelisted erc_proxy contract', event)
+            return
+
 
     try:
         outbox_message = await OutboxMessageService.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id, ctx)

@@ -1,6 +1,9 @@
 import uuid
 from enum import Enum
 
+from tortoise import ForeignKeyFieldInstance
+from tortoise import OneToOneFieldInstance
+
 from dipdup import fields
 from dipdup.models import Model
 
@@ -57,11 +60,10 @@ class EtherlinkToken(Model):
     name = fields.TextField(null=True)
     symbol = fields.TextField(null=True)
     decimals = fields.IntField(default=0)
-    ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
+    ticket: OneToOneFieldInstance[TezosTicket] = fields.OneToOneField(
         model_name=TezosTicket.Meta.model,
         source_field='ticket_hash',
         to_field='hash',
-        unique=True,
     )
 
 

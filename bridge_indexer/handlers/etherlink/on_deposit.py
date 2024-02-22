@@ -22,6 +22,9 @@ async def register_etherlink_token(token_contract: str, ticket_hash: int) -> Eth
 
     tezos_ticket = await TezosTicket.get_or_none(pk=ticket_hash)
     if tezos_ticket:
+        if await EtherlinkToken.filter(ticket_id=ticket_hash).exclude(id=token_contract).count():
+            raise ValueError('Deposit with not whitelisted erc_proxy contract', token_contract)
+
         etherlink_token = await EtherlinkToken.create(
             id=token_contract,
             ticket_id=ticket_hash,
@@ -40,7 +43,11 @@ async def on_deposit(
         etherlink_token = None
     else:
         token_contract = event.payload.ticket_owner[-40:]
-        etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
+        try:
+            etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
+        except ValueError as exception:
+            ctx.logger.warning(str(exception))
+            return
 
     inbox_message = await InboxMessageService.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id, ctx)
 
