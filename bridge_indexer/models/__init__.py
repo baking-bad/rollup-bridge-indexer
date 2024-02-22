@@ -3,7 +3,6 @@ from enum import Enum
 
 from dipdup import fields
 from dipdup.models import Model
-from tortoise import ForeignKeyFieldInstance
 
 
 class DatetimeModelMixin:
@@ -66,20 +65,18 @@ class EtherlinkToken(Model):
     )
 
 
-class RollupCommitment(DatetimeModelMixin, Model):
+EtherlinkToken._meta.fields_map['ticket'].__module__ = 'dipdup.fields'
+
+
+class RollupCementedCommitment(DatetimeModelMixin, Model):
     class Meta:
         table = 'rollup_commitment'
-        model = 'models.RollupCommitment'
+        model = 'models.RollupCementedCommitment'
 
     id = fields.BigIntField(pk=True)
     inbox_level = fields.IntField(index=True)
-    first_level = fields.IntField()
-    first_time = fields.DatetimeField()
-    # last_level = fields.IntField()
-    # last_time = fields.DatetimeField()
     state = fields.CharField(max_length=54)
     hash = fields.CharField(max_length=54, index=True)
-    status = fields.CharField(max_length=16)
 
     outbox_messages: fields.ReverseRelation['RollupOutboxMessage']
 
@@ -121,13 +118,13 @@ class RollupOutboxMessage(AbstractRollupMessage):
     message = fields.JSONField()
     proof = fields.TextField(null=True)
 
-    commitment: ForeignKeyFieldInstance[RollupCommitment] = fields.ForeignKeyField(
-        model_name=RollupCommitment.Meta.model,
+    commitment: ForeignKeyFieldInstance[RollupCementedCommitment] = fields.ForeignKeyField(
+        model_name=RollupCementedCommitment.Meta.model,
         source_field='commitment_id',
         to_field='id',
         null=True,
     )
-
+    cemented_at = fields.DatetimeField(index=True, null=True)
     l1_withdrawals: fields.ReverseRelation['TezosWithdrawOperation']
     l2_withdrawals: fields.ReverseRelation['EtherlinkWithdrawOperation']
 
@@ -319,7 +316,7 @@ class EtherlinkTokenHolder(Model):
     class Meta:
         table = 'l2_token_holder'
         model = 'models.TokenHolder'
-        maxsize = 2**20
+        maxsize = 2 ** 20
         unique_together = (
             'token',
             'holder',

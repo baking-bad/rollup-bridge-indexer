@@ -1,14 +1,3 @@
-from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
-from dipdup.models.tezos_tzkt import TzktTransaction
-from eth_abi import decode
-from pytezos.michelson.forge import forge_address
-from pytezos.michelson.forge import forge_micheline
-from pytezos.michelson.forge import unforge_micheline
-from pytezos.michelson.micheline import micheline_value_to_python_object
-from web3.main import Web3
-
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.handlers.rollup_message import InboxMessageService
 from bridge_indexer.handlers.ticket import TicketService

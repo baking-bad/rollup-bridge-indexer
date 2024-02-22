@@ -69,14 +69,30 @@ class InboxMessageService:
 
 
 class OutboxMessageService:
+    @staticmethod
+    def _estimate_outbox_message_cemented_level(outbox_level: int, lcc_level: int, commitment_period: int, challenge_window: int):
+        return outbox_level + (lcc_level - outbox_level) % commitment_period + challenge_window + (
+            commitment_period - challenge_window % commitment_period) % commitment_period
+
     @classmethod
     async def _fetch_outbox(cls, outbox_level: int, ctx: DipDupContext):
         datasource = ctx.get_http_datasource('rollup_node')
+        tzkt = ctx.get_tzkt_datasource('tzkt')
+
         for message_data in await datasource.request('GET', f'global/block/{outbox_level}/outbox/{outbox_level}/messages'):
+            outbox_level = message_data['outbox_level']
+            created_at = await tzkt.request('GET', f'v1/blocks/{outbox_level}/timestamp')
+
+            lcc = await RollupCementedCommitment.filter(inbox_level__lt=outbox_level).order_by('-inbox_level').first()
+            cemented_level = cls._estimate_outbox_message_cemented_level(outbox_level, lcc.inbox_level, 20, 40)
+            cemented_at = await tzkt.request('GET', f'v1/blocks/{cemented_level}/timestamp')
+
             yield RollupOutboxMessage(
                 level=message_data['outbox_level'],
                 index=message_data['message_index'],
                 message=message_data['message'],
+                created_at=created_at,
+                cemented_at=cemented_at,
             )
 
     @classmethod
@@ -97,7 +113,7 @@ class OutboxMessageService:
     async def update_proof(cls, ctx: DipDupContext):
         datasource = ctx.get_http_datasource('rollup_node')
 
-        sync_level = ctx.datasources['tzkt']._subscriptions._subscriptions[None]
+        sync_level = await ctx.get_tzkt_datasource('tzkt').get_head_block()
         async for outbox_message in RollupOutboxMessage.filter(
             l1_withdrawals__isnull=True,
             l2_withdrawals__isnull=False,
@@ -106,7 +122,7 @@ class OutboxMessageService:
                 # todo: mark expired transaction with terminal status "failed"
                 continue
 
-            if await RollupCommitment.filter(inbox_level__gte=outbox_message.level).count() == 0:
+            if await RollupCementedCommitment.filter(inbox_level__gte=outbox_message.level).count() == 0:
                 continue
 
             proof_data = await datasource.request(
@@ -115,6 +131,15 @@ class OutboxMessageService:
             )
 
             outbox_message.proof = proof_data['proof']
-            outbox_message.commitment = await RollupCommitment.get_or_none(hash=proof_data['commitment'])
-
+            commitment = await RollupCementedCommitment.get(hash=proof_data['commitment'])
+            outbox_message.commitment = commitment
+            outbox_message.updated_at = commitment.created_at
             await outbox_message.save()
+
+            bridge_withdraw_operation = await BridgeWithdrawOperation.get(l2_transaction__outbox_message=outbox_message)
+            bridge_withdraw_operation.updated_at = commitment.created_at
+            await bridge_withdraw_operation.save()
+
+            bridge_operation = await BridgeOperation.get(id=bridge_withdraw_operation.id)
+            bridge_operation.updated_at = commitment.created_at
+            await bridge_operation.save()
