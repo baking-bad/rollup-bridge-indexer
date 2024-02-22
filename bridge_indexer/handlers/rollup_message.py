@@ -114,12 +114,12 @@ class OutboxMessageService:
     async def update_proof(cls, ctx: DipDupContext):
         datasource = ctx.get_http_datasource('rollup_node')
 
-        sync_level = await ctx.get_tzkt_datasource('tzkt').get_head_block()
+        head_data = await ctx.get_tzkt_datasource('tzkt').get_head_block()
         async for outbox_message in RollupOutboxMessage.filter(
             l1_withdrawals__isnull=True,
             l2_withdrawals__isnull=False,
         ):
-            if sync_level - outbox_message.level > 80640:  # todo: avoid magic numbers
+            if head_data.level - outbox_message.level > 80640:  # todo: avoid magic numbers
                 # todo: mark expired transaction with terminal status "failed"
                 continue
 
