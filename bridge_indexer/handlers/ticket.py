@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from eth_abi import decode
 from pytezos import forge_micheline
 from pytezos import unforge_micheline
@@ -5,43 +7,45 @@ from pytezos.michelson.forge import forge_address
 from pytezos.michelson.micheline import micheline_value_to_python_object
 from web3 import Web3
 
+if TYPE_CHECKING:
+    from dipdup.datasources.tezos_tzkt import TzktDatasource
+    from dipdup.datasources.tzip_metadata import TzipMetadataDatasource
+    from bridge_indexer.handlers.service_container import BridgeConstantStorage
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
 from bridge_indexer.types.rollup.tezos_parameters.default import Data as TicketContent
-from dipdup.context import DipDupContext
 
 
 class TicketService:
-    native_ticketer = 'KT1Q6aNZ9aGro4DvBKwhKvVdia2UmVGsS9zE'
+    def __init__(self, tzkt: 'TzktDatasource', metadata: 'TzipMetadataDatasource', bridge: 'BridgeConstantStorage'):
+        self._tzkt_client: TzktDatasource = tzkt
+        self._metadata_client: TzipMetadataDatasource = metadata
+        self._bridge: BridgeConstantStorage = bridge
 
-    @classmethod
-    async def register_fa_tickets(cls, ctx: DipDupContext):
-        rollup = ctx.config.get_tezos_contract('tezos_smart_rollup').address
-        for ticket_data in await ctx.get_tzkt_datasource('tzkt').request(
-            'GET', f'v1/tickets/balances?account={rollup}&ticket.ticketer.ne={cls.native_ticketer}'
+    async def register_fa_tickets(self):
+        rollup = self._bridge.smart_rollup_address
+        for ticket_data in await self._tzkt_client.request(
+            'GET', f'v1/tickets/balances?account={rollup}&ticket.ticketer.ne={self._bridge.native_ticketer}'
         ):
-            await cls.fetch_ticket(
+            await self.fetch_ticket(
                 ticket_data['ticket']['ticketer']['address'],
                 TicketContent.parse_obj(ticket_data['ticket']['content']),
-                ctx,
             )
 
-    @classmethod
-    async def fetch_ticket(cls, ticketer_address, ticket_content: TicketContent, ctx: DipDupContext):
-        ticket_hash = cls.get_ticket_hash(ticketer_address, ticket_content)
+    async def fetch_ticket(self, ticketer_address, ticket_content: TicketContent):
+        ticket_hash = self.get_ticket_hash(ticketer_address, ticket_content)
 
         ticket = await TezosTicket.get_or_none(pk=ticket_hash)
         if ticket:
             return ticket
 
-        ticket_metadata = cls.get_ticket_metadata(ticket_content)
+        ticket_metadata = self.get_ticket_metadata(ticket_content)
 
         asset_id = '_'.join([ticket_metadata['contract_address'], str(ticket_metadata['token_id'])])
         token = await TezosToken.get_or_none(pk=asset_id)
         if not token:
-            metadata_datasource = ctx.get_metadata_datasource('metadata')
-            token_metadata = await metadata_datasource.get_token_metadata(
+            token_metadata = await self._metadata_client.get_token_metadata(
                 ticket_metadata['contract_address'],
                 int(ticket_metadata['token_id']),
             )
@@ -66,14 +70,13 @@ class TicketService:
 
         return ticket
 
-    @classmethod
-    async def register_native_ticket(cls, ctx: DipDupContext):
-        for ticket_data in await ctx.get_tzkt_datasource('tzkt').request('GET', f'v1/tickets?ticketer={cls.native_ticketer}'):
-            ticket_hash = cls.get_ticket_hash(cls.native_ticketer, TicketContent.parse_obj(ticket_data['content']))
+    async def register_native_ticket(self):
+        for ticket_data in await self._tzkt_client.request('GET', f'v1/tickets?ticketer={self._bridge.native_ticketer}'):
+            ticket_hash = self.get_ticket_hash(self._bridge.native_ticketer, TicketContent.parse_obj(ticket_data['content']))
             xtz = await TezosToken.get(pk='xtz')
             ticket = await TezosTicket.create(
                 hash=ticket_hash,
-                ticketer_address=cls.native_ticketer,
+                ticketer_address=self._bridge.native_ticketer,
                 ticket_id=ticket_data['content']['nat'],
                 token=xtz,
             )
@@ -85,9 +88,9 @@ class TicketService:
                 ticket=ticket,
             )
             return ticket
+        raise ValueError('No Native Ticketer found')
 
-    @classmethod
-    def get_ticket_metadata(cls, ticket_content: TicketContent) -> dict:
+    def get_ticket_metadata(self, ticket_content: TicketContent) -> dict:
         ticket_metadata_forged = bytes.fromhex(ticket_content.bytes)
         ticket_metadata_map = unforge_micheline(ticket_metadata_forged[1:])
         ticket_metadata = {}
@@ -100,8 +103,7 @@ class TicketService:
             ticket_metadata['token_id'] = 0
         return ticket_metadata
 
-    @classmethod
-    def get_ticket_hash(cls, ticketer_address, ticket_content: TicketContent) -> int:
+    def get_ticket_hash(self, ticketer_address, ticket_content: TicketContent) -> int:
         if ticket_content.bytes:
             bytes_micheline = {
                 'prim': 'Some',

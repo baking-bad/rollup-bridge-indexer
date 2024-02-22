@@ -23,7 +23,7 @@ async def on_rollup_call(
         ctx.logger.warning('Invalid routing_info', parameter)
         return
 
-    ticket = await TicketService.fetch_ticket(parameter.ticket.address, parameter.ticket.data, ctx)
+    ticket = await ctx.container.ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.data)
 
     inbox_message = await InboxMessageService.match_transaction_with_inbox(default.data, ctx)
 
