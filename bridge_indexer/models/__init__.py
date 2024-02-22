@@ -56,6 +56,8 @@ class EtherlinkToken(Model):
 
     id = fields.CharField(max_length=40, pk=True)
     name = fields.TextField(null=True)
+    symbol = fields.TextField(null=True)
+    decimals = fields.IntField(default=0)
     ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
         source_field='ticket_hash',
