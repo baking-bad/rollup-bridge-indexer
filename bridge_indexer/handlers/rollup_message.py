@@ -89,7 +89,12 @@ class OutboxMessageService:
             created_at = await self._tzkt.request('GET', f'v1/blocks/{outbox_level}/timestamp')
 
             lcc = await RollupCementedCommitment.filter(inbox_level__lt=outbox_level).order_by('-inbox_level').first()
-            cemented_level = self._estimate_outbox_message_cemented_level(outbox_level, lcc.inbox_level, 20, 40)
+            cemented_level = self._estimate_outbox_message_cemented_level(
+                outbox_level,
+                lcc.inbox_level,
+                self._protocol.smart_rollup_commitment_period,
+                self._protocol.smart_rollup_challenge_window,
+            )
             cemented_at = await self._tzkt.request('GET', f'v1/blocks/{cemented_level}/timestamp')
 
             yield RollupOutboxMessage(
@@ -118,7 +123,7 @@ class OutboxMessageService:
             l1_withdrawals__isnull=True,
             l2_withdrawals__isnull=False,
         ):
-            if head_data.level - outbox_message.level > 80640:  # todo: avoid magic numbers
+            if head_data.level - outbox_message.level > self._protocol.smart_rollup_timeout_period:
                 # todo: mark expired transaction with terminal status "failed"
                 continue
 
