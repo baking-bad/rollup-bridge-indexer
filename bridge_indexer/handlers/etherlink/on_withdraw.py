@@ -1,3 +1,4 @@
+from bridge_indexer.handlers.etherlink.on_deposit import setup_handler_logger
 from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
@@ -15,27 +16,32 @@ async def on_withdraw(
     ctx: HandlerContext,
     event: SubsquidEvent[Withdrawal],
 ) -> None:
-    token_contract = event.payload.ticket_owner[-40:]
+    setup_handler_logger(ctx)
+    ctx.logger.info(f'Etherlink Withdraw Event found: {event.data.transaction_hash}')
+    ctx.logger.debug(f'https://blockscout.dipdup.net/tx/0x{event.data.transaction_hash}')
+    token_contract = event.payload.ticket_owner.removeprefix('0x')
     etherlink_token = await EtherlinkToken.get_or_none(id=token_contract)
     if not etherlink_token:
         if event.payload.sender == event.payload.ticket_owner:
-            ctx.logger.info('Deposit revert found', event)
+            ctx.logger.warning('Uncommon Withdraw Routing Info: `ticket_owner == sender`. Mark Operation as `Deposit Revert`.')
         else:
-            ctx.logger.warning('Withdraw with not whitelisted erc_proxy contract', event)
+            ctx.logger.warning(
+                'Incorrect Withdraw Routing Info: Specified `erc_proxy` contract not whitelisted: {}. Operation ignored.',
+                token_contract,
+            )
             return
-
 
     try:
         outbox_message = await OutboxMessageService.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id, ctx)
     except DoesNotExist:
         ctx.logger.error(
-            'Failed to fetch Outbox Message with level %d and index %d.',
+            'Failed to fetch Outbox Message with level %d and index %d. Operation ignored.',
             event.payload.outbox_level,
             event.payload.outbox_msg_id,
         )
         return
 
-    await EtherlinkWithdrawOperation.create(
+    withdrawal = await EtherlinkWithdrawOperation.create(
         timestamp=event.data.timestamp,
         level=event.data.level,
         address=event.data.address[-40:],
@@ -50,7 +56,7 @@ async def on_withdraw(
         outbox_message=outbox_message,
     )
 
-    ctx.logger.info(f'Withdraw Event registered: {event}')
+    ctx.logger.info(f'Etherlink Withdraw Event registered: {withdrawal.id}')
 
     sync_level = ctx.datasources['etherlink_node']._subscriptions._subscriptions[None]
     status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)

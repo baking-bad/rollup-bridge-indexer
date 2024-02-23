@@ -12,16 +12,16 @@ class BridgeConstantStorage(BaseModel):
 
 
 class ProtocolConstantStorage(BaseModel):
-    smart_rollup_commitment_period: int  # 20
-    smart_rollup_challenge_window: int  # 40
-    smart_rollup_timeout_period: int  # 500
+    smart_rollup_commitment_period: int
+    smart_rollup_challenge_window: int
+    smart_rollup_timeout_period: int
 
 
 class ServiceContainerDTO(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    # protocol: ProtocolConstantStorage
+    protocol: ProtocolConstantStorage
     bridge: BridgeConstantStorage
     ticket_service: TicketService
     # inbox_message_service: InboxMessageService
@@ -46,6 +46,11 @@ class ServiceContainer:
             smart_rollup_address=ctx.config.get_tezos_contract('tezos_smart_rollup').address,
             native_ticketer='KT1Q6aNZ9aGro4DvBKwhKvVdia2UmVGsS9zE',
         )
+        protocol = ProtocolConstantStorage(
+            smart_rollup_commitment_period=20,
+            smart_rollup_challenge_window=40,
+            smart_rollup_timeout_period=500,
+        )
 
         ticket_service = TicketService(tzkt, metadata, bridge)
 
@@ -54,5 +59,6 @@ class ServiceContainer:
             ticket_service=ticket_service,
             tzkt=tzkt,
             metadata=metadata,
+            protocol=protocol,
         )
         DipDupContext.container = container
