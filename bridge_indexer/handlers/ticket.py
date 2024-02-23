@@ -19,13 +19,13 @@ from bridge_indexer.types.rollup.tezos_parameters.default import Data as TicketC
 
 class TicketService:
     def __init__(self, tzkt: 'TzktDatasource', metadata: 'TzipMetadataDatasource', bridge: 'BridgeConstantStorage'):
-        self._tzkt_client: TzktDatasource = tzkt
+        self._tzkt: TzktDatasource = tzkt
         self._metadata_client: TzipMetadataDatasource = metadata
         self._bridge: BridgeConstantStorage = bridge
 
     async def register_fa_tickets(self):
         rollup = self._bridge.smart_rollup_address
-        for ticket_data in await self._tzkt_client.request(
+        for ticket_data in await self._tzkt.request(
             'GET', f'v1/tickets/balances?account={rollup}&ticket.ticketer.ne={self._bridge.native_ticketer}'
         ):
             await self.fetch_ticket(
@@ -71,7 +71,7 @@ class TicketService:
         return ticket
 
     async def register_native_ticket(self):
-        for ticket_data in await self._tzkt_client.request('GET', f'v1/tickets?ticketer={self._bridge.native_ticketer}'):
+        for ticket_data in await self._tzkt.request('GET', f'v1/tickets?ticketer={self._bridge.native_ticketer}'):
             ticket_hash = self.get_ticket_hash(self._bridge.native_ticketer, TicketContent.parse_obj(ticket_data['content']))
             xtz = await TezosToken.get(pk='xtz')
             ticket = await TezosTicket.create(

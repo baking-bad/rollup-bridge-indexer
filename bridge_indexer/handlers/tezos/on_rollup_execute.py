@@ -38,10 +38,9 @@ async def on_rollup_execute(
     output_proof, _ = decoder.unpack()
 
     try:
-        outbox_message = await OutboxMessageService.find_by_index(
+        outbox_message = await ctx.container.outbox_message_service.find_by_index(
             output_proof['output_proof_output']['outbox_level'],
             output_proof['output_proof_output']['message_index'],
-            ctx,
         )
     except DoesNotExist:
         ctx.logger.error(

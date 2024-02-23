@@ -27,12 +27,12 @@ async def on_withdraw(
         else:
             ctx.logger.warning(
                 'Incorrect Withdraw Routing Info: Specified `erc_proxy` contract not whitelisted: {}. Operation ignored.',
-                token_contract,
+                token_contract
             )
             return
 
     try:
-        outbox_message = await OutboxMessageService.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id, ctx)
+        outbox_message = await ctx.container.outbox_message_service.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id)
     except DoesNotExist:
         ctx.logger.error(
             'Failed to fetch Outbox Message with level %d and index %d. Operation ignored.',

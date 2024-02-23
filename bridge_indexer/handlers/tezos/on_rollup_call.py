@@ -25,7 +25,7 @@ async def on_rollup_call(
 
     ticket = await ctx.container.ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.data)
 
-    inbox_message = await InboxMessageService.match_transaction_with_inbox(default.data, ctx)
+    inbox_message = await ctx.container.inbox_message_service.match_transaction_with_inbox(default.data)
 
     await TezosDepositOperation.create(
         timestamp=default.data.timestamp,

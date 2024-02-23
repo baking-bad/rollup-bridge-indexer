@@ -1,34 +1,41 @@
+from typing import TYPE_CHECKING
+
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeWithdrawOperation
 from bridge_indexer.models import RollupCementedCommitment
 from bridge_indexer.models import RollupInboxMessage
 from bridge_indexer.models import RollupOutboxMessage
-from dipdup.context import DipDupContext
+from dipdup.datasources.http import HttpDatasource
+from dipdup.datasources.tezos_tzkt import TzktDatasource
 from dipdup.models.tezos_tzkt import TzktOperationData
+
+if TYPE_CHECKING:
+    from bridge_indexer.handlers.service_container import BridgeConstantStorage
+    from bridge_indexer.handlers.service_container import ProtocolConstantStorage
 
 
 class InboxMessageService:
-    @classmethod
-    def _validate_message(cls, message_data: dict, ctx: DipDupContext) -> None:
+    def __init__(self, tzkt: TzktDatasource, bridge: 'BridgeConstantStorage'):
+        self._tzkt = tzkt
+        self._bridge = bridge
+
+    def _validate_message(self, message_data: dict) -> None:
         match message_data['type']:
             case 'transfer':
-                rollup = ctx.config.get_tezos_contract('tezos_smart_rollup')
-                if message_data['target']['address'] != rollup.address:
-                    raise TypeError
+                if message_data['target']['address'] != self._bridge.smart_rollup_address:
+                    raise TypeError('Message target must be Bridge Rollup address, not {}.', message_data['target']['address'])
 
             case 'external':
                 pass
             case _:
-                raise TypeError
+                raise TypeError('Unsupported Inbox Message Type: {}.', message_data['type'])
 
-    @classmethod
-    async def _fetch_inbox(cls, inbox_level: int, ctx: DipDupContext):
+    async def _fetch_inbox(self, inbox_level: int):
         index = -1
-        datasource = ctx.get_tzkt_datasource('tzkt')
-        for message_data in await datasource.request('GET', f'v1/smart_rollups/inbox?level={inbox_level}'):
+        for message_data in await self._tzkt.request('GET', f'v1/smart_rollups/inbox?level={inbox_level}'):
             index += 1
             try:
-                cls._validate_message(message_data, ctx)
+                self._validate_message(message_data)
                 yield RollupInboxMessage(
                     id=message_data['id'],
                     level=message_data['level'],
@@ -40,53 +47,50 @@ class InboxMessageService:
             except TypeError:
                 continue
 
-    @classmethod
-    async def _prepare_inbox(cls, ctx, inbox_level):
+    async def _prepare_inbox(self, inbox_level):
         if await RollupInboxMessage.filter(level=inbox_level).count() == 0:
             inbox: list[RollupInboxMessage] = []
-            async for inbox_message in cls._fetch_inbox(inbox_level, ctx):
+            async for inbox_message in self._fetch_inbox(inbox_level):
                 inbox.append(inbox_message)
             await RollupInboxMessage.bulk_create(inbox)
 
-    @classmethod
-    async def _read_inbox(cls, inbox_level: int, ctx: DipDupContext):
-        await cls._prepare_inbox(ctx, inbox_level)
+    async def _read_inbox(self, inbox_level: int):
+        await self._prepare_inbox(inbox_level)
         async for inbox_message in RollupInboxMessage.filter(level=inbox_level, l1_deposits__isnull=True).order_by('id'):
             yield inbox_message
 
-    @classmethod
-    async def match_transaction_with_inbox(cls, data: TzktOperationData, ctx: DipDupContext) -> RollupInboxMessage:
-        async for inbox_message in cls._read_inbox(data.level, ctx):
+    async def match_transaction_with_inbox(self, data: TzktOperationData) -> RollupInboxMessage:
+        async for inbox_message in self._read_inbox(data.level):
             if data.parameter_json == inbox_message.parameter:
                 return inbox_message
 
         raise TypeError('Transaction not matched')
 
-    @classmethod
-    async def find_by_index(cls, inbox_level: int, index: int, ctx: DipDupContext):
-        await cls._prepare_inbox(ctx, inbox_level)
+    async def find_by_index(self, inbox_level: int, index: int):
+        await self._prepare_inbox(inbox_level)
 
         return await RollupInboxMessage.get(level=inbox_level, index=index)
 
 
 class OutboxMessageService:
+    def __init__(self, tzkt: TzktDatasource, rollup_node: HttpDatasource, protocol: 'ProtocolConstantStorage'):
+        self._tzkt = tzkt
+        self._rollup_node = rollup_node
+        self._protocol = protocol
+
     @staticmethod
     def _estimate_outbox_message_cemented_level(outbox_level: int, lcc_level: int, commitment_period: int, challenge_window: int):
         return outbox_level + (lcc_level - outbox_level) % commitment_period + challenge_window + (
             commitment_period - challenge_window % commitment_period) % commitment_period
 
-    @classmethod
-    async def _fetch_outbox(cls, outbox_level: int, ctx: DipDupContext):
-        datasource = ctx.get_http_datasource('rollup_node')
-        tzkt = ctx.get_tzkt_datasource('tzkt')
-
-        for message_data in await datasource.request('GET', f'global/block/{outbox_level}/outbox/{outbox_level}/messages'):
+    async def _fetch_outbox(self, outbox_level: int):
+        for message_data in await self._rollup_node.request('GET', f'global/block/{outbox_level}/outbox/{outbox_level}/messages'):
             outbox_level = message_data['outbox_level']
-            created_at = await tzkt.request('GET', f'v1/blocks/{outbox_level}/timestamp')
+            created_at = await self._tzkt.request('GET', f'v1/blocks/{outbox_level}/timestamp')
 
             lcc = await RollupCementedCommitment.filter(inbox_level__lt=outbox_level).order_by('-inbox_level').first()
-            cemented_level = cls._estimate_outbox_message_cemented_level(outbox_level, lcc.inbox_level, 20, 40)
-            cemented_at = await tzkt.request('GET', f'v1/blocks/{cemented_level}/timestamp')
+            cemented_level = self._estimate_outbox_message_cemented_level(outbox_level, lcc.inbox_level, 20, 40)
+            cemented_at = await self._tzkt.request('GET', f'v1/blocks/{cemented_level}/timestamp')
 
             yield RollupOutboxMessage(
                 level=message_data['outbox_level'],
@@ -96,25 +100,20 @@ class OutboxMessageService:
                 cemented_at=cemented_at,
             )
 
-    @classmethod
-    async def _prepare_outbox(cls, outbox_level, ctx):
+    async def _prepare_outbox(self, outbox_level):
         if await RollupOutboxMessage.filter(level=outbox_level).count() == 0:
             outbox: list[RollupOutboxMessage] = []
-            async for outbox_message in cls._fetch_outbox(outbox_level, ctx):
+            async for outbox_message in self._fetch_outbox(outbox_level):
                 outbox.append(outbox_message)
             await RollupOutboxMessage.bulk_create(outbox)
 
-    @classmethod
-    async def find_by_index(cls, outbox_level: int, index: int, ctx: DipDupContext):
-        await cls._prepare_outbox(outbox_level, ctx)
+    async def find_by_index(self, outbox_level: int, index: int):
+        await self._prepare_outbox(outbox_level)
 
         return await RollupOutboxMessage.get(level=outbox_level, index=index)
 
-    @classmethod
-    async def update_proof(cls, ctx: DipDupContext):
-        datasource = ctx.get_http_datasource('rollup_node')
-
-        head_data = await ctx.get_tzkt_datasource('tzkt').get_head_block()
+    async def update_proof(self):
+        head_data = await self._tzkt.get_head_block()
         async for outbox_message in RollupOutboxMessage.filter(
             l1_withdrawals__isnull=True,
             l2_withdrawals__isnull=False,
@@ -126,7 +125,7 @@ class OutboxMessageService:
             if await RollupCementedCommitment.filter(inbox_level__gte=outbox_message.level).count() == 0:
                 continue
 
-            proof_data = await datasource.request(
+            proof_data = await self._rollup_node.request(
                 'GET',
                 f'global/block/head/helpers/proofs/outbox/{outbox_message.level}/messages?index={outbox_message.index}',
             )

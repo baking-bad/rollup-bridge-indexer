@@ -34,4 +34,4 @@ async def on_cement_commitment(
     if not pending_count:
         return
 
-    await OutboxMessageService.update_proof(ctx)
+    await ctx.container.outbox_message_service.update_proof()

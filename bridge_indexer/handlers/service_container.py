@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from bridge_indexer.handlers.rollup_message import InboxMessageService
+from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.handlers.ticket import TicketService
 from dipdup.context import DipDupContext
 from dipdup.datasources.tezos_tzkt import TzktDatasource
@@ -24,8 +26,8 @@ class ServiceContainerDTO(BaseModel):
     protocol: ProtocolConstantStorage
     bridge: BridgeConstantStorage
     ticket_service: TicketService
-    # inbox_message_service: InboxMessageService
-    # outbox_message_service: OutboxMessageService
+    inbox_message_service: InboxMessageService
+    outbox_message_service: OutboxMessageService
     tzkt: TzktDatasource
     metadata: TzipMetadataDatasource
 
@@ -40,6 +42,7 @@ class ServiceContainer:
     @staticmethod
     def register(ctx):
         tzkt = ctx.get_tzkt_datasource('tzkt')
+        rollup_node = ctx.get_http_datasource('rollup_node')
         metadata = ctx.get_metadata_datasource('metadata')
 
         bridge = BridgeConstantStorage(
@@ -53,10 +56,21 @@ class ServiceContainer:
         )
 
         ticket_service = TicketService(tzkt, metadata, bridge)
+        inbox_message_service = InboxMessageService(
+            tzkt=tzkt,
+            bridge=bridge,
+        )
+        outbox_message_service = OutboxMessageService(
+            tzkt=tzkt,
+            rollup_node=rollup_node,
+            protocol=protocol,
+        )
 
         container = ServiceContainerDTO(
             bridge=bridge,
             ticket_service=ticket_service,
+            inbox_message_service=inbox_message_service,
+            outbox_message_service=outbox_message_service,
             tzkt=tzkt,
             metadata=metadata,
             protocol=protocol,

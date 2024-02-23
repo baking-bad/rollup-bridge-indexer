@@ -10,4 +10,4 @@ async def on_synchronized(
     await ctx.execute_sql('on_synchronized')
 
     await BridgeMatcher.check_pending_transactions()
-    await OutboxMessageService.update_proof(ctx)
+    await ctx.container.outbox_message_service.update_proof()

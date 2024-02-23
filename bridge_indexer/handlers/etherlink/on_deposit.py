@@ -54,7 +54,7 @@ async def on_deposit(
             ctx.logger.warning('Incorrect Deposit Routing Info: '+exception.args[0].format(*exception.args[1:])+'. Operation ignored.')
             return
 
-    inbox_message = await InboxMessageService.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id, ctx)
+    inbox_message = await ctx.container.inbox_message_service.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id)
 
     deposit = await EtherlinkDepositOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=timezone.utc),
