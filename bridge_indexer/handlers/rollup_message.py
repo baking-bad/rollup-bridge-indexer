@@ -26,7 +26,7 @@ class InboxMessageService:
                     raise TypeError('Message target must be Bridge Rollup address, not {}.', message_data['target']['address'])
 
             case 'external':
-                pass
+                raise NotImplementedError
             case _:
                 raise TypeError('Unsupported Inbox Message Type: {}.', message_data['type'])
 
@@ -44,7 +44,7 @@ class InboxMessageService:
                     parameter=message_data.get('parameter'),
                     payload=message_data.get('payload'),
                 )
-            except TypeError:
+            except (TypeError, NotImplementedError):
                 continue
 
     async def _prepare_inbox(self, inbox_level):
