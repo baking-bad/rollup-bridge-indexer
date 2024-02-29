@@ -1,17 +1,15 @@
 from datetime import datetime
 from datetime import timezone
 
-from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
-from dipdup.models.evm_subsquid import SubsquidEvent
-
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
-from bridge_indexer.handlers.rollup_message import InboxMessageService
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.types.kernel.evm_events.deposit import Deposit
+from dipdup.context import HandlerContext
+from dipdup.models import Index
+from dipdup.models import IndexStatus
+from dipdup.models.evm_subsquid import SubsquidEvent
 
 
 async def register_etherlink_token(token_contract: str, ticket_hash: int) -> EtherlinkToken:
@@ -20,21 +18,26 @@ async def register_etherlink_token(token_contract: str, ticket_hash: int) -> Eth
     if etherlink_token:
         return etherlink_token
 
+    await _validate_ticket(ticket_hash)
+    if await EtherlinkToken.filter(ticket_id=ticket_hash).exclude(id=token_contract).count():
+        raise ValueError('Specified `erc_proxy` contract not whitelisted: {}', token_contract)
+
+    etherlink_token = await EtherlinkToken.create(
+        id=token_contract,
+        ticket_id=ticket_hash,
+    )
+    return etherlink_token
+
+
+async def _validate_ticket(ticket_hash):
     tezos_ticket = await TezosTicket.get_or_none(pk=ticket_hash)
-    if tezos_ticket:
-        if await EtherlinkToken.filter(ticket_id=ticket_hash).exclude(id=token_contract).count():
-            raise ValueError('Specified `erc_proxy` contract not whitelisted: {}', token_contract)
+    if tezos_ticket is None:
+        raise ValueError('Ticket with given `ticket_hash` not found: {}', ticket_hash)
 
-        etherlink_token = await EtherlinkToken.create(
-            id=token_contract,
-            ticket_id=ticket_hash,
-        )
-        return etherlink_token
-
-    raise ValueError('Ticket with given `ticket_hash` not found: {}', ticket_hash)
 
 def setup_handler_logger(ctx):
     ctx.logger.fmt = 'ctx' + str(id(ctx.transactions.in_transaction)) + ': {}'
+
 
 async def on_deposit(
     ctx: HandlerContext,
@@ -43,16 +46,19 @@ async def on_deposit(
     setup_handler_logger(ctx)
     ctx.logger.info(f'Etherlink Deposit Event found: {event.data.transaction_hash}')
     ctx.logger.debug(f'https://blockscout.dipdup.net/tx/0x{event.data.transaction_hash}')
-    if event.payload.ticket_owner == event.payload.receiver:
-        ctx.logger.warning('Incorrect Deposit Routing Info: `ticket_owner == receiver`. Mark Operation as `Revertable Deposit`.')
-        etherlink_token = None
-    else:
-        token_contract = event.payload.ticket_owner.removeprefix('0x')
-        try:
+    try:
+        await _validate_ticket(event.payload.ticket_hash)
+
+        if event.payload.ticket_owner == event.payload.receiver:
+            ctx.logger.warning('Incorrect Deposit Routing Info: `ticket_owner == receiver`. Mark Operation as `Revertable Deposit`.')
+            etherlink_token = None
+        else:
+            token_contract = event.payload.ticket_owner.removeprefix('0x')
             etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
-        except ValueError as exception:
-            ctx.logger.warning('Incorrect Deposit Routing Info: '+exception.args[0].format(*exception.args[1:])+'. Operation ignored.')
-            return
+
+    except ValueError as exception:
+        ctx.logger.warning('Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Operation ignored.')
+        return
 
     inbox_message = await ctx.container.inbox_message_service.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id)
 
