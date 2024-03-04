@@ -46,3 +46,4 @@ async def on_rollup_call(
     if status == IndexStatus.realtime:
         await BridgeMatcher.check_pending_tezos_deposits()
         await BridgeMatcher.check_pending_etherlink_deposits()
+        await BridgeMatcher.check_pending_etherlink_xtz_deposits()
