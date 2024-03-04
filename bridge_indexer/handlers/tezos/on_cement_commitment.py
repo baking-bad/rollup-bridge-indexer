@@ -27,6 +27,8 @@ async def on_cement_commitment(
         ctx.logger.debug('Skip syncing message with level %d', cement.data.level)
         return
 
+    ctx.logger.info(f'Cemented Commitment registered: {cement.commitment.hash}')
+
     await BridgeMatcher.check_pending_transactions()
 
     pending_count = await RollupOutboxMessage.filter(
@@ -37,4 +39,5 @@ async def on_cement_commitment(
     if not pending_count:
         return
 
+    ctx.logger.info(f'Updating Proof for {pending_count} Outbox Messages...')
     await ctx.container.outbox_message_service.update_proof()

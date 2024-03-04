@@ -14,11 +14,7 @@ from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 
 
-async def on_xtz_deposit(
-    ctx: HandlerContext,
-    transaction: SubsquidTransactionData | EvmNodeTransactionData,
-) -> None:
-    setup_handler_logger(ctx)
+async def _validate_xtz_transaction(transaction: SubsquidTransactionData | EvmNodeTransactionData):
     validators = [
         transaction.value > 0,
         transaction.from_ == '0x0000000000000000000000000000000000000000',
@@ -28,12 +24,26 @@ async def on_xtz_deposit(
         transaction.data is None,
     ]
     if not all(validators):
+        raise ValueError('Transaction validation error: {}', transaction.hash)
+
+async def on_xtz_deposit(
+    ctx: HandlerContext,
+    transaction: SubsquidTransactionData | EvmNodeTransactionData,
+) -> None:
+    setup_handler_logger(ctx)
+    ctx.logger.info(f'Etherlink XTZ Deposit Transaction found: {transaction.hash}')
+    ctx.logger.debug(f'https://blockscout.dipdup.net/tx/0x{transaction.hash}')
+
+    try:
+        await _validate_xtz_transaction(transaction)
+    except ValueError as exception:
+        ctx.logger.warning('Incorrect XTZ Deposit. ' + exception.args[0].format(*exception.args[1:]) + '. Operation ignored.')
         return
 
     etherlink_token = await EtherlinkToken.get(id='xtz')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
 
-    await EtherlinkDepositOperation.create(
+    deposit = await EtherlinkDepositOperation.create(
         timestamp=datetime.fromtimestamp(transaction.timestamp, tz=timezone.utc),
         level=transaction.level,
         address=transaction.from_[-40:],
@@ -47,7 +57,7 @@ async def on_xtz_deposit(
         inbox_message=None,
     )
 
-    ctx.logger.info(f'Deposit Transaction registered: {transaction}')
+    ctx.logger.info(f'XTZ Deposit Transaction registered: {deposit.id}')
 
     sync_level = ctx.datasources['etherlink_node']._subscriptions._subscriptions[None]
     status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)

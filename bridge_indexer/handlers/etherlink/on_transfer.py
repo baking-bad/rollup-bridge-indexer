@@ -38,6 +38,9 @@ async def on_transfer(
     event: SubsquidEvent[Transfer],
 ) -> None:
     setup_handler_logger(ctx)
+    ctx.logger.info(f'Etherlink Token Transfer Event found: {event.data.transaction_hash}')
+    ctx.logger.debug(f'https://blockscout.dipdup.net/tx/0x{event.data.transaction_hash}')
+
     amount = event.payload.value
     if not amount:
         return
@@ -54,4 +57,4 @@ async def on_transfer(
         balance_update=amount,
         level=event.data.level,
     )
-    ctx.logger.info(f'Token Transfer registered: {event}')
+    ctx.logger.info(f'Token Holders Balance updated by {amount}.')

@@ -28,7 +28,7 @@ async def register_etherlink_token(token_contract: str, ticket_hash: int) -> Eth
 
     await _validate_ticket(ticket_hash)
     if await EtherlinkToken.filter(ticket_id=ticket_hash).exclude(id=token_contract).count():
-        raise ValueError('Specified `erc_proxy` contract not whitelisted: {}', token_contract)
+        raise ValueError('Specified `proxy` contract address not whitelisted: {}', token_contract)
 
     etherlink_token = await EtherlinkToken.create(
         id=token_contract,

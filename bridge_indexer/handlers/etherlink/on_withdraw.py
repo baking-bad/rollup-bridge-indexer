@@ -25,7 +25,7 @@ async def on_withdraw(
             ctx.logger.warning('Uncommon Withdraw Routing Info: `ticket_owner == sender`. Mark Operation as `Deposit Revert`.')
         else:
             ctx.logger.warning(
-                'Incorrect Withdraw Routing Info: Specified `erc_proxy` contract not whitelisted: {}. Operation ignored.', token_contract
+                f'Incorrect Withdraw Routing Info: Specified `proxy` contract address not whitelisted: {token_contract}. Operation ignored.'
             )
             return
 
