@@ -43,7 +43,11 @@ class BridgeMatcher:
 
     @staticmethod
     async def check_pending_etherlink_deposits():
-        qs = EtherlinkDepositOperation.filter(bridge_deposits__isnull=True).order_by('level', 'transaction_index')
+        qs = (
+            EtherlinkDepositOperation.filter(bridge_deposits__isnull=True)
+            .prefetch_related('l2_token')
+            .order_by('level', 'transaction_index')
+        )
         async for l2_deposit in qs:
             bridge_deposit = (
                 await BridgeDepositOperation.filter(
