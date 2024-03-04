@@ -5,8 +5,8 @@ from dipdup.models.tezos_tzkt import TzktSmartRollupExecute
 from dipdup.models.tezos_tzkt import TzktTransaction
 from tortoise.exceptions import DoesNotExist
 
+from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
-from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.models import TezosWithdrawOperation
 from bridge_indexer.types.output_proof.output_proof import OutputProofData
 from bridge_indexer.types.ticketer.tezos_parameters.withdraw import WithdrawParameter
@@ -18,6 +18,7 @@ async def on_rollup_execute(
     execute: TzktSmartRollupExecute,
     withdraw: TzktTransaction[WithdrawParameter, TicketerStorage],
 ) -> None:
+    setup_handler_logger(ctx)
     ctx.logger.info(
         'Smart rollup %s has been called by contract %s with commitment %s',
         execute.data.target_address,

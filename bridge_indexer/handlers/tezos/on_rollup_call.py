@@ -1,27 +1,24 @@
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
-from bridge_indexer.handlers.rollup_message import InboxMessageService
-from bridge_indexer.handlers.ticket import TicketService
-from bridge_indexer.models import TezosDepositOperation
-from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
-from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
 from dipdup.models.tezos_tzkt import TzktTransaction
+
+from bridge_indexer.handlers import setup_handler_logger
+from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.models import TezosDepositOperation
+from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
+from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
 
 async def on_rollup_call(
     ctx: HandlerContext,
     default: TzktTransaction[DefaultParameter, RollupStorage],
 ) -> None:
+    setup_handler_logger(ctx)
     parameter = default.parameter.__root__.LL
 
     routing_info = bytes.fromhex(parameter.bytes)
     l2_receiver = routing_info[:20]
-
-    if len(routing_info) not in [20, 40]:
-        ctx.logger.warning('Invalid routing_info', parameter)
-        return
 
     ticket = await ctx.container.ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.data)
 

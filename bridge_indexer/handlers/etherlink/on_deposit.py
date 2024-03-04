@@ -1,15 +1,23 @@
 from datetime import datetime
 from datetime import timezone
 
+from dipdup.context import HandlerContext
+from dipdup.models import Index
+from dipdup.models import IndexStatus
+from dipdup.models.evm_subsquid import SubsquidEvent
+
+from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.types.kernel.evm_events.deposit import Deposit
-from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
-from dipdup.models.evm_subsquid import SubsquidEvent
+
+
+async def _validate_ticket(ticket_hash):
+    tezos_ticket = await TezosTicket.get_or_none(pk=ticket_hash)
+    if tezos_ticket is None:
+        raise ValueError('Ticket with given `ticket_hash` not found: {}', ticket_hash)
 
 
 async def register_etherlink_token(token_contract: str, ticket_hash: int) -> EtherlinkToken:
@@ -27,16 +35,6 @@ async def register_etherlink_token(token_contract: str, ticket_hash: int) -> Eth
         ticket_id=ticket_hash,
     )
     return etherlink_token
-
-
-async def _validate_ticket(ticket_hash):
-    tezos_ticket = await TezosTicket.get_or_none(pk=ticket_hash)
-    if tezos_ticket is None:
-        raise ValueError('Ticket with given `ticket_hash` not found: {}', ticket_hash)
-
-
-def setup_handler_logger(ctx):
-    ctx.logger.fmt = 'ctx' + str(id(ctx.transactions.in_transaction)) + ': {}'
 
 
 async def on_deposit(

@@ -1,5 +1,6 @@
-from bridge_indexer.handlers.service_container import ServiceContainer
 from dipdup.context import HookContext
+
+from bridge_indexer.handlers.service_container import ServiceContainer
 
 
 async def on_reindex(

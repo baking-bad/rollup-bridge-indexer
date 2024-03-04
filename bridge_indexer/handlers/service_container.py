@@ -1,11 +1,11 @@
+from dipdup.context import DipDupContext
+from dipdup.datasources.tezos_tzkt import TzktDatasource
+from dipdup.datasources.tzip_metadata import TzipMetadataDatasource
 from pydantic import BaseModel
 
 from bridge_indexer.handlers.rollup_message import InboxMessageService
 from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.handlers.ticket import TicketService
-from dipdup.context import DipDupContext
-from dipdup.datasources.tezos_tzkt import TzktDatasource
-from dipdup.datasources.tzip_metadata import TzipMetadataDatasource
 
 
 class BridgeConstantStorage(BaseModel):

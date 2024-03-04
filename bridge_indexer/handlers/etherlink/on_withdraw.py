@@ -1,12 +1,11 @@
-from bridge_indexer.handlers.etherlink.on_deposit import setup_handler_logger
 from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
 from dipdup.models.evm_subsquid import SubsquidEvent
 from tortoise.exceptions import DoesNotExist
 
+from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
-from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawOperation
 from bridge_indexer.types.kernel.evm_events.withdrawal import Withdrawal
@@ -26,8 +25,7 @@ async def on_withdraw(
             ctx.logger.warning('Uncommon Withdraw Routing Info: `ticket_owner == sender`. Mark Operation as `Deposit Revert`.')
         else:
             ctx.logger.warning(
-                'Incorrect Withdraw Routing Info: Specified `erc_proxy` contract not whitelisted: {}. Operation ignored.',
-                token_contract
+                'Incorrect Withdraw Routing Info: Specified `erc_proxy` contract not whitelisted: {}. Operation ignored.', token_contract
             )
             return
 

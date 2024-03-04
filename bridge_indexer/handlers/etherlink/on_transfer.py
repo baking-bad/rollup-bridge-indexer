@@ -2,6 +2,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.evm_subsquid import SubsquidEvent
 from tortoise.exceptions import DoesNotExist
 
+from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.models import EtherlinkTokenHolder
 from bridge_indexer.types.l2_token.evm_events.transfer import Transfer
 
@@ -36,6 +37,7 @@ async def on_transfer(
     ctx: HandlerContext,
     event: SubsquidEvent[Transfer],
 ) -> None:
+    setup_handler_logger(ctx)
     amount = event.payload.value
     if not amount:
         return

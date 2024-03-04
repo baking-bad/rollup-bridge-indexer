@@ -1,13 +1,14 @@
 from typing import TYPE_CHECKING
 
+from dipdup.datasources.http import HttpDatasource
+from dipdup.datasources.tezos_tzkt import TzktDatasource
+from dipdup.models.tezos_tzkt import TzktOperationData
+
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeWithdrawOperation
 from bridge_indexer.models import RollupCementedCommitment
 from bridge_indexer.models import RollupInboxMessage
 from bridge_indexer.models import RollupOutboxMessage
-from dipdup.datasources.http import HttpDatasource
-from dipdup.datasources.tezos_tzkt import TzktDatasource
-from dipdup.models.tezos_tzkt import TzktOperationData
 
 if TYPE_CHECKING:
     from bridge_indexer.handlers.service_container import BridgeConstantStorage
@@ -80,8 +81,12 @@ class OutboxMessageService:
 
     @staticmethod
     def _estimate_outbox_message_cemented_level(outbox_level: int, lcc_level: int, commitment_period: int, challenge_window: int):
-        return outbox_level + (lcc_level - outbox_level) % commitment_period + challenge_window + (
-            commitment_period - challenge_window % commitment_period) % commitment_period
+        return (
+            outbox_level
+            + (lcc_level - outbox_level) % commitment_period
+            + challenge_window
+            + (commitment_period - challenge_window % commitment_period) % commitment_period
+        )
 
     async def _fetch_outbox(self, outbox_level: int):
         for message_data in await self._rollup_node.request('GET', f'global/block/{outbox_level}/outbox/{outbox_level}/messages'):

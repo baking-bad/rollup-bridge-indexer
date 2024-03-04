@@ -1,11 +1,10 @@
 import uuid
 from enum import Enum
 
-from tortoise import ForeignKeyFieldInstance
-from tortoise import OneToOneFieldInstance
-
 from dipdup import fields
 from dipdup.models import Model
+from tortoise import ForeignKeyFieldInstance
+from tortoise import OneToOneFieldInstance
 
 
 class DatetimeModelMixin:
@@ -318,7 +317,7 @@ class EtherlinkTokenHolder(Model):
     class Meta:
         table = 'l2_token_holder'
         model = 'models.TokenHolder'
-        maxsize = 2 ** 20
+        maxsize = 2**20
         unique_together = (
             'token',
             'holder',
@@ -335,3 +334,14 @@ class EtherlinkTokenHolder(Model):
     @classmethod
     def get_pk(cls, token: str, holder: str) -> uuid.UUID:
         return uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=f'{token}_{holder}')
+
+
+# class DipDupHandlerLog(DatetimeModelMixin, Model):
+#     class Meta:
+#         table = 'dipdup_handler_log'
+#         model = 'models.DipDupHandlerLog'
+#
+#     id = fields.IntField(primary_key=True)
+#     tx_id = fields.TextField(index=True)
+#     ctx_id = fields.CharField(max_length=16)
+#     message = fields.TextField(null=False)

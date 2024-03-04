@@ -7,6 +7,7 @@ from dipdup.models import IndexStatus
 from dipdup.models.evm_node import EvmNodeTransactionData
 from dipdup.models.evm_subsquid import SubsquidTransactionData
 
+from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkToken
@@ -17,6 +18,7 @@ async def on_xtz_deposit(
     ctx: HandlerContext,
     transaction: SubsquidTransactionData | EvmNodeTransactionData,
 ) -> None:
+    setup_handler_logger(ctx)
     validators = [
         transaction.value > 0,
         transaction.from_ == '0x0000000000000000000000000000000000000000',
