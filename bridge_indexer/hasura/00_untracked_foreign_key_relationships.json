@@ -123,6 +123,26 @@
             }
         },
         {
+            "type": "pg_create_array_relationship",
+            "args": {
+                "name": "etherlink_tokens",
+                "table": {
+                    "name": "tezos_ticket",
+                    "schema": "public"
+                },
+                "using": {
+                    "foreign_key_constraint_on": {
+                        "table": {
+                            "name": "etherlink_token",
+                            "schema": "public"
+                        },
+                        "column": "ticket_hash"
+                    }
+                },
+                "source": "default"
+            }
+        },
+        {
             "type": "pg_create_object_relationship",
             "args": {
                 "name": "etherlink_token",
