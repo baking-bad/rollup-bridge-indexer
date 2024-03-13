@@ -31,8 +31,7 @@ async def on_xtz_deposit(
     transaction: SubsquidTransactionData | EvmNodeTransactionData,
 ) -> None:
     setup_handler_logger(ctx)
-    ctx.logger.info(f'Etherlink XTZ Deposit Transaction found: {transaction.hash}')
-    ctx.logger.debug(f'https://blockscout.dipdup.net/tx/0x{transaction.hash}')
+    ctx.logger.info(f'Etherlink XTZ Deposit Transaction found: 0x{transaction.hash}')
 
     try:
         await _validate_xtz_transaction(transaction)

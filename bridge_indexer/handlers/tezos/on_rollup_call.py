@@ -15,6 +15,7 @@ async def on_rollup_call(
     default: TzktTransaction[DefaultParameter, RollupStorage],
 ) -> None:
     setup_handler_logger(ctx)
+    ctx.logger.info(f'Tezos Deposit Transaction found: {default.data.hash}')
     parameter = default.parameter.__root__.LL
 
     routing_info = bytes.fromhex(parameter.bytes)
@@ -24,7 +25,7 @@ async def on_rollup_call(
 
     inbox_message = await ctx.container.inbox_message_service.match_transaction_with_inbox(default.data)
 
-    await TezosDepositOperation.create(
+    deposit = await TezosDepositOperation.create(
         timestamp=default.data.timestamp,
         level=default.data.level,
         operation_hash=default.data.hash,
@@ -40,7 +41,7 @@ async def on_rollup_call(
         inbox_message=inbox_message,
     )
 
-    ctx.logger.info(f'Deposit Call registered: {default}')
+    ctx.logger.info(f'Tezos Deposit Transaction registered: {deposit.id}')
 
     status = await Index.get(name='tezos_rollup_operations').only('status').values_list('status', flat=True)
     if status == IndexStatus.realtime:

@@ -42,8 +42,7 @@ async def on_deposit(
     event: SubsquidEvent[Deposit],
 ) -> None:
     setup_handler_logger(ctx)
-    ctx.logger.info(f'Etherlink Deposit Event found: {event.data.transaction_hash}')
-    ctx.logger.debug(f'https://blockscout.dipdup.net/tx/0x{event.data.transaction_hash}')
+    ctx.logger.info(f'Etherlink Deposit Event found: 0x{event.data.transaction_hash}')
     try:
         await _validate_ticket(event.payload.ticket_hash)
 

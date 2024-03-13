@@ -19,12 +19,8 @@ async def on_rollup_execute(
     withdraw: TzktTransaction[WithdrawParameter, TicketerStorage],
 ) -> None:
     setup_handler_logger(ctx)
-    ctx.logger.info(
-        'Smart rollup %s has been called by contract %s with commitment %s',
-        execute.data.target_address,
-        execute.data.initiator_address,
-        execute.commitment,
-    )
+    ctx.logger.info(f'Tezos Withdraw Transaction found: {execute.data.hash}')
+
     rpc = ctx.get_http_datasource('tezos_node')
     block_operations = await rpc.request('GET', f'chains/main/blocks/{execute.data.level}/operations')
     for group in block_operations[3]:
@@ -51,7 +47,7 @@ async def on_rollup_execute(
         )
         return
 
-    await TezosWithdrawOperation.create(
+    withdrawal = await TezosWithdrawOperation.create(
         timestamp=execute.data.timestamp,
         level=execute.data.level,
         operation_hash=execute.data.hash,
@@ -62,6 +58,8 @@ async def on_rollup_execute(
         target=execute.data.target_address,
         outbox_message=outbox_message,
     )
+
+    ctx.logger.info(f'Tezos Withdraw Transaction registered: {withdrawal.id}')
 
     status = await Index.get(name='tezos_rollup_operations').only('status').values_list('status', flat=True)
     if status == IndexStatus.realtime:

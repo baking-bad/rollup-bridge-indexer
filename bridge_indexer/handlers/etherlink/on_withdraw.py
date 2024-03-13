@@ -16,8 +16,7 @@ async def on_withdraw(
     event: SubsquidEvent[Withdrawal],
 ) -> None:
     setup_handler_logger(ctx)
-    ctx.logger.info(f'Etherlink Withdraw Event found: {event.data.transaction_hash}')
-    ctx.logger.debug(f'https://blockscout.dipdup.net/tx/0x{event.data.transaction_hash}')
+    ctx.logger.info(f'Etherlink Withdraw Event found: 0x{event.data.transaction_hash}')
     token_contract = event.payload.ticket_owner.removeprefix('0x')
     etherlink_token = await EtherlinkToken.get_or_none(id=token_contract)
     if not etherlink_token:
