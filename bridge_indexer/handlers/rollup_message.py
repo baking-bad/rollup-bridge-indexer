@@ -86,6 +86,7 @@ class OutboxMessageService:
             + (lcc_level - outbox_level) % commitment_period
             + challenge_window
             + (commitment_period - challenge_window % commitment_period) % commitment_period
+            + 5
         )
 
     async def _fetch_outbox(self, outbox_level: int):
