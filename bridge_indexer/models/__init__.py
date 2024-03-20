@@ -206,7 +206,9 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
         model_name=TezosTicket.Meta.model,
         source_field='ticket_hash',
         to_field='hash',
+        null=True,
     )
+    ticket_owner = fields.CharField(max_length=40)
     amount = fields.TextField()
     inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
         model_name=RollupInboxMessage.Meta.model,
@@ -271,6 +273,7 @@ class BridgeOperation(AbstractBridgeOperation):
     type = fields.EnumField(enum_type=BridgeOperationType, index=True)
     is_completed = fields.BooleanField(default=False, index=True)
     is_successful = fields.BooleanField(default=False, index=True)
+    status = fields.CharField(max_length=31, index=True, null=True)
 
 
 class BridgeDepositOperation(AbstractBridgeOperation):

@@ -45,17 +45,23 @@ async def on_deposit(
     ctx.logger.info(f'Etherlink Deposit Event found: 0x{event.data.transaction_hash}')
     try:
         await _validate_ticket(event.payload.ticket_hash)
-
-        if event.payload.ticket_owner == event.payload.receiver:
-            ctx.logger.warning('Incorrect Deposit Routing Info: `ticket_owner == receiver`. Mark Operation as `Revertable Deposit`.')
-            etherlink_token = None
-        else:
-            token_contract = event.payload.ticket_owner.removeprefix('0x')
-            etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
-
     except ValueError as exception:
         ctx.logger.warning('Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Operation ignored.')
         return
+
+    if event.payload.ticket_owner == event.payload.receiver:
+        ctx.logger.warning('Incorrect Deposit Routing Info: `ticket_owner == receiver`. Mark Operation as `Revertable Deposit`.')
+        etherlink_token = None
+    else:
+        try:
+            token_contract = event.payload.ticket_owner.removeprefix('0x')
+            etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
+        except ValueError as exception:
+            ctx.logger.warning(
+                'Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) +
+                '. Mark Operation as `Failed Deposit`.'
+            )
+            etherlink_token = None
 
     inbox_message = await ctx.container.inbox_message_service.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id)
 
@@ -69,6 +75,7 @@ async def on_deposit(
         l2_account=event.payload.receiver[-40:],
         l2_token=etherlink_token,
         ticket_id=event.payload.ticket_hash,
+        ticket_owner=event.payload.ticket_owner[-40:],
         amount=event.payload.amount,
         inbox_message=inbox_message,
     )

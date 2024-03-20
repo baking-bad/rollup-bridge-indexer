@@ -25,6 +25,7 @@ class BridgeMatcher:
                 l2_account=l1_deposit.l2_account,
                 created_at=l1_deposit.timestamp,
                 updated_at=l1_deposit.timestamp,
+                status='Created',
             )
 
     @staticmethod
@@ -39,6 +40,7 @@ class BridgeMatcher:
                 l2_account=l2_withdrawal.l2_account,
                 created_at=l2_withdrawal.timestamp,
                 updated_at=l2_withdrawal.timestamp,
+                status='Created',
             )
 
     @staticmethod
@@ -67,6 +69,14 @@ class BridgeMatcher:
             bridge_operation.is_completed = True
             bridge_operation.is_successful = l2_deposit.l2_token is not None
             bridge_operation.updated_at = max(bridge_operation.created_at, l2_deposit.timestamp)
+            match (l2_deposit.l2_token_id, l2_deposit.ticket_id, l2_deposit.ticket_owner):
+                case str(), str(), str():
+                    bridge_operation.status = 'Finished'
+                case None, str(), str():
+                    bridge_operation.status = 'Failed'
+                case _:
+                    raise ValueError
+
             await bridge_operation.save()
 
     @staticmethod
@@ -105,6 +115,7 @@ class BridgeMatcher:
             bridge_operation.is_completed = True
             bridge_operation.is_successful = l2_deposit.l2_token is not None
             bridge_operation.updated_at = max(bridge_operation.created_at, l2_deposit.timestamp)
+            bridge_operation.status = 'Finished'
             await bridge_operation.save()
 
     @staticmethod
@@ -126,6 +137,7 @@ class BridgeMatcher:
             bridge_operation.is_completed = True
             bridge_operation.is_successful = True
             bridge_operation.updated_at = l1_withdrawal.timestamp
+            bridge_operation.status = 'Finished'
             await bridge_operation.save()
 
     @staticmethod
