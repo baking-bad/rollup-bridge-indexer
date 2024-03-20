@@ -154,4 +154,5 @@ class OutboxMessageService:
 
             bridge_operation = await BridgeOperation.get(id=bridge_withdraw_operation.id)
             bridge_operation.updated_at = commitment.created_at
+            bridge_operation.status = 'Sealed'
             await bridge_operation.save()

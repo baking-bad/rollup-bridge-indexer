@@ -52,6 +52,7 @@ async def on_xtz_deposit(
         l2_account=transaction.to[-40:],
         l2_token=etherlink_token,
         ticket=tezos_ticket,
+        ticket_owner=etherlink_token.id,
         amount=transaction.value,
         inbox_message=None,
     )
