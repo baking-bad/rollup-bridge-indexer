@@ -107,7 +107,6 @@ indexes:
   etherlink_kernel_events:
     kind: evm.subsquid.events
     datasource: etherlink_subsquid
-    node_only: true
     handlers:
       - callback: etherlink.on_deposit
         contract: etherlink_rollup_kernel
@@ -120,7 +119,6 @@ indexes:
   etherlink_token_events:
     kind: evm.subsquid.events
     datasource: etherlink_subsquid
-    node_only: true
     handlers:
       - callback: etherlink.on_transfer
         contract: l2_fa12_token
@@ -134,10 +132,9 @@ indexes:
   etherlink_kernel_transactions:
     kind: evm.subsquid.transactions
     datasource: etherlink_subsquid
-    node_only: true
     handlers:
       - callback: etherlink.on_xtz_deposit
-        from: etherlink_rollup_kernel
+        from_: etherlink_rollup_kernel
 
 
 advanced:
