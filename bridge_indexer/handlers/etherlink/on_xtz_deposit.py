@@ -21,7 +21,6 @@ async def _validate_xtz_transaction(transaction: SubsquidTransactionData | EvmNo
         transaction.to != transaction.from_,
         transaction.input == '0x',
         transaction.sighash == '0x',
-        transaction.data is None,
     ]
     if not all(validators):
         raise ValueError('Transaction validation error: {}', transaction.hash)
