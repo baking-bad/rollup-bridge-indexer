@@ -263,6 +263,21 @@ class BridgeOperationType(Enum):
     withdrawal: str = 'withdrawal'
 
 
+class BridgeOperationStatus(Enum):
+    created: str = 'CREATED'
+    finished: str = 'FINISHED'
+    failed: str = 'FAILED'
+
+    revertable: str = 'FAILED_INVALID_ROUTING_INFO_REVERTABLE'
+    proxy_not_whitelisted: str = 'FAILED_INVALID_ROUTING_PROXY_NOT_WHITELISTED'
+    empty_proxy: str = 'FAILED_INVALID_ROUTING_PROXY_EMPTY_PROXY'
+    invalid_proxy: str = 'FAILED_INVALID_ROUTING_INVALID_PROXY_ADDRESS'
+
+    sealed: str = 'SEALED'
+    outbox_expired: str = 'FAILED_OUTBOX_EXPIRED'
+
+
+
 class BridgeOperation(AbstractBridgeOperation):
     class Meta:
         table = 'bridge_operation'
@@ -273,7 +288,7 @@ class BridgeOperation(AbstractBridgeOperation):
     type = fields.EnumField(enum_type=BridgeOperationType, index=True)
     is_completed = fields.BooleanField(default=False, index=True)
     is_successful = fields.BooleanField(default=False, index=True)
-    status = fields.CharField(max_length=31, index=True, null=True)
+    status = fields.EnumField(enum_type=BridgeOperationStatus, index=True, null=True)
 
 
 class BridgeDepositOperation(AbstractBridgeOperation):

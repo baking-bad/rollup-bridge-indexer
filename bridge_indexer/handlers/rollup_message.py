@@ -6,6 +6,7 @@ from dipdup.models.tezos_tzkt import TzktOperationData
 
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeWithdrawOperation
+from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import RollupCementedCommitment
 from bridge_indexer.models import RollupInboxMessage
 from bridge_indexer.models import RollupOutboxMessage
@@ -154,5 +155,5 @@ class OutboxMessageService:
 
             bridge_operation = await BridgeOperation.get(id=bridge_withdraw_operation.id)
             bridge_operation.updated_at = commitment.created_at
-            bridge_operation.status = 'Sealed'
+            bridge_operation.status = BridgeOperationStatus.sealed
             await bridge_operation.save()

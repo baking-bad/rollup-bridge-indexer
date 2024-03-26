@@ -1,9 +1,12 @@
 from datetime import timedelta
 
 from bridge_indexer.models import BridgeDepositOperation
+from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeOperation
+from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeOperationType
 from bridge_indexer.models import BridgeWithdrawOperation
+from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkWithdrawOperation
 from bridge_indexer.models import TezosDepositOperation
@@ -25,7 +28,7 @@ class BridgeMatcher:
                 l2_account=l1_deposit.l2_account,
                 created_at=l1_deposit.timestamp,
                 updated_at=l1_deposit.timestamp,
-                status='Created',
+                status=BridgeOperationStatus.created,
             )
 
     @staticmethod
@@ -40,7 +43,7 @@ class BridgeMatcher:
                 l2_account=l2_withdrawal.l2_account,
                 created_at=l2_withdrawal.timestamp,
                 updated_at=l2_withdrawal.timestamp,
-                status='Created',
+                status=BridgeOperationStatus.created,
             )
 
     @staticmethod
@@ -71,9 +74,13 @@ class BridgeMatcher:
             bridge_operation.updated_at = max(bridge_operation.created_at, l2_deposit.timestamp)
             match (l2_deposit.l2_token_id, l2_deposit.ticket_id, l2_deposit.ticket_owner):
                 case str(), str(), str():
-                    bridge_operation.status = 'Finished'
+                    bridge_operation.status = BridgeOperationStatus.finished
                 case None, str(), str():
-                    bridge_operation.status = 'Failed'
+                    bridge_operation.status = BridgeOperationStatus.revertable
+                case None, None, '':
+                    bridge_operation.status = BridgeOperationStatus.empty_proxy
+                case None, None, str():
+                    bridge_operation.status = BridgeOperationStatus.proxy_not_whitelisted
                 case _:
                     raise ValueError
 
@@ -115,7 +122,7 @@ class BridgeMatcher:
             bridge_operation.is_completed = True
             bridge_operation.is_successful = l2_deposit.l2_token is not None
             bridge_operation.updated_at = max(bridge_operation.created_at, l2_deposit.timestamp)
-            bridge_operation.status = 'Finished'
+            bridge_operation.status = BridgeOperationStatus.finished
             await bridge_operation.save()
 
     @staticmethod
@@ -133,11 +140,11 @@ class BridgeMatcher:
             bridge_withdrawal.l1_transaction = l1_withdrawal
             await bridge_withdrawal.save()
 
-            bridge_operation = await BridgeOperation.get(id=bridge_withdrawal.id)
+            bridge_operation = await BridgeOperation.get(id=bridge_withdrawal.pk)
             bridge_operation.is_completed = True
             bridge_operation.is_successful = True
             bridge_operation.updated_at = l1_withdrawal.timestamp
-            bridge_operation.status = 'Finished'
+            bridge_operation.status = BridgeOperationStatus.finished
             await bridge_operation.save()
 
     @staticmethod

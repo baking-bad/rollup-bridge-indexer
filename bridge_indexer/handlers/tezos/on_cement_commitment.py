@@ -3,6 +3,10 @@ from dipdup.models.tezos_tzkt import TzktSmartRollupCement
 
 from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.models import BridgeOperation
+from bridge_indexer.models import BridgeOperationType
+from bridge_indexer.models import BridgeWithdrawOperation
+from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import RollupCementedCommitment
 from bridge_indexer.models import RollupOutboxMessage
 
@@ -28,6 +32,16 @@ async def on_cement_commitment(
         return
 
     ctx.logger.info(f'Cemented Commitment registered: {cement.commitment.hash}')
+
+    sealed = await BridgeOperation.filter(
+        type=BridgeOperationType.withdrawal,
+        status__in=[BridgeOperationStatus.created, BridgeOperationStatus.sealed],
+    ).order_by('created_at').limit(100).only('id').values_list('id', flat=True)
+    expired = await BridgeWithdrawOperation.filter(
+        id__in=sealed,
+        l2_transaction__outbox_message__level__lte=cement.commitment.inbox_level-20160,
+    ).only('id').values_list('id', flat=True)
+    await BridgeOperation.filter(id__in=expired).update(status=BridgeOperationStatus.outbox_expired)
 
     await BridgeMatcher.check_pending_transactions()
 
