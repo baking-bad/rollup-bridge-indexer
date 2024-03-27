@@ -131,7 +131,7 @@ class OutboxMessageService:
             l2_withdrawals__isnull=False,
         ):
             # if head_data.level - outbox_message.level > self._protocol.smart_rollup_timeout_period:
-            if head_data.level - outbox_message.level > 80640:
+            if head_data.level - outbox_message.level > 20160:
                 # todo: mark expired transaction with terminal status "failed"
                 continue
 

@@ -13,6 +13,8 @@ from bridge_indexer.models import TezosDepositOperation
 from bridge_indexer.models import TezosWithdrawOperation
 
 LAYERS_TIMESTAMP_GAP = timedelta(minutes=5)
+LAYERS_TIMESTAMP_GAP_MIN = timedelta(seconds=8-1)
+LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=5*8+1)
 
 
 class BridgeMatcher:
@@ -100,11 +102,14 @@ class BridgeMatcher:
                     l2_transaction=None,
                     l1_transaction__inbox_message_id__gt=0,
                     l1_transaction__ticket=l2_deposit.l2_token.ticket,
-                    l1_transaction__timestamp__gt=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP,
-                    l1_transaction__timestamp__lt=l2_deposit.timestamp + LAYERS_TIMESTAMP_GAP,
+                    # l1_transaction__timestamp__gt=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP,
+                    # l1_transaction__timestamp__lt=l2_deposit.timestamp + LAYERS_TIMESTAMP_GAP,
+                    l1_transaction__timestamp__gt=l2_deposit.timestamp + LAYERS_TIMESTAMP_GAP_MIN,
+                    l1_transaction__timestamp__lt=l2_deposit.timestamp + LAYERS_TIMESTAMP_GAP_MAX,
                     l1_transaction__l2_account=l2_deposit.l2_account,
                     l1_transaction__amount=l2_deposit.amount[:-12],
                 )
+                .order_by('l1_transaction__timestamp')
                 .prefetch_related('l1_transaction__inbox_message')
                 .first()
             )
