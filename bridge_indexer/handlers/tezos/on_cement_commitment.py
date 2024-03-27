@@ -48,7 +48,7 @@ async def on_cement_commitment(
     pending_count = await RollupOutboxMessage.filter(
         l1_withdrawals__isnull=True,
         l2_withdrawals__isnull=False,
-        level__gt=cement.commitment.inbox_level - 80640,  # todo: avoid magic numbers
+        level__gt=cement.commitment.inbox_level - 20160,  # todo: avoid magic numbers
     ).count()
     if not pending_count:
         return
