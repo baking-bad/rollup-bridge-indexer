@@ -272,10 +272,10 @@ class BridgeOperationStatus(Enum):
     proxy_not_whitelisted: str = 'FAILED_INVALID_ROUTING_PROXY_NOT_WHITELISTED'
     empty_proxy: str = 'FAILED_INVALID_ROUTING_PROXY_EMPTY_PROXY'
     invalid_proxy: str = 'FAILED_INVALID_ROUTING_INVALID_PROXY_ADDRESS'
+    inbox_matching_timeout: str = 'FAILED_INBOX_MATCHING_TIMEOUT'
 
     sealed: str = 'SEALED'
     outbox_expired: str = 'FAILED_OUTBOX_EXPIRED'
-
 
 
 class BridgeOperation(AbstractBridgeOperation):
