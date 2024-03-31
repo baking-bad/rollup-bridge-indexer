@@ -1,3 +1,4 @@
+import asyncio
 from typing import TYPE_CHECKING
 
 from dipdup.datasources.http import HttpDatasource
@@ -95,7 +96,11 @@ class OutboxMessageService:
             outbox_level = message_data['outbox_level']
             created_at = await self._tzkt.request('GET', f'v1/blocks/{outbox_level}/timestamp')
 
-            lcc = await RollupCementedCommitment.filter(inbox_level__lt=outbox_level).order_by('-inbox_level').first()
+            lcc = None
+            while lcc is None:
+                lcc = await RollupCementedCommitment.filter(inbox_level__lt=outbox_level).order_by('-inbox_level').first()
+                await asyncio.sleep(1)  # fixme
+
             cemented_level = self._estimate_outbox_message_cemented_level(
                 outbox_level,
                 lcc.inbox_level,

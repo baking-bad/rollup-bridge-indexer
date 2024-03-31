@@ -46,8 +46,8 @@ async def on_deposit(
     try:
         await _validate_ticket(event.payload.ticket_hash)
     except ValueError as exception:
-        ctx.logger.warning('Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Operation ignored.')
-        return
+        ctx.logger.warning('Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Mark Operation as `Failed Deposit`.')
+        etherlink_token = None
 
     if event.payload.ticket_owner == event.payload.receiver:
         ctx.logger.warning('Incorrect Deposit Routing Info: `ticket_owner == receiver`. Mark Operation as `Revertable Deposit`.')
