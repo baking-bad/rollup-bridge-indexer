@@ -16,7 +16,6 @@ from bridge_indexer.types.ticketer.tezos_storage import TicketerStorage
 async def on_rollup_execute(
     ctx: HandlerContext,
     execute: TzktSmartRollupExecute,
-    withdraw: TzktTransaction[WithdrawParameter, TicketerStorage],
 ) -> None:
     setup_handler_logger(ctx)
     ctx.logger.info(f'Tezos Withdraw Transaction found: {execute.data.hash}')
@@ -28,6 +27,8 @@ async def on_rollup_execute(
             continue
         for operation in group['contents']:
             if operation['kind'] != 'smart_rollup_execute_outbox_message':
+                continue
+            if int(operation['counter']) != execute.data.counter:
                 continue
             message_hex = operation['output_proof']
             break

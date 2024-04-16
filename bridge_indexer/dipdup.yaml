@@ -100,9 +100,6 @@ indexes:
         pattern:
           - type: sr_execute
             destination: tezos_smart_rollup
-          - type: transaction
-            source: tezos_smart_rollup
-            entrypoint: withdraw
 
   etherlink_kernel_events:
     kind: evm.subsquid.events
