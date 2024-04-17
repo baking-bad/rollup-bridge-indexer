@@ -66,6 +66,18 @@ contracts:
     kind: evm
     address: 0xcb5d40c6b1bdf5cd51b3801351b0a68d101a561b
     typename: l2_token
+  l2_tzbtc_token:
+    kind: evm
+    address: 0x80d33a72b6d13b44da36c2a93a8cb6e1d451eb2a
+    typename: l2_token
+  l2_sirs_token:
+    kind: evm
+    address: 0x1144de4736cc0e83ab7c8e51872eac2015629e07
+    typename: l2_token
+  l2_usdt_token:
+    kind: evm
+    address: 0x5b69d8c28fb0f766a32fd9ac8b0f5fb5f2104f88
+    typename: l2_token
 
 
 indexes:
@@ -120,9 +132,17 @@ indexes:
       - callback: etherlink.on_transfer
         contract: l2_fa12_token
         name: Transfer
-
       - callback: etherlink.on_transfer
         contract: l2_fa2_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_tzbtc_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_sirs_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_usdt_token
         name: Transfer
 
 
