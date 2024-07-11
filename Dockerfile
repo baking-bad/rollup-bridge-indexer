@@ -1,12 +1,11 @@
-ARG PYTHON_VERSION=3.11
+ARG PYTHON_VERSION=3.12
 ARG SOURCE_DIR=bridge_indexer
 ARG POETRY_PATH=/opt/poetry
 ARG VENV_PATH=/opt/venv
 ARG APP_PATH=/opt/app
 ARG APP_USER=dipdup
 
-
-FROM python:${PYTHON_VERSION}-slim-buster as builder-base
+FROM python:${PYTHON_VERSION}-slim-bookworm as builder-base
 
 ARG VENV_PATH
 ARG POETRY_PATH
@@ -50,7 +49,7 @@ RUN poetry install --only main --sync --no-interaction --no-ansi -vvv \
  && rm -rf `find $VIRTUAL_ENV/lib -name __pycache__`
 
 
-FROM python:${PYTHON_VERSION}-slim-buster as runtime-base
+FROM python:${PYTHON_VERSION}-slim-bookworm as runtime-base
 
 ARG VENV_PATH
 ENV PATH="$VENV_PATH/bin:$PATH"

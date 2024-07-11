@@ -1,7 +1,7 @@
 from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
-from dipdup.models.tezos_tzkt import TzktTransaction
+from dipdup.models.tezos import TezosTransaction
 
 from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
@@ -12,16 +12,16 @@ from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
 async def on_rollup_call(
     ctx: HandlerContext,
-    default: TzktTransaction[DefaultParameter, RollupStorage],
+    default: TezosTransaction[DefaultParameter, RollupStorage],
 ) -> None:
     setup_handler_logger(ctx)
     ctx.logger.info(f'Tezos Deposit Transaction found: {default.data.hash}')
-    parameter = default.parameter.__root__.LL
+    parameter = default.parameter.root.LL
 
     routing_info = bytes.fromhex(parameter.bytes)
     l2_receiver = routing_info[:20]
 
-    ticket = await ctx.container.ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.data)
+    ticket = await ctx.container.ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.content)
 
     inbox_message = await ctx.container.inbox_message_service.match_transaction_with_inbox(default.data)
 

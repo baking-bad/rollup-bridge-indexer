@@ -1,9 +1,11 @@
 import asyncio
+from typing import AsyncGenerator
 from typing import TYPE_CHECKING
 
 from dipdup.datasources.http import HttpDatasource
-from dipdup.datasources.tezos_tzkt import TzktDatasource
-from dipdup.models.tezos_tzkt import TzktOperationData
+from dipdup.datasources.tezos_tzkt import Datasource
+from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
+from dipdup.models.tezos import TezosOperationData
 
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeWithdrawOperation
@@ -18,7 +20,7 @@ if TYPE_CHECKING:
 
 
 class InboxMessageService:
-    def __init__(self, tzkt: TzktDatasource, bridge: 'BridgeConstantStorage'):
+    def __init__(self, tzkt: Datasource, bridge: 'BridgeConstantStorage'):
         self._tzkt = tzkt
         self._bridge = bridge
 
@@ -57,12 +59,12 @@ class InboxMessageService:
                 inbox.append(inbox_message)
             await RollupInboxMessage.bulk_create(inbox)
 
-    async def _read_inbox(self, inbox_level: int):
+    async def _read_inbox(self, inbox_level: int) -> AsyncGenerator[RollupInboxMessage, None]:
         await self._prepare_inbox(inbox_level)
         async for inbox_message in RollupInboxMessage.filter(level=inbox_level, l1_deposits__isnull=True).order_by('id'):
             yield inbox_message
 
-    async def match_transaction_with_inbox(self, data: TzktOperationData) -> RollupInboxMessage:
+    async def match_transaction_with_inbox(self, data: TezosOperationData) -> RollupInboxMessage:
         async for inbox_message in self._read_inbox(data.level):
             if data.parameter_json == inbox_message.parameter:
                 return inbox_message
@@ -76,7 +78,7 @@ class InboxMessageService:
 
 
 class OutboxMessageService:
-    def __init__(self, tzkt: TzktDatasource, rollup_node: HttpDatasource, protocol: 'ProtocolConstantStorage'):
+    def __init__(self, tzkt: TezosTzktDatasource, rollup_node: HttpDatasource, protocol: 'ProtocolConstantStorage'):
         self._tzkt = tzkt
         self._rollup_node = rollup_node
         self._protocol = protocol

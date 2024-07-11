@@ -1,19 +1,19 @@
 from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
-from dipdup.models.evm_subsquid import SubsquidEvent
+from dipdup.models.evm import EvmEvent
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawOperation
-from bridge_indexer.types.kernel.evm_events.withdrawal import Withdrawal
+from bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload
 
 
 async def on_withdraw(
     ctx: HandlerContext,
-    event: SubsquidEvent[Withdrawal],
+    event: EvmEvent[WithdrawalPayload],
 ) -> None:
     setup_handler_logger(ctx)
     ctx.logger.info(f'Etherlink Withdraw Event found: 0x{event.data.transaction_hash}')

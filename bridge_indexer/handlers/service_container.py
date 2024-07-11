@@ -1,5 +1,5 @@
 from dipdup.context import DipDupContext
-from dipdup.datasources.tezos_tzkt import TzktDatasource
+from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
 from dipdup.datasources.tzip_metadata import TzipMetadataDatasource
 from pydantic import BaseModel
 
@@ -28,7 +28,7 @@ class ServiceContainerDTO(BaseModel):
     ticket_service: TicketService
     inbox_message_service: InboxMessageService
     outbox_message_service: OutboxMessageService
-    tzkt: TzktDatasource
+    tzkt: TezosTzktDatasource
     metadata: TzipMetadataDatasource
 
 
@@ -41,13 +41,13 @@ class ServiceContainer:
 
     @staticmethod
     def register(ctx):
-        tzkt = ctx.get_tzkt_datasource('tzkt')
+        tzkt = ctx.get_tezos_tzkt_datasource('tzkt')
         rollup_node = ctx.get_http_datasource('rollup_node')
         metadata = ctx.get_metadata_datasource('metadata')
 
         bridge = BridgeConstantStorage(
             smart_rollup_address=ctx.config.get_tezos_contract('tezos_smart_rollup').address,
-            native_ticketer='KT1Q6aNZ9aGro4DvBKwhKvVdia2UmVGsS9zE',
+            native_ticketer=ctx.config.get_tezos_contract('tezos_native_ticketer').address,
         )
         protocol = ProtocolConstantStorage(
             smart_rollup_commitment_period=20,
