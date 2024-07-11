@@ -4,11 +4,10 @@ from eth_abi import decode
 from pytezos import forge_micheline
 from pytezos import unforge_micheline
 from pytezos.michelson.forge import forge_address
-from pytezos.michelson.micheline import micheline_value_to_python_object
 from web3 import Web3
 
 if TYPE_CHECKING:
-    from dipdup.datasources.tezos_tzkt import TzktDatasource
+    from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
     from dipdup.datasources.tzip_metadata import TzipMetadataDatasource
     from bridge_indexer.handlers.service_container import BridgeConstantStorage
 from bridge_indexer.models import EtherlinkToken
@@ -96,8 +95,8 @@ class TicketService:
         ticket_metadata = {}
         for pair in ticket_metadata_map:
             key = pair['args'][0]['string']
-            value_forged = bytes.fromhex(pair['args'][1]['bytes'])
-            value = micheline_value_to_python_object(unforge_micheline(value_forged[1:]))
+            value_bytes = bytes.fromhex(pair['args'][1]['bytes'])
+            value = value_bytes.decode()
             ticket_metadata.update({key: value})
         if 'token_id' not in ticket_metadata and ticket_metadata['token_type'] == 'FA1.2':
             ticket_metadata['token_id'] = 0
