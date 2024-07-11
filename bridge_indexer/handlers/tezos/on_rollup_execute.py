@@ -1,8 +1,8 @@
 from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
-from dipdup.models.tezos_tzkt import TzktSmartRollupExecute
-from dipdup.models.tezos_tzkt import TzktTransaction
+from dipdup.models.tezos import TezosSmartRollupExecute
+from dipdup.models.tezos import TezosTransaction
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers import setup_handler_logger
@@ -15,7 +15,7 @@ from bridge_indexer.types.ticketer.tezos_storage import TicketerStorage
 
 async def on_rollup_execute(
     ctx: HandlerContext,
-    execute: TzktSmartRollupExecute,
+    execute: TezosSmartRollupExecute,
 ) -> None:
     setup_handler_logger(ctx)
     ctx.logger.info(f'Tezos Withdraw Transaction found: {execute.data.hash}')

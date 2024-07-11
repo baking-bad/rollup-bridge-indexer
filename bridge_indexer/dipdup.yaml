@@ -1,4 +1,4 @@
-spec_version: 2.0
+spec_version: 3.0
 package: bridge_indexer
 
 
@@ -26,7 +26,7 @@ datasources:
 
   metadata:
     kind: tzip_metadata
-    network: oxfordnet
+    network: parisnet
     url: ${METADATA_URL}
 
   tezos_node:
@@ -40,7 +40,6 @@ datasources:
   etherlink_subsquid:
     kind: evm.subsquid
     url: ${ETHERLINK_SUBSQUID_URL:-~}
-    node: etherlink_node
 
   rollup_node:
     kind: http
@@ -53,29 +52,34 @@ contracts:
     address: ${SMART_ROLLUP_ADDRESS}
     typename: rollup
 
+  tezos_native_ticketer:
+    kind: tezos
+    address: ${NATIVE_TICKETER}
+
   etherlink_rollup_kernel:
     kind: evm
-    address: 0x0000000000000000000000000000000000000000
+    address: "0x0000000000000000000000000000000000000000"
     typename: kernel
 
   l2_tzbtc_token:
     kind: evm
-    address: 0x54b20569c0aa92a5618589142b2d5cc5fe6fe426
+    address: 0x87dcbf128677ba36e79d47daf4eb4e51610e0150
     typename: l2_token
   l2_sirs_token:
     kind: evm
-    address: 0x1b674b7d28d3da4bb0cbda959de2bcebe2ac83e8
+    address: 0xcb5d40c6b1bdf5cd51b3801351b0a68d101a561b
     typename: l2_token
   l2_usdt_token:
     kind: evm
-    address: 0xe4bf1873cfdaed33bab4e0f5788cba6d03a267f0
+    address: 0x8554cd57c0c3e5ab9d1782c9063279fa9bfa4680
     typename: l2_token
 
 
 indexes:
   tezos_rollup_cement:
-    kind: tezos.tzkt.operations
-    datasource: tzkt
+    kind: tezos.operations
+    datasources:
+      - tzkt
     types:
       - sr_cement
     contracts:
@@ -87,8 +91,9 @@ indexes:
             destination: tezos_smart_rollup
 
   tezos_rollup_operations:
-    kind: tezos.tzkt.operations
-    datasource: tzkt
+    kind: tezos.operations
+    datasources:
+      - tzkt
     types:
       - sr_execute
       - transaction
@@ -106,8 +111,10 @@ indexes:
             destination: tezos_smart_rollup
 
   etherlink_kernel_events:
-    kind: evm.subsquid.events
-    datasource: etherlink_subsquid
+    kind: evm.events
+    datasources:
+      - etherlink_subsquid
+      - etherlink_node
     handlers:
       - callback: etherlink.on_deposit
         contract: etherlink_rollup_kernel
@@ -118,8 +125,10 @@ indexes:
         name: Withdrawal
 
   etherlink_token_events:
-    kind: evm.subsquid.events
-    datasource: etherlink_subsquid
+    kind: evm.events
+    datasources:
+      - etherlink_subsquid
+      - etherlink_node
     handlers:
       - callback: etherlink.on_transfer
         contract: l2_tzbtc_token
@@ -133,8 +142,10 @@ indexes:
 
 
   etherlink_kernel_transactions:
-    kind: evm.subsquid.transactions
-    datasource: etherlink_subsquid
+    kind: evm.transactions
+    datasources:
+      - etherlink_subsquid
+      - etherlink_node
     handlers:
       - callback: etherlink.on_xtz_deposit
         from_: etherlink_rollup_kernel

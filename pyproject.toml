@@ -6,8 +6,10 @@ authors = ["Igor Sereda <sereda.igor.s@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.12"
-dipdup = {git = "https://github.com/dipdup-io/dipdup.git", rev="4e5d06bf"}
+python = ">=3.12,<3.13"
+#dipdup = {git = "https://github.com/dipdup-io/dipdup.git", rev="4e5d06bf"}
+
+dipdup = "8.0.0b3"
 base58 = "^2.1.1"
 pytezos = "*"
 

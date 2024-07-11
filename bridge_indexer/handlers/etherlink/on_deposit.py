@@ -4,14 +4,14 @@ from datetime import timezone
 from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
-from dipdup.models.evm_subsquid import SubsquidEvent
+from dipdup.models.evm import EvmEvent
 
 from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
-from bridge_indexer.types.kernel.evm_events.deposit import Deposit
+from bridge_indexer.types.kernel.evm_events.deposit import DepositPayload
 
 
 async def _validate_ticket(ticket_hash):
@@ -39,7 +39,7 @@ async def register_etherlink_token(token_contract: str, ticket_hash: int) -> Eth
 
 async def on_deposit(
     ctx: HandlerContext,
-    event: SubsquidEvent[Deposit],
+    event: EvmEvent[DepositPayload],
 ) -> None:
     setup_handler_logger(ctx)
     ctx.logger.info(f'Etherlink Deposit Event found: 0x{event.data.transaction_hash}')

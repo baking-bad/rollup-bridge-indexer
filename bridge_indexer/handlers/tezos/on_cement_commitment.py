@@ -1,5 +1,5 @@
 from dipdup.context import HandlerContext
-from dipdup.models.tezos_tzkt import TzktSmartRollupCement
+from dipdup.models.tezos import TezosSmartRollupCement
 
 from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
@@ -14,7 +14,7 @@ from bridge_indexer.models import RollupOutboxMessage
 
 async def on_cement_commitment(
     ctx: HandlerContext,
-    cement: TzktSmartRollupCement,
+    cement: TezosSmartRollupCement,
 ) -> None:
     setup_handler_logger(ctx)
     new_record, _ = await RollupCementedCommitment.update_or_create(

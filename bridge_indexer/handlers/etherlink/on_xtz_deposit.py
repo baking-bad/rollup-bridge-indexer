@@ -4,8 +4,7 @@ from datetime import timezone
 from dipdup.context import HandlerContext
 from dipdup.models import Index
 from dipdup.models import IndexStatus
-from dipdup.models.evm_node import EvmNodeTransactionData
-from dipdup.models.evm_subsquid import SubsquidTransactionData
+from dipdup.models.evm import EvmTransactionData
 
 from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
@@ -14,7 +13,7 @@ from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 
 
-async def _validate_xtz_transaction(transaction: SubsquidTransactionData | EvmNodeTransactionData):
+async def _validate_xtz_transaction(transaction: EvmTransactionData):
     validators = [
         transaction.value > 0,
         transaction.from_ == '0x0000000000000000000000000000000000000000',
@@ -27,7 +26,7 @@ async def _validate_xtz_transaction(transaction: SubsquidTransactionData | EvmNo
 
 async def on_xtz_deposit(
     ctx: HandlerContext,
-    transaction: SubsquidTransactionData | EvmNodeTransactionData,
+    transaction: EvmTransactionData,
 ) -> None:
     setup_handler_logger(ctx)
     ctx.logger.info(f'Etherlink XTZ Deposit Transaction found: 0x{transaction.hash}')

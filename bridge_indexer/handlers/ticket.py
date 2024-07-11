@@ -13,12 +13,12 @@ if TYPE_CHECKING:
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
-from bridge_indexer.types.rollup.tezos_parameters.default import Data as TicketContent
+from bridge_indexer.types.rollup.tezos_parameters.default import Content as TicketContent
 
 
 class TicketService:
-    def __init__(self, tzkt: 'TzktDatasource', metadata: 'TzipMetadataDatasource', bridge: 'BridgeConstantStorage'):
-        self._tzkt: TzktDatasource = tzkt
+    def __init__(self, tzkt: 'TezosTzktDatasource', metadata: 'TzipMetadataDatasource', bridge: 'BridgeConstantStorage'):
+        self._tzkt: TezosTzktDatasource = tzkt
         self._metadata_client: TzipMetadataDatasource = metadata
         self._bridge: BridgeConstantStorage = bridge
 
