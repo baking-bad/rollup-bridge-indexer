@@ -1,13 +1,10 @@
+from datetime import UTC
 from datetime import datetime
-from datetime import timezone
 
 from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
 from dipdup.models.evm import EvmEvent
 
-from bridge_indexer.handlers import setup_handler_logger
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
@@ -41,32 +38,34 @@ async def on_deposit(
     ctx: HandlerContext,
     event: EvmEvent[DepositPayload],
 ) -> None:
-    setup_handler_logger(ctx)
     ctx.logger.info(f'Etherlink Deposit Event found: 0x{event.data.transaction_hash}')
+
     try:
         await _validate_ticket(event.payload.ticket_hash)
     except ValueError as exception:
-        ctx.logger.warning('Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Mark Operation as `Failed Deposit`.')
-        etherlink_token = None
-
-    if event.payload.ticket_owner == event.payload.receiver:
-        ctx.logger.warning('Incorrect Deposit Routing Info: `ticket_owner == receiver`. Mark Operation as `Revertable Deposit`.')
+        ctx.logger.warning(
+            'Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Mark Operation as `Failed Deposit`.'
+        )
+        event.payload.ticket_hash = None
         etherlink_token = None
     else:
-        try:
-            token_contract = event.payload.ticket_owner.removeprefix('0x')
-            etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
-        except ValueError as exception:
-            ctx.logger.warning(
-                'Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) +
-                '. Mark Operation as `Failed Deposit`.'
-            )
+        if event.payload.ticket_owner == event.payload.receiver:
+            ctx.logger.warning('Incorrect Deposit Routing Info: `ticket_owner == receiver`. Mark Operation as `Revertable Deposit`.')
             etherlink_token = None
-
-    inbox_message = await ctx.container.inbox_message_service.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id)
+        else:
+            try:
+                token_contract = event.payload.ticket_owner.removeprefix('0x')
+                etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
+            except ValueError as exception:
+                ctx.logger.warning(
+                    'Incorrect Deposit Routing Info: '
+                    + exception.args[0].format(*exception.args[1:])
+                    + '. Mark Operation as `Failed Deposit`.'
+                )
+                etherlink_token = None
 
     deposit = await EtherlinkDepositOperation.create(
-        timestamp=datetime.fromtimestamp(event.data.timestamp, tz=timezone.utc),
+        timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
         level=event.data.level,
         address=event.data.address[-40:],
         log_index=event.data.log_index,
@@ -77,12 +76,10 @@ async def on_deposit(
         ticket_id=event.payload.ticket_hash,
         ticket_owner=event.payload.ticket_owner[-40:],
         amount=event.payload.amount,
-        inbox_message=inbox_message,
+        inbox_message_level=event.payload.inbox_level,
+        inbox_message_index=event.payload.inbox_msg_id,
     )
 
     ctx.logger.info(f'Etherlink Deposit Event registered: {deposit.id}')
 
-    sync_level = ctx.datasources['etherlink_node']._subscriptions._subscriptions[None]
-    status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
-    if status == IndexStatus.realtime or sync_level - event.data.level < 5:
-        await BridgeMatcher.check_pending_etherlink_deposits()
+    BridgeMatcherLocks.set_pending_etherlink_deposits()

@@ -6,27 +6,29 @@ from __future__ import annotations
 from pydantic import BaseModel
 from pydantic import Extra
 
+from bridge_indexer.types.tezos.forged_tezos_account import ForgedTezosAccount
 
-class Data(BaseModel):
+
+class TicketContent(BaseModel):
     class Config:
         extra = Extra.forbid
 
-    nat: str
-    bytes: str | None
+    ticket_id: int
+    metadata: bytes | None
 
 
 class Ticket(BaseModel):
     class Config:
         extra = Extra.forbid
 
-    address: str
-    data: Data
-    amount: str
+    ticketer: ForgedTezosAccount
+    content: TicketContent
+    amount: int
 
 
 class WithdrawParameter(BaseModel):
     class Config:
         extra = Extra.forbid
 
-    receiver: str
+    receiver: ForgedTezosAccount
     ticket: Ticket

@@ -1,10 +1,12 @@
 from typing import TYPE_CHECKING
 
 from eth_abi import decode
+from eth_utils import remove_0x_prefix
 from pytezos import forge_micheline
 from pytezos import unforge_micheline
 from pytezos.michelson.forge import forge_address
 from web3 import Web3
+from web3._utils.encoding import hex_encode_abi_type
 
 if TYPE_CHECKING:
     from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
-from bridge_indexer.types.rollup.tezos_parameters.default import Content as TicketContent
+from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent as TicketContent
 
 
 class TicketService:
@@ -23,14 +25,18 @@ class TicketService:
         self._bridge: BridgeConstantStorage = bridge
 
     async def register_fa_tickets(self):
-        rollup = self._bridge.smart_rollup_address
-        for ticket_data in await self._tzkt.request(
-            'GET', f'v1/tickets/balances?account={rollup}&ticket.ticketer.ne={self._bridge.native_ticketer}'
-        ):
-            await self.fetch_ticket(
-                ticket_data['ticket']['ticketer']['address'],
-                TicketContent.parse_obj(ticket_data['ticket']['content']),
-            )
+        first_levels = []
+        for ticketer_address in self._bridge.fa_ticketer_list:
+            for ticket_data in await self._tzkt.request('GET', f'v1/tickets?ticketer.eq={ticketer_address}'):
+                await self.fetch_ticket(
+                    ticket_data['ticketer']['address'],
+                    TicketContent.parse_obj(ticket_data['content']),
+                )
+                first_levels.append(ticket_data['firstLevel'])
+
+        from bridge_indexer.handlers.rollup_message import RollupMessageIndex
+
+        RollupMessageIndex.first_ticket_level = min(first_levels)
 
     async def fetch_ticket(self, ticketer_address, ticket_content: TicketContent):
         ticket_hash = self.get_ticket_hash(ticketer_address, ticket_content)
@@ -39,9 +45,12 @@ class TicketService:
         if ticket:
             return ticket
 
-        ticket_metadata = self.get_ticket_metadata(ticket_content)
+        if ticket_content.metadata_hex is None:
+            raise ValueError('Tickets with empty TicketMetadata should have been registered')
 
+        ticket_metadata: dict[str, str] = self.get_ticket_metadata(ticket_content)
         asset_id = '_'.join([ticket_metadata['contract_address'], str(ticket_metadata['token_id'])])
+
         token = await TezosToken.get_or_none(pk=asset_id)
         if not token:
             token_metadata = await self._metadata_client.get_token_metadata(
@@ -63,21 +72,28 @@ class TicketService:
         ticket = await TezosTicket.create(
             hash=ticket_hash,
             ticketer_address=ticketer_address,
-            ticket_id=ticket_content.nat,
+            ticket_id=ticket_content.ticket_id,
             token=token,
+            metadata=ticket_content.metadata_hex,
+            outbox_interface='pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))',
+            whitelisted=True,
         )
 
         return ticket
 
     async def register_native_ticket(self):
         for ticket_data in await self._tzkt.request('GET', f'v1/tickets?ticketer={self._bridge.native_ticketer}'):
-            ticket_hash = self.get_ticket_hash(self._bridge.native_ticketer, TicketContent.parse_obj(ticket_data['content']))
+            ticket_content = TicketContent.parse_obj(ticket_data['content'])
+            ticket_hash = self.get_ticket_hash(self._bridge.native_ticketer, ticket_content)
             xtz = await TezosToken.get(pk='xtz')
             ticket = await TezosTicket.create(
                 hash=ticket_hash,
                 ticketer_address=self._bridge.native_ticketer,
-                ticket_id=ticket_data['content']['nat'],
+                ticket_id=ticket_content.ticket_id,
                 token=xtz,
+                metadata=ticket_content.metadata_hex,
+                outbox_interface='pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))',
+                whitelisted=True,
             )
             await EtherlinkToken.create(
                 id=xtz.id,
@@ -89,8 +105,11 @@ class TicketService:
             return ticket
         raise ValueError('No Native Ticketer found')
 
-    def get_ticket_metadata(self, ticket_content: TicketContent) -> dict:
-        ticket_metadata_forged = bytes.fromhex(ticket_content.bytes)
+    @staticmethod
+    def get_ticket_metadata(ticket_content: TicketContent) -> dict:
+        if ticket_content.metadata_hex is None:
+            return {}
+        ticket_metadata_forged = bytes.fromhex(ticket_content.metadata_hex)
         ticket_metadata_map = unforge_micheline(ticket_metadata_forged[1:])
         ticket_metadata = {}
         for pair in ticket_metadata_map:
@@ -102,32 +121,55 @@ class TicketService:
             ticket_metadata['token_id'] = 0
         return ticket_metadata
 
-    def get_ticket_hash(self, ticketer_address, ticket_content: TicketContent) -> int:
-        if ticket_content.bytes:
-            bytes_micheline = {
+    @staticmethod
+    def get_ticket_content_bytes(
+        ticketer_address: str,
+        ticket_content: TicketContent,
+    ) -> bytes:
+        if ticket_content.metadata_hex:
+            ticket_metadata_micheline = {
                 'prim': 'Some',
                 'args': [
                     {
-                        'bytes': ticket_content.bytes,
+                        'bytes': ticket_content.metadata_hex,
                     }
                 ],
             }
         else:
-            bytes_micheline = {'prim': 'None'}
-        ticket_content_micheline = {
+            ticket_metadata_micheline = {'prim': 'None'}
+        ticket_content_micheline: dict = {
             'prim': 'Pair',
             'args': [
-                {'int': ticket_content.nat},
-                bytes_micheline,
+                {'int': ticket_content.ticket_id},
+                ticket_metadata_micheline,
             ],
         }
 
-        data = Web3.solidity_keccak(
-            ['bytes22', 'bytes'],
-            [
+        abi_types = ['bytes22', 'bytes']
+        normalized_values = Web3.normalize_values(
+            w3=Web3(),
+            abi_types=abi_types,
+            values=[
                 forge_address(ticketer_address),
                 forge_micheline(ticket_content_micheline),
             ],
         )
-        ticket_hash = decode(['uint256'], data)[0]
+
+        ticket_content_hex = ''.join(
+            remove_0x_prefix(hex_encode_abi_type(abi_type, value)) for abi_type, value in zip(abi_types, normalized_values)
+        )
+
+        return bytes.fromhex(ticket_content_hex)
+
+    def get_ticket_hash(
+        self,
+        ticketer_address: str,
+        ticket_content: TicketContent,
+    ) -> int:
+
+        ticket_content_bytes = self.get_ticket_content_bytes(ticketer_address, ticket_content)
+
+        digest = Web3.keccak(ticket_content_bytes)
+        ticket_hash = decode(['uint256'], digest)[0]
+
         return ticket_hash
