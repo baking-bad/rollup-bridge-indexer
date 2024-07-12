@@ -54,8 +54,6 @@ async def on_cement_commitment(
     ).only('id').values_list('id', flat=True)
     await BridgeOperation.filter(id__in=failed).update(status=BridgeOperationStatus.inbox_matching_timeout)
 
-    await BridgeMatcher.check_pending_transactions()
-
     pending_count = await RollupOutboxMessage.filter(
         l1_withdrawals__isnull=True,
         l2_withdrawals__isnull=False,

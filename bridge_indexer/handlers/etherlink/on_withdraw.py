@@ -55,8 +55,4 @@ async def on_withdraw(
 
     ctx.logger.info(f'Etherlink Withdraw Event registered: {withdrawal.id}')
 
-    sync_level = ctx.datasources['etherlink_node']._subscriptions._subscriptions[None]
-    status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
-    if status == IndexStatus.realtime or sync_level - event.data.level < 5:
-        await BridgeMatcher.check_pending_etherlink_withdrawals()
-        await BridgeMatcher.check_pending_tezos_withdrawals()
+    BridgeMatcher.set_pending_etherlink_withdrawals()

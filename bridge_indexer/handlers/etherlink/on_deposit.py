@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from datetime import timezone
 
@@ -43,6 +44,13 @@ async def on_deposit(
 ) -> None:
     setup_handler_logger(ctx)
     ctx.logger.info(f'Etherlink Deposit Event found: 0x{event.data.transaction_hash}')
+
+    for _ in range(15):
+        if event.payload.inbox_level in BridgeMatcher.tezos_inbox_fetched:
+            break
+
+        await asyncio.sleep(1)
+
     try:
         await _validate_ticket(event.payload.ticket_hash)
     except ValueError as exception:
@@ -82,7 +90,4 @@ async def on_deposit(
 
     ctx.logger.info(f'Etherlink Deposit Event registered: {deposit.id}')
 
-    sync_level = ctx.datasources['etherlink_node']._subscriptions._subscriptions[None]
-    status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
-    if status == IndexStatus.realtime or sync_level - event.data.level < 5:
-        await BridgeMatcher.check_pending_etherlink_deposits()
+    BridgeMatcher.set_pending_etherlink_deposits()

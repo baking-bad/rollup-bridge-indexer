@@ -25,6 +25,8 @@ async def on_rollup_call(
 
     inbox_message = await ctx.container.inbox_message_service.match_transaction_with_inbox(default.data)
 
+    BridgeMatcher.tezos_inbox_fetched[inbox_message.level] = True
+
     deposit = await TezosDepositOperation.create(
         timestamp=default.data.timestamp,
         level=default.data.level,
@@ -43,8 +45,4 @@ async def on_rollup_call(
 
     ctx.logger.info(f'Tezos Deposit Transaction registered: {deposit.id}')
 
-    status = await Index.get(name='tezos_rollup_operations').only('status').values_list('status', flat=True)
-    if status == IndexStatus.realtime:
-        await BridgeMatcher.check_pending_tezos_deposits()
-        await BridgeMatcher.check_pending_etherlink_deposits()
-        await BridgeMatcher.check_pending_etherlink_xtz_deposits()
+    BridgeMatcher.set_pending_tezos_deposits()

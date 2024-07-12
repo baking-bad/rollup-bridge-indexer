@@ -57,7 +57,9 @@ class InboxMessageService:
             inbox: list[RollupInboxMessage] = []
             async for inbox_message in self._fetch_inbox(inbox_level):
                 inbox.append(inbox_message)
-            await RollupInboxMessage.bulk_create(inbox)
+            if len(inbox) > 0:
+                await RollupInboxMessage.bulk_create(inbox)
+
 
     async def _read_inbox(self, inbox_level: int) -> AsyncGenerator[RollupInboxMessage, None]:
         await self._prepare_inbox(inbox_level)

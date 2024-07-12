@@ -1,12 +1,10 @@
 from datetime import timedelta
 
 from bridge_indexer.models import BridgeDepositOperation
-from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeOperationType
 from bridge_indexer.models import BridgeWithdrawOperation
-from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkWithdrawOperation
 from bridge_indexer.models import TezosDepositOperation
@@ -16,8 +14,42 @@ LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=20*7)
 
 
 class BridgeMatcher:
-    @staticmethod
-    async def check_pending_tezos_deposits():
+    tezos_inbox_fetched: dict = {}
+
+    _pending_tezos_deposits: bool = False
+    _pending_etherlink_withdrawals: bool = False
+    _pending_etherlink_deposits: bool = False
+    _pending_etherlink_xtz_deposits: bool = False
+    _pending_tezos_withdrawals: bool = False
+
+    @classmethod
+    def set_pending_tezos_deposits(cls):
+        cls._pending_tezos_deposits = True
+
+    @classmethod
+    def set_pending_etherlink_withdrawals(cls):
+        cls._pending_etherlink_withdrawals = True
+
+    @classmethod
+    def set_pending_etherlink_deposits(cls):
+        cls._pending_etherlink_deposits = True
+
+    @classmethod
+    def set_pending_etherlink_xtz_deposits(cls):
+        cls._pending_etherlink_xtz_deposits = True
+
+    @classmethod
+    def set_pending_tezos_withdrawals(cls):
+        cls._pending_tezos_withdrawals = True
+
+
+    @classmethod
+    async def check_pending_tezos_deposits(cls):
+        if not cls._pending_tezos_deposits:
+            return
+        else:
+            cls._pending_tezos_deposits = False
+
         qs = TezosDepositOperation.filter(bridge_deposits__isnull=True)
         async for l1_deposit in qs:
             bridge_deposit = await BridgeDepositOperation.create(l1_transaction=l1_deposit)
@@ -31,8 +63,13 @@ class BridgeMatcher:
                 status=BridgeOperationStatus.created,
             )
 
-    @staticmethod
-    async def check_pending_etherlink_withdrawals():
+    @classmethod
+    async def check_pending_etherlink_withdrawals(cls):
+        if not cls._pending_etherlink_withdrawals:
+            return
+        else:
+            cls._pending_etherlink_withdrawals = False
+
         qs = EtherlinkWithdrawOperation.filter(bridge_withdrawals__isnull=True)
         async for l2_withdrawal in qs:
             bridge_withdrawal = await BridgeWithdrawOperation.create(l2_transaction=l2_withdrawal)
@@ -46,8 +83,13 @@ class BridgeMatcher:
                 status=BridgeOperationStatus.created,
             )
 
-    @staticmethod
-    async def check_pending_etherlink_deposits():
+    @classmethod
+    async def check_pending_etherlink_deposits(cls):
+        if not cls._pending_etherlink_deposits:
+            return
+        else:
+            cls._pending_etherlink_deposits = False
+
         qs = (
             EtherlinkDepositOperation.filter(bridge_deposits__isnull=True)
             .prefetch_related('l2_token')
@@ -86,8 +128,13 @@ class BridgeMatcher:
 
             await bridge_operation.save()
 
-    @staticmethod
-    async def check_pending_etherlink_xtz_deposits():
+    @classmethod
+    async def check_pending_etherlink_xtz_deposits(cls):
+        if not cls._pending_etherlink_xtz_deposits:
+            return
+        else:
+            cls._pending_etherlink_xtz_deposits = False
+
         qs = EtherlinkDepositOperation.filter(
             bridge_deposits__isnull=True,
             inbox_message_id__isnull=True,
@@ -125,8 +172,13 @@ class BridgeMatcher:
             bridge_operation.status = BridgeOperationStatus.finished
             await bridge_operation.save()
 
-    @staticmethod
-    async def check_pending_tezos_withdrawals():
+    @classmethod
+    async def check_pending_tezos_withdrawals(cls):
+        if not cls._pending_tezos_withdrawals:
+            return
+        else:
+            cls._pending_tezos_withdrawals = False
+
         qs = TezosWithdrawOperation.filter(bridge_withdrawals__isnull=True).order_by('level')
         async for l1_withdrawal in qs:
             bridge_withdrawal = await BridgeWithdrawOperation.filter(
@@ -155,3 +207,4 @@ class BridgeMatcher:
         await BridgeMatcher.check_pending_etherlink_deposits()
         await BridgeMatcher.check_pending_etherlink_xtz_deposits()
         await BridgeMatcher.check_pending_tezos_withdrawals()
+

@@ -62,6 +62,4 @@ async def on_rollup_execute(
 
     ctx.logger.info(f'Tezos Withdraw Transaction registered: {withdrawal.id}')
 
-    status = await Index.get(name='tezos_rollup_operations').only('status').values_list('status', flat=True)
-    if status == IndexStatus.realtime:
-        await BridgeMatcher.check_pending_tezos_withdrawals()
+    BridgeMatcher.set_pending_tezos_withdrawals()

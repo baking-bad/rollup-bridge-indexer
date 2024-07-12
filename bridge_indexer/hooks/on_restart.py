@@ -10,4 +10,10 @@ async def on_restart(
     await ctx.execute_sql('on_restart')
 
     ServiceContainer(ctx)
+
+    BridgeMatcher.set_pending_tezos_deposits()
+    BridgeMatcher.set_pending_etherlink_withdrawals()
+    BridgeMatcher.set_pending_etherlink_deposits()
+    BridgeMatcher.set_pending_etherlink_xtz_deposits()
+    BridgeMatcher.set_pending_tezos_withdrawals()
     await BridgeMatcher.check_pending_transactions()

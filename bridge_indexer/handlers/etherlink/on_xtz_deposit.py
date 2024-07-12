@@ -57,7 +57,4 @@ async def on_xtz_deposit(
 
     ctx.logger.info(f'XTZ Deposit Transaction registered: {deposit.id}')
 
-    sync_level = ctx.datasources['etherlink_node']._subscriptions._subscriptions[None]
-    status = await Index.get(name='etherlink_kernel_events').only('status').values_list('status', flat=True)
-    if status == IndexStatus.realtime or sync_level - transaction.level < 5:
-        await BridgeMatcher.check_pending_etherlink_xtz_deposits()
+    BridgeMatcher.set_pending_etherlink_xtz_deposits()

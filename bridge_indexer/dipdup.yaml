@@ -76,6 +76,12 @@ contracts:
 
 
 indexes:
+  tezos_head:
+    kind: tezos.head
+    datasources:
+      - tzkt
+    callback: tezos.on_head
+
   tezos_rollup_cement:
     kind: tezos.operations
     datasources:

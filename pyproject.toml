@@ -7,11 +7,9 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-#dipdup = {git = "https://github.com/dipdup-io/dipdup.git", rev="4e5d06bf"}
-
-dipdup = "8.0.0b3"
+dipdup = {git = "https://github.com/dipdup-io/dipdup.git", rev="7181ba2a"}
 base58 = "^2.1.1"
-pytezos = "*"
+pytezos = {git = "https://github.com/baking-bad/pytezos.git", rev="20442182"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.4"
