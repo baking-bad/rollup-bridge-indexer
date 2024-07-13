@@ -2,8 +2,6 @@ from datetime import datetime
 from datetime import timezone
 
 from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
 from dipdup.models.evm import EvmTransactionData
 
 from bridge_indexer.handlers import setup_handler_logger
@@ -23,6 +21,7 @@ async def _validate_xtz_transaction(transaction: EvmTransactionData):
     ]
     if not all(validators):
         raise ValueError('Transaction validation error: {}', transaction.hash)
+
 
 async def on_xtz_deposit(
     ctx: HandlerContext,

@@ -2,12 +2,11 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosSmartRollupCement
 
 from bridge_indexer.handlers import setup_handler_logger
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import BridgeDepositOperation
 from bridge_indexer.models import BridgeOperation
+from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeOperationType
 from bridge_indexer.models import BridgeWithdrawOperation
-from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import RollupCementedCommitment
 from bridge_indexer.models import RollupOutboxMessage
 
@@ -34,24 +33,44 @@ async def on_cement_commitment(
 
     ctx.logger.info(f'Cemented Commitment registered: {cement.commitment.hash}')
 
-    sealed = await BridgeOperation.filter(
-        type=BridgeOperationType.withdrawal,
-        status__in=[BridgeOperationStatus.created, BridgeOperationStatus.sealed],
-    ).order_by('created_at').limit(100).only('id').values_list('id', flat=True)
-    expired = await BridgeWithdrawOperation.filter(
-        id__in=sealed,
-        l2_transaction__outbox_message__level__lte=cement.commitment.inbox_level-20160,
-    ).only('id').values_list('id', flat=True)
+    sealed = (
+        await BridgeOperation.filter(
+            type=BridgeOperationType.withdrawal,
+            status__in=[BridgeOperationStatus.created, BridgeOperationStatus.sealed],
+        )
+        .order_by('created_at')
+        .limit(100)
+        .only('id')
+        .values_list('id', flat=True)
+    )
+    expired = (
+        await BridgeWithdrawOperation.filter(
+            id__in=sealed,
+            l2_transaction__outbox_message__level__lte=cement.commitment.inbox_level - 20160,
+        )
+        .only('id')
+        .values_list('id', flat=True)
+    )
     await BridgeOperation.filter(id__in=expired).update(status=BridgeOperationStatus.outbox_expired)
 
-    created = await BridgeOperation.filter(
-        type=BridgeOperationType.deposit,
-        status=BridgeOperationStatus.created,
-    ).order_by('created_at').limit(100).only('id').values_list('id', flat=True)
-    failed = await BridgeDepositOperation.filter(
-        id__in=created,
-        l1_transaction__level__lte=cement.commitment.inbox_level-19,
-    ).only('id').values_list('id', flat=True)
+    created = (
+        await BridgeOperation.filter(
+            type=BridgeOperationType.deposit,
+            status=BridgeOperationStatus.created,
+        )
+        .order_by('created_at')
+        .limit(100)
+        .only('id')
+        .values_list('id', flat=True)
+    )
+    failed = (
+        await BridgeDepositOperation.filter(
+            id__in=created,
+            l1_transaction__level__lte=cement.commitment.inbox_level - 19,
+        )
+        .only('id')
+        .values_list('id', flat=True)
+    )
     await BridgeOperation.filter(id__in=failed).update(status=BridgeOperationStatus.inbox_matching_timeout)
 
     pending_count = await RollupOutboxMessage.filter(

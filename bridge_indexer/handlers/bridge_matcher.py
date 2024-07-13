@@ -10,7 +10,7 @@ from bridge_indexer.models import EtherlinkWithdrawOperation
 from bridge_indexer.models import TezosDepositOperation
 from bridge_indexer.models import TezosWithdrawOperation
 
-LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=20*7)
+LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=20 * 7)
 
 
 class BridgeMatcher:
@@ -41,7 +41,6 @@ class BridgeMatcher:
     @classmethod
     def set_pending_tezos_withdrawals(cls):
         cls._pending_tezos_withdrawals = True
-
 
     @classmethod
     async def check_pending_tezos_deposits(cls):
@@ -207,4 +206,3 @@ class BridgeMatcher:
         await BridgeMatcher.check_pending_etherlink_deposits()
         await BridgeMatcher.check_pending_etherlink_xtz_deposits()
         await BridgeMatcher.check_pending_tezos_withdrawals()
-

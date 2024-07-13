@@ -30,12 +30,12 @@ ensure_newline_before_comments = true
 
 [tool.black]
 line-length = 140
-target-version = ['py311']
+target-version = ['py312']
 skip-string-normalization = true
 
 [tool.ruff]
 line-length = 140
 ignore = ["E501", "B905"]
-target-version = "py311"
+target-version = "py312"
 extend-select = ["B", "C4", "Q"]
 flake8-quotes = {inline-quotes = "single", multiline-quotes = "single"}

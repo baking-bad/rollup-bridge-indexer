@@ -1,6 +1,4 @@
 from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
 from dipdup.models.tezos import TezosTransaction
 
 from bridge_indexer.handlers import setup_handler_logger

@@ -3,8 +3,6 @@ from datetime import datetime
 from datetime import timezone
 
 from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
 from dipdup.models.evm import EvmEvent
 
 from bridge_indexer.handlers import setup_handler_logger
@@ -54,7 +52,9 @@ async def on_deposit(
     try:
         await _validate_ticket(event.payload.ticket_hash)
     except ValueError as exception:
-        ctx.logger.warning('Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Mark Operation as `Failed Deposit`.')
+        ctx.logger.warning(
+            'Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Mark Operation as `Failed Deposit`.'
+        )
         etherlink_token = None
 
     if event.payload.ticket_owner == event.payload.receiver:
@@ -66,8 +66,7 @@ async def on_deposit(
             etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
         except ValueError as exception:
             ctx.logger.warning(
-                'Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) +
-                '. Mark Operation as `Failed Deposit`.'
+                'Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Mark Operation as `Failed Deposit`.'
             )
             etherlink_token = None
 

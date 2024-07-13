@@ -1,6 +1,5 @@
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
-
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers import setup_handler_logger

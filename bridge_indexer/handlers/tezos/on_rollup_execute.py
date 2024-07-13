@@ -1,16 +1,11 @@
 from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
 from dipdup.models.tezos import TezosSmartRollupExecute
-from dipdup.models.tezos import TezosTransaction
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import TezosWithdrawOperation
 from bridge_indexer.types.output_proof.output_proof import OutputProofData
-from bridge_indexer.types.ticketer.tezos_parameters.withdraw import WithdrawParameter
-from bridge_indexer.types.ticketer.tezos_storage import TicketerStorage
 
 
 async def on_rollup_execute(

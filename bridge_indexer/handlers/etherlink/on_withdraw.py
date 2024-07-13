@@ -1,6 +1,4 @@
 from dipdup.context import HandlerContext
-from dipdup.models import Index
-from dipdup.models import IndexStatus
 from dipdup.models.evm import EvmEvent
 from tortoise.exceptions import DoesNotExist
 

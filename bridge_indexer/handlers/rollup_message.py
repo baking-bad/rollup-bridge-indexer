@@ -1,6 +1,6 @@
 import asyncio
-from typing import AsyncGenerator
 from typing import TYPE_CHECKING
+from typing import AsyncGenerator
 
 from dipdup.datasources.http import HttpDatasource
 from dipdup.datasources.tezos_tzkt import Datasource
@@ -8,8 +8,8 @@ from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
 from dipdup.models.tezos import TezosOperationData
 
 from bridge_indexer.models import BridgeOperation
-from bridge_indexer.models import BridgeWithdrawOperation
 from bridge_indexer.models import BridgeOperationStatus
+from bridge_indexer.models import BridgeWithdrawOperation
 from bridge_indexer.models import RollupCementedCommitment
 from bridge_indexer.models import RollupInboxMessage
 from bridge_indexer.models import RollupOutboxMessage
@@ -59,7 +59,6 @@ class InboxMessageService:
                 inbox.append(inbox_message)
             if len(inbox) > 0:
                 await RollupInboxMessage.bulk_create(inbox)
-
 
     async def _read_inbox(self, inbox_level: int) -> AsyncGenerator[RollupInboxMessage, None]:
         await self._prepare_inbox(inbox_level)
