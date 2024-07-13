@@ -27,7 +27,7 @@ async def on_cement_commitment(
         },
     )
 
-    if not ctx.datasource._signalr_client:
+    if not ctx.datasources['tzkt']._signalr_client:
         ctx.logger.debug('Skip syncing message with level %d', cement.data.level)
         return
 
