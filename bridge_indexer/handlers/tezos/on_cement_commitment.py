@@ -33,6 +33,8 @@ async def on_cement_commitment(
 
     ctx.logger.info(f'Cemented Commitment registered: {cement.commitment.hash}')
 
+    protocol = ctx.container.protocol
+
     sealed = (
         await BridgeOperation.filter(
             type=BridgeOperationType.withdrawal,
@@ -46,7 +48,7 @@ async def on_cement_commitment(
     expired = (
         await BridgeWithdrawOperation.filter(
             id__in=sealed,
-            l2_transaction__outbox_message__level__lte=cement.commitment.inbox_level - 20160,
+            l2_transaction__outbox_message__level__lte=cement.commitment.inbox_level - protocol.smart_rollup_max_active_outbox_levels,
         )
         .only('id')
         .values_list('id', flat=True)
@@ -66,7 +68,7 @@ async def on_cement_commitment(
     failed = (
         await BridgeDepositOperation.filter(
             id__in=created,
-            l1_transaction__level__lte=cement.commitment.inbox_level - 19,
+            l1_transaction__level__lte=cement.commitment.inbox_level - protocol.smart_rollup_commitment_period + 1,
         )
         .only('id')
         .values_list('id', flat=True)
@@ -76,7 +78,7 @@ async def on_cement_commitment(
     pending_count = await RollupOutboxMessage.filter(
         l1_withdrawals__isnull=True,
         l2_withdrawals__isnull=False,
-        level__gt=cement.commitment.inbox_level - 20160,  # todo: avoid magic numbers
+        level__gt=cement.commitment.inbox_level - protocol.smart_rollup_max_active_outbox_levels,
     ).count()
     if not pending_count:
         return

@@ -23,14 +23,14 @@ class TicketService:
         self._bridge: BridgeConstantStorage = bridge
 
     async def register_fa_tickets(self):
-        rollup = self._bridge.smart_rollup_address
-        for ticket_data in await self._tzkt.request(
-            'GET', f'v1/tickets/balances?account={rollup}&ticket.ticketer.ne={self._bridge.native_ticketer}'
-        ):
-            await self.fetch_ticket(
-                ticket_data['ticket']['ticketer']['address'],
-                TicketContent.parse_obj(ticket_data['ticket']['content']),
-            )
+        for ticketer_address in self._bridge.fa_ticketer_list:
+            for ticket_data in await self._tzkt.request(
+                'GET', f'v1/tickets?ticketer.eq={ticketer_address}'
+            ):
+                await self.fetch_ticket(
+                    ticket_data['ticketer']['address'],
+                    TicketContent.parse_obj(ticket_data['content']),
+                )
 
     async def fetch_ticket(self, ticketer_address, ticket_content: TicketContent):
         ticket_hash = self.get_ticket_hash(ticketer_address, ticket_content)

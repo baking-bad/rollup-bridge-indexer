@@ -52,10 +52,6 @@ contracts:
     address: ${SMART_ROLLUP_ADDRESS}
     typename: rollup
 
-  tezos_native_ticketer:
-    kind: tezos
-    address: ${NATIVE_TICKETER}
-
   etherlink_rollup_kernel:
     kind: evm
     address: "0x0000000000000000000000000000000000000000"

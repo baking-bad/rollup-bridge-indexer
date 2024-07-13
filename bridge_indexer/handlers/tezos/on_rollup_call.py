@@ -23,8 +23,6 @@ async def on_rollup_call(
 
     inbox_message = await ctx.container.inbox_message_service.match_transaction_with_inbox(default.data)
 
-    BridgeMatcher.tezos_inbox_fetched[inbox_message.level] = True
-
     deposit = await TezosDepositOperation.create(
         timestamp=default.data.timestamp,
         level=default.data.level,
@@ -44,3 +42,5 @@ async def on_rollup_call(
     ctx.logger.info(f'Tezos Deposit Transaction registered: {deposit.id}')
 
     BridgeMatcher.set_pending_tezos_deposits()
+
+    BridgeMatcher.tezos_inbox_fetched[inbox_message.level] = True
