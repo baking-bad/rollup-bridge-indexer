@@ -5,7 +5,7 @@ ARG VENV_PATH=/opt/venv
 ARG APP_PATH=/opt/app
 ARG APP_USER=dipdup
 
-FROM python:${PYTHON_VERSION}-slim-bookworm as builder-base
+FROM python:${PYTHON_VERSION}-slim as builder-base
 
 ARG VENV_PATH
 ARG POETRY_PATH
@@ -23,7 +23,7 @@ RUN apt-get update \
         # deps for building python deps
         build-essential \
         # pytezos deps
-        libsodium-dev libsecp256k1-dev libgmp-dev pkg-config \
+        libsodium-dev libgmp-dev pkg-config \
     \
     # install poetry
  && curl -sSL https://install.python-poetry.org | python - \
@@ -42,14 +42,14 @@ FROM builder-base as builder-production
 
 COPY ["poetry.lock", "pyproject.toml", "./"]
 
-RUN poetry install --only main --sync --no-interaction --no-ansi -vvv \
+RUN poetry install --only main --sync --no-root --no-interaction --no-ansi -vvv \
  && rm -rf /tmp \
  && rm -rf /root/.cache \
  && rm -rf $VIRTUAL_ENV/src \
  && rm -rf `find $VIRTUAL_ENV/lib -name __pycache__`
 
 
-FROM python:${PYTHON_VERSION}-slim-bookworm as runtime-base
+FROM python:${PYTHON_VERSION}-slim as runtime-base
 
 ARG VENV_PATH
 ENV PATH="$VENV_PATH/bin:$PATH"
@@ -64,7 +64,7 @@ FROM runtime-base as runtime
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y \
-        libsodium-dev libsecp256k1-dev libgmp-dev pkg-config \
+        libsodium-dev libgmp-dev pkg-config \
     # cleanup
  && rm -rf /tmp/* \
  && rm -rf /root/.cache \

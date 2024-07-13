@@ -2214,13 +2214,13 @@ test = ["click", "pre-commit", "pytest (>=7.0)", "pytest-asyncio (>=0.19.0)", "p
 
 [[package]]
 name = "jupyter-server"
-version = "2.14.1"
+version = "2.14.2"
 description = "The backend—i.e. core services, APIs, and REST endpoints—to Jupyter web applications."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "jupyter_server-2.14.1-py3-none-any.whl", hash = "sha256:16f7177c3a4ea8fe37784e2d31271981a812f0b2874af17339031dc3510cc2a5"},
-    {file = "jupyter_server-2.14.1.tar.gz", hash = "sha256:12558d158ec7a0653bf96cc272bc7ad79e0127d503b982ed144399346694f726"},
+    {file = "jupyter_server-2.14.2-py3-none-any.whl", hash = "sha256:47ff506127c2f7851a17bf4713434208fc490955d0e8632e95014a9a9afbeefd"},
+    {file = "jupyter_server-2.14.2.tar.gz", hash = "sha256:66095021aa9638ced276c248b1d81862e4c50f292d575920bbe960de1c56b12b"},
 ]
 
 [package.dependencies]
@@ -3610,12 +3610,14 @@ testing = ["argcomplete", "attrs (>=19.2.0)", "hypothesis (>=3.56)", "mock", "no
 
 [[package]]
 name = "pytezos"
-version = "3.13.2"
+version = "3.13.3"
 description = "Python toolkit for Tezos"
 optional = false
-python-versions = ">=3.8.1,<3.13"
-files = []
-develop = false
+python-versions = "<3.13,>=3.8.1"
+files = [
+    {file = "pytezos-3.13.3-py3-none-any.whl", hash = "sha256:c2246bfc51e01fdf351c0fbb71bba8034824720422b688f98db1080a3dc64f5c"},
+    {file = "pytezos-3.13.3.tar.gz", hash = "sha256:a9158b491727d066f19cc3245b77240afd040d19d61dc7b9d6525196e3a852e4"},
+]
 
 [package.dependencies]
 attrs = ">=21.4.0"
@@ -3642,12 +3644,6 @@ strict-rfc3339 = ">=0.7"
 tabulate = ">=0.9.0"
 testcontainers = ">=3.7.0"
 tqdm = ">=4.62.3"
-
-[package.source]
-type = "git"
-url = "https://github.com/baking-bad/pytezos.git"
-reference = "20442182"
-resolved_reference = "20442182e20feee189b2abe611c6a71fbcf80056"
 
 [[package]]
 name = "python-dateutil"
@@ -5273,4 +5269,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.12,<3.13"
-content-hash = "84feb47f2b1420aad2fa22d05d1c34f3899eb00cbefb658a6d2efb70ffc5f6e7"
+content-hash = "7c0029b03d52ba4fcb1fd2d35ffdf2c2c8fc1f0bbe60b1bafd0b988917fe61d5"
