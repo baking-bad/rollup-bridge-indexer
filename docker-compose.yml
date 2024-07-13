@@ -2,7 +2,9 @@ version: "3.9"
 
 services:
   db:
-    image: timescale/timescaledb:latest-pg15
+    image: postgres:15
+    volumes:
+      - db:/var/lib/postgresql/data
     restart: always
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
@@ -32,3 +34,6 @@ services:
       - HASURA_GRAPHQL_ENABLE_TELEMETRY=false
       - HASURA_GRAPHQL_ADMIN_SECRET=${ADMIN_SECRET}
       - HASURA_GRAPHQL_UNAUTHORIZED_ROLE=user
+
+volumes:
+  db:
