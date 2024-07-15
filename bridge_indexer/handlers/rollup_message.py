@@ -35,7 +35,7 @@ class InboxMessageService:
             case _:
                 raise TypeError('Unsupported Inbox Message Type: {}.', message_data['type'])
 
-    async def _fetch_inbox(self, inbox_level: int):
+    async def _fetch_inbox_level(self, inbox_level: int):
         index = -1
         for message_data in await self._tzkt.request('GET', f'v1/smart_rollups/inbox?level={inbox_level}'):
             index += 1
@@ -52,29 +52,35 @@ class InboxMessageService:
             except (TypeError, NotImplementedError):
                 continue
 
-    async def _prepare_inbox(self, inbox_level):
-        if await RollupInboxMessage.filter(level=inbox_level).count() == 0:
-            inbox: list[RollupInboxMessage] = []
-            async for inbox_message in self._fetch_inbox(inbox_level):
-                inbox.append(inbox_message)
-            if len(inbox) > 0:
-                await RollupInboxMessage.bulk_create(inbox)
+    @staticmethod
+    async def _check_inbox_level(inbox_level):
+        return await RollupInboxMessage.filter(level=inbox_level).count() > 0
 
-    async def _read_inbox(self, inbox_level: int) -> AsyncGenerator[RollupInboxMessage, None]:
-        await self._prepare_inbox(inbox_level)
+    async def _prepare_inbox_level(self, inbox_level):
+        if await self._check_inbox_level(inbox_level):
+            return
+        inbox: list[RollupInboxMessage] = []
+        async for inbox_message in self._fetch_inbox_level(inbox_level):
+            inbox.append(inbox_message)
+        if len(inbox) > 0:
+            await RollupInboxMessage.bulk_create(inbox)
+        else:
+            raise RuntimeError('Processed level with no supported inbox_messages!')
+
+    async def _read_inbox_level(self, inbox_level: int) -> AsyncGenerator[RollupInboxMessage, None]:
+        await self._prepare_inbox_level(inbox_level)
         async for inbox_message in RollupInboxMessage.filter(level=inbox_level, l1_deposits__isnull=True).order_by('id'):
             yield inbox_message
 
     async def match_transaction_with_inbox(self, data: TezosOperationData) -> RollupInboxMessage:
-        async for inbox_message in self._read_inbox(data.level):
+        async for inbox_message in self._read_inbox_level(data.level):
             if data.parameter_json == inbox_message.parameter:
                 return inbox_message
 
         raise TypeError('Transaction not matched')
 
-    async def find_by_index(self, inbox_level: int, index: int):
-        await self._prepare_inbox(inbox_level)
-
+    @staticmethod
+    async def find_by_index(inbox_level: int, index: int):
         return await RollupInboxMessage.get(level=inbox_level, index=index)
 
 

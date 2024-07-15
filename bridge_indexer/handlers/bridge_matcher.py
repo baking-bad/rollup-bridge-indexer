@@ -14,8 +14,6 @@ LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=20 * 7)
 
 
 class BridgeMatcher:
-    tezos_inbox_fetched: dict = {}
-
     _pending_tezos_deposits: bool = False
     _pending_etherlink_withdrawals: bool = False
     _pending_etherlink_deposits: bool = False

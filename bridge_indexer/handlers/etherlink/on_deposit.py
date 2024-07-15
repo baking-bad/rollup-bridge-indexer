@@ -4,6 +4,7 @@ from datetime import timezone
 
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
+from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
@@ -43,12 +44,6 @@ async def on_deposit(
     setup_handler_logger(ctx)
     ctx.logger.info(f'Etherlink Deposit Event found: 0x{event.data.transaction_hash}')
 
-    for _ in range(15):
-        if event.payload.inbox_level in BridgeMatcher.tezos_inbox_fetched:
-            break
-
-        await asyncio.sleep(1)
-
     try:
         await _validate_ticket(event.payload.ticket_hash)
     except ValueError as exception:
@@ -70,7 +65,14 @@ async def on_deposit(
             )
             etherlink_token = None
 
-    inbox_message = await ctx.container.inbox_message_service.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id)
+    while True:
+        try:
+            inbox_message = await ctx.container.inbox_message_service.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id)
+        except DoesNotExist:
+            ctx.logger.warning('L2 deposit is matched before L1. Waiting for L1 deposit with inbox_message...')
+            await asyncio.sleep(1)
+        else:
+            break
 
     deposit = await EtherlinkDepositOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=timezone.utc),
