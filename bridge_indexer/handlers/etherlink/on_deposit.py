@@ -92,3 +92,4 @@ async def on_deposit(
     ctx.logger.info(f'Etherlink Deposit Event registered: {deposit.id}')
 
     BridgeMatcher.set_pending_etherlink_deposits()
+    await BridgeMatcher.check_pending_transactions()

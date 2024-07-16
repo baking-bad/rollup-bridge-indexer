@@ -57,3 +57,4 @@ async def on_xtz_deposit(
     ctx.logger.info(f'XTZ Deposit Transaction registered: {deposit.id}')
 
     BridgeMatcher.set_pending_etherlink_xtz_deposits()
+    await BridgeMatcher.check_pending_transactions()
