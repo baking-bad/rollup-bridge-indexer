@@ -13,5 +13,4 @@ class WithdrawalPayload(BaseModel):
     ticket_owner: str
     receiver: str
     amount: int
-    outbox_level: int
-    outbox_msg_id: int
+    withdrawal_id: int

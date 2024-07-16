@@ -6,7 +6,7 @@ from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawOperation
-from bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload
+from bridge_indexer.types.fa_precompile.evm_events.withdrawal import WithdrawalPayload
 
 
 async def on_withdraw(
@@ -54,3 +54,4 @@ async def on_withdraw(
     ctx.logger.info(f'Etherlink Withdraw Event registered: {withdrawal.id}')
 
     BridgeMatcher.set_pending_etherlink_withdrawals()
+    await BridgeMatcher.check_pending_transactions()

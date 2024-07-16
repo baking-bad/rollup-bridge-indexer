@@ -54,8 +54,13 @@ contracts:
 
   etherlink_rollup_kernel:
     kind: evm
-    address: "0x0000000000000000000000000000000000000000"
+    address: '0x0000000000000000000000000000000000000000'
     typename: kernel
+
+  etherlink_fa_withdrawal_precompile:
+    kind: evm
+    address: "0xff00000000000000000000000000000000000002"
+    typename: fa_precompile
 
   l2_tzbtc_token:
     kind: evm

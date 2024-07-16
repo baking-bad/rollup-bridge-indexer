@@ -4,14 +4,13 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 
 
-class WithdrawalPayload(BaseModel):
+class DepositPayload(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
     ticket_hash: int
-    sender: str
     ticket_owner: str
     receiver: str
     amount: int
-    outbox_level: int
-    outbox_msg_id: int
+    inbox_level: int
+    inbox_msg_id: int
