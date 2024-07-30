@@ -10,7 +10,7 @@ class ForgedTezosAccount:
         self._base58 = None
 
     @classmethod
-    def validate(cls, value):
+    def validate(cls, value, *args):
         return unforge_address(value)
 
     @classmethod

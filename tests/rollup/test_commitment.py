@@ -16,7 +16,7 @@ class TestCommitment:
     def test_estimated_cemented_level(
         self, outbox_level: int, lcc_level: int, commitment_period: int, challenge_window: int, expected: int
     ):
-        cemented_level = OutboxMessageService._estimate_outbox_message_cemented_level(
+        cemented_level = OutboxMessageService.estimate_outbox_message_cemented_level(
             outbox_level,
             lcc_level,
             commitment_period,

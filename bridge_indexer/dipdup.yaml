@@ -57,11 +57,6 @@ contracts:
     address: '0x0000000000000000000000000000000000000000'
     typename: kernel
 
-  etherlink_fa_withdrawal_precompile:
-    kind: evm
-    address: "0xff00000000000000000000000000000000000002"
-    typename: fa_precompile
-
   l2_tzbtc_token:
     kind: evm
     address: 0x87dcbf128677ba36e79d47daf4eb4e51610e0150
