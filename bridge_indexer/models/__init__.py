@@ -48,6 +48,9 @@ class TezosTicket(Model):
         source_field='token_id',
         to_field='id',
     )
+    metadata = fields.TextField(null=True)
+    outbox_interface = fields.TextField()
+    whitelisted = fields.BooleanField(index=True, null=True, default=None)
 
 
 class EtherlinkToken(Model):
@@ -94,6 +97,16 @@ class AbstractRollupMessage(DatetimeModelMixin, Model):
     id = fields.BigIntField(pk=True)
     level = fields.IntField(index=True)
     index = fields.IntField(index=True)
+    message = fields.JSONField()
+    parameters_hash = fields.CharField(max_length=16, index=True, null=True)
+
+
+class RollupInboxMessageType(Enum):
+    level_start: str = 'level_start'
+    level_info: str = 'level_info'
+    transfer: str = 'transfer'
+    external: str = 'external'
+    level_end: str = 'level_end'
 
 
 class RollupInboxMessage(AbstractRollupMessage):
@@ -101,9 +114,7 @@ class RollupInboxMessage(AbstractRollupMessage):
         table = 'rollup_inbox_message'
         model = 'models.RollupInboxMessage'
 
-    type = fields.TextField()  # todo: fix type
-    parameter = fields.JSONField()
-    payload = fields.TextField(null=True)
+    type = fields.EnumField(RollupInboxMessageType)
 
     l1_deposits: fields.ReverseRelation['TezosDepositOperation']
     l2_deposits: fields.ReverseRelation['EtherlinkDepositOperation']
@@ -116,16 +127,15 @@ class RollupOutboxMessage(AbstractRollupMessage):
 
     id = fields.UUIDField(pk=True)
 
-    message = fields.JSONField()
     proof = fields.TextField(null=True)
-
     commitment: ForeignKeyFieldInstance[RollupCementedCommitment] = fields.ForeignKeyField(
         model_name=RollupCementedCommitment.Meta.model,
         source_field='commitment_id',
         to_field='id',
         null=True,
     )
-    cemented_at = fields.DatetimeField(index=True, null=True)
+    cemented_at = fields.DatetimeField(index=True, null=False)
+    cemented_level = fields.IntField(null=False)
     l1_withdrawals: fields.ReverseRelation['TezosWithdrawOperation']
     l2_withdrawals: fields.ReverseRelation['EtherlinkWithdrawOperation']
 
@@ -155,12 +165,7 @@ class TezosDepositOperation(AbstractTezosOperation):
         to_field='hash',
     )
     amount = fields.TextField()
-    inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
-        model_name=RollupInboxMessage.Meta.model,
-        source_field='inbox_message_id',
-        to_field='id',
-        unique=True,
-    )
+    parameters_hash = fields.CharField(max_length=16, index=True, null=True)
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 
@@ -170,19 +175,14 @@ class TezosWithdrawOperation(AbstractTezosOperation):
         table = 'l1_withdrawal'
         model = 'models.TezosWithdrawOperation'
 
-    outbox_message: ForeignKeyFieldInstance[RollupOutboxMessage] = fields.ForeignKeyField(
-        model_name=RollupOutboxMessage.Meta.model,
-        source_field='outbox_message_id',
-        to_field='id',
-        unique=True,
-    )
-
     bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
 
 
 class AbstractEtherlinkOperation(AbstractBlockchainOperation):
     class Meta:
         abstract = True
+
+        ordering = ['-level', '-transaction_index', '-log_index']
 
     transaction_hash = fields.CharField(max_length=64)
     transaction_index = fields.IntField()
@@ -194,6 +194,13 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
     class Meta:
         table = 'l2_deposit'
         model = 'models.EtherlinkDepositOperation'
+
+        unique_together = (
+            'inbox_message_level',
+            'inbox_message_index',
+        )
+
+
 
     l2_account = fields.CharField(max_length=40)
     l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
@@ -210,13 +217,15 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
     )
     ticket_owner = fields.CharField(max_length=40)
     amount = fields.TextField()
-    inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
-        model_name=RollupInboxMessage.Meta.model,
-        source_field='inbox_message_id',
-        to_field='id',
-        unique=True,
-        null=True,
-    )
+    # inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
+    #     model_name=RollupInboxMessage.Meta.model,
+    #     source_field='inbox_message_id',
+    #     to_field='id',
+    #     unique=True,
+    #     null=True,
+    # )
+    inbox_message_level = fields.IntField(index=True)
+    inbox_message_index = fields.IntField(index=True)
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 
@@ -239,7 +248,10 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
         source_field='ticket_hash',
         to_field='hash',
     )
+    l2_ticket_owner = fields.CharField(max_length=40)
+    l1_ticket_owner = fields.CharField(max_length=36)
     amount = fields.TextField()
+    kernel_withdrawal_id = fields.IntField(index=True, unique=True, null=False)
     outbox_message: ForeignKeyFieldInstance[RollupOutboxMessage] = fields.ForeignKeyField(
         model_name=RollupOutboxMessage.Meta.model,
         source_field='outbox_message_id',
@@ -309,6 +321,13 @@ class BridgeDepositOperation(AbstractBridgeOperation):
         null=True,
         unique=True,
     )
+    inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
+        model_name=RollupInboxMessage.Meta.model,
+        source_field='inbox_message_id',
+        to_field='id',
+        index=True,
+        # unique=True,
+    )
 
 
 class BridgeWithdrawOperation(AbstractBridgeOperation):
@@ -329,7 +348,13 @@ class BridgeWithdrawOperation(AbstractBridgeOperation):
         to_field='id',
         unique=True,
     )
-
+    outbox_message: ForeignKeyFieldInstance[RollupOutboxMessage] = fields.ForeignKeyField(
+        model_name=RollupOutboxMessage.Meta.model,
+        source_field='outbox_message_id',
+        to_field='id',
+        index=True,
+        # unique=True,
+    )
 
 class EtherlinkTokenHolder(Model):
     class Meta:

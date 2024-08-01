@@ -1458,7 +1458,7 @@ web3 = ">=6.19,<7.0"
 [package.source]
 type = "git"
 url = "https://github.com/dipdup-io/dipdup.git"
-reference = "a8e76178"
+reference = "a8e7617"
 resolved_reference = "a8e76178cec501e3b797132a9c11c6ec1837dadd"
 
 [[package]]
@@ -5331,4 +5331,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.12,<3.13"
-content-hash = "b8d75db9676ef26ef566a486ad8e757e0f06f87ad1f0ad6cd475e91aa9c526b8"
+content-hash = "5aca703e52df6556b63506ba1131a6ab92a84b904b06116c75e5449c0c21d2d3"
