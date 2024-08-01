@@ -11,6 +11,9 @@ async def on_restart(
 
     await ServiceContainer(ctx).register()
 
+    ctx.logger.info('Start of Rollup Message Index syncing.')
+    await ctx.container.rollup_message_index.synchronize()
+    ctx.logger.info('Rollup Message Index syncing complete. Switch to realtime indexing mode.')
     BridgeMatcher.set_pending_tezos_deposits()
     BridgeMatcher.set_pending_etherlink_withdrawals()
     BridgeMatcher.set_pending_etherlink_deposits()

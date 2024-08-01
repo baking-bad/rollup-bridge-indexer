@@ -7,6 +7,7 @@ from bridge_indexer.models import BridgeOperationType
 from bridge_indexer.models import BridgeWithdrawOperation
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkWithdrawOperation
+from bridge_indexer.models import RollupInboxMessage
 from bridge_indexer.models import TezosDepositOperation
 from bridge_indexer.models import TezosWithdrawOperation
 
@@ -49,6 +50,7 @@ class BridgeMatcher:
 
         qs = TezosDepositOperation.filter(bridge_deposits__isnull=True)
         async for l1_deposit in qs:
+            l1_deposit: TezosDepositOperation
             bridge_deposit = await BridgeDepositOperation.create(l1_transaction=l1_deposit)
             await BridgeOperation.create(
                 id=bridge_deposit.id,
@@ -59,6 +61,32 @@ class BridgeMatcher:
                 updated_at=l1_deposit.timestamp,
                 status=BridgeOperationStatus.created,
             )
+
+    @classmethod
+    async def check_pending_inbox(cls):
+        qs = BridgeDepositOperation.filter(
+            l1_transaction__parameters_hash__isnull=False,
+            l2_transaction__isnull=True,
+            inbox_message__isnull=True,
+            status=BridgeOperationStatus.created,
+        ).order_by('level', 'transaction_index', 'log_index')
+        async for l1_deposit in qs:
+            l1_deposit: TezosDepositOperation
+            inbox_message = (
+                await RollupInboxMessage.filter(
+                    parameters_hash=l1_deposit.parameters_hash,
+                    level=l1_deposit.level,
+                )
+                .order_by('index')
+                .first()
+            )
+
+            if inbox_message:
+                l1_deposit.bridge_deposits.inbox_message = inbox_message
+                l1_deposit.parameters_hash = None
+                inbox_message.parameters_hash = None
+                await l1_deposit.save()
+                await inbox_message.save()
 
     @classmethod
     async def check_pending_etherlink_withdrawals(cls):

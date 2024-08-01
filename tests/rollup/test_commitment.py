@@ -6,7 +6,7 @@ from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.handlers.service_container import ProtocolConstantStorage
 
 TestProtocolConstantStorage = create_model(
-    "TestProtocolConstantStorage",
+    'TestProtocolConstantStorage',
     __base__=ProtocolConstantStorage,
     time_between_blocks=(int, 0),
     smart_rollup_commitment_period=(int, Field(validation_alias='commitment_period')),

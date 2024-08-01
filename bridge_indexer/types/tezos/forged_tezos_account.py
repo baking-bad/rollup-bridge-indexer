@@ -1,16 +1,18 @@
 from pytezos.michelson.forge import unforge_address
 
 
-# OriginatedAccount = SmartContractAccount | SmartRollupAccount
-# Account = ImplicitAccount | OriginatedAccount
 class ForgedTezosAccount:
 
-    def __init__(self, value: bytes):
+    def __init__(self, value: bytes | str):
         self.value = value
         self._base58 = None
 
     @classmethod
     def validate(cls, value, *args):
+        if isinstance(value, str):
+            if value[:3] in ['KT1', 'tz1', 'tz2', 'tz3']:
+                return value
+            value = bytes.fromhex(value.removeprefix('0x'))
         return unforge_address(value)
 
     @classmethod
