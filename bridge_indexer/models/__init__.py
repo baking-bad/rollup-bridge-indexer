@@ -116,8 +116,7 @@ class RollupInboxMessage(AbstractRollupMessage):
 
     type = fields.EnumField(RollupInboxMessageType)
 
-    l1_deposits: fields.ReverseRelation['TezosDepositOperation']
-    l2_deposits: fields.ReverseRelation['EtherlinkDepositOperation']
+    bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 
 
 class RollupOutboxMessage(AbstractRollupMessage):
@@ -136,8 +135,8 @@ class RollupOutboxMessage(AbstractRollupMessage):
     )
     cemented_at = fields.DatetimeField(index=True, null=False)
     cemented_level = fields.IntField(null=False)
-    l1_withdrawals: fields.ReverseRelation['TezosWithdrawOperation']
-    l2_withdrawals: fields.ReverseRelation['EtherlinkWithdrawOperation']
+
+    bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
 
 
 class AbstractTezosOperation(AbstractBlockchainOperation):
@@ -186,7 +185,7 @@ class AbstractEtherlinkOperation(AbstractBlockchainOperation):
 
     transaction_hash = fields.CharField(max_length=64)
     transaction_index = fields.IntField()
-    log_index = fields.IntField()
+    log_index = fields.IntField(null=True)
     address = fields.CharField(max_length=40)
 
 
@@ -199,8 +198,6 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
             'inbox_message_level',
             'inbox_message_index',
         )
-
-
 
     l2_account = fields.CharField(max_length=40)
     l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
@@ -217,15 +214,9 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
     )
     ticket_owner = fields.CharField(max_length=40)
     amount = fields.TextField()
-    # inbox_message: ForeignKeyFieldInstance[RollupInboxMessage] = fields.ForeignKeyField(
-    #     model_name=RollupInboxMessage.Meta.model,
-    #     source_field='inbox_message_id',
-    #     to_field='id',
-    #     unique=True,
-    #     null=True,
-    # )
-    inbox_message_level = fields.IntField(index=True)
-    inbox_message_index = fields.IntField(index=True)
+
+    inbox_message_level = fields.IntField(null=True)
+    inbox_message_index = fields.IntField(null=True)
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 
@@ -251,13 +242,8 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
     l2_ticket_owner = fields.CharField(max_length=40)
     l1_ticket_owner = fields.CharField(max_length=36)
     amount = fields.TextField()
+    parameters_hash = fields.CharField(max_length=16, index=True, null=True)
     kernel_withdrawal_id = fields.IntField(index=True, unique=True, null=False)
-    outbox_message: ForeignKeyFieldInstance[RollupOutboxMessage] = fields.ForeignKeyField(
-        model_name=RollupOutboxMessage.Meta.model,
-        source_field='outbox_message_id',
-        to_field='id',
-        unique=True,
-    )
 
     bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
 
@@ -325,8 +311,7 @@ class BridgeDepositOperation(AbstractBridgeOperation):
         model_name=RollupInboxMessage.Meta.model,
         source_field='inbox_message_id',
         to_field='id',
-        index=True,
-        # unique=True,
+        null=True,
     )
 
 
@@ -352,9 +337,10 @@ class BridgeWithdrawOperation(AbstractBridgeOperation):
         model_name=RollupOutboxMessage.Meta.model,
         source_field='outbox_message_id',
         to_field='id',
+        null=True,
         index=True,
-        # unique=True,
     )
+
 
 class EtherlinkTokenHolder(Model):
     class Meta:

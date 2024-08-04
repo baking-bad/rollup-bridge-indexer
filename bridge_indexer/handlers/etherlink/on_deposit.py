@@ -1,12 +1,9 @@
-import asyncio
 from datetime import datetime
 from datetime import timezone
 
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
-from tortoise.exceptions import DoesNotExist
 
-from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkToken
@@ -41,7 +38,6 @@ async def on_deposit(
     ctx: HandlerContext,
     event: EvmEvent[DepositPayload],
 ) -> None:
-    setup_handler_logger(ctx)
     ctx.logger.info(f'Etherlink Deposit Event found: 0x{event.data.transaction_hash}')
 
     try:
@@ -50,29 +46,23 @@ async def on_deposit(
         ctx.logger.warning(
             'Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Mark Operation as `Failed Deposit`.'
         )
-        etherlink_token = None
-
-    if event.payload.ticket_owner == event.payload.receiver:
-        ctx.logger.warning('Incorrect Deposit Routing Info: `ticket_owner == receiver`. Mark Operation as `Revertable Deposit`.')
+        event.payload.ticket_hash = None
         etherlink_token = None
     else:
-        try:
-            token_contract = event.payload.ticket_owner.removeprefix('0x')
-            etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
-        except ValueError as exception:
-            ctx.logger.warning(
-                'Incorrect Deposit Routing Info: ' + exception.args[0].format(*exception.args[1:]) + '. Mark Operation as `Failed Deposit`.'
-            )
+        if event.payload.ticket_owner == event.payload.receiver:
+            ctx.logger.warning('Incorrect Deposit Routing Info: `ticket_owner == receiver`. Mark Operation as `Revertable Deposit`.')
             etherlink_token = None
-
-    while True:
-        try:
-            inbox_message = await ctx.container.inbox_message_service.find_by_index(event.payload.inbox_level, event.payload.inbox_msg_id)
-        except DoesNotExist:
-            ctx.logger.warning('L2 deposit is matched before L1. Waiting for L1 deposit with inbox_message...')
-            await asyncio.sleep(1)
         else:
-            break
+            try:
+                token_contract = event.payload.ticket_owner.removeprefix('0x')
+                etherlink_token = await register_etherlink_token(token_contract, event.payload.ticket_hash)
+            except ValueError as exception:
+                ctx.logger.warning(
+                    'Incorrect Deposit Routing Info: '
+                    + exception.args[0].format(*exception.args[1:])
+                    + '. Mark Operation as `Failed Deposit`.'
+                )
+                etherlink_token = None
 
     deposit = await EtherlinkDepositOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=timezone.utc),
@@ -86,7 +76,8 @@ async def on_deposit(
         ticket_id=event.payload.ticket_hash,
         ticket_owner=event.payload.ticket_owner[-40:],
         amount=event.payload.amount,
-        inbox_message=inbox_message,
+        inbox_message_level=event.payload.inbox_level,
+        inbox_message_index=event.payload.inbox_msg_id,
     )
 
     ctx.logger.info(f'Etherlink Deposit Event registered: {deposit.id}')

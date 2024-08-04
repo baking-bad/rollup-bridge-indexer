@@ -48,7 +48,7 @@ class BridgeMatcher:
         else:
             cls._pending_tezos_deposits = False
 
-        qs = TezosDepositOperation.filter(bridge_deposits__isnull=True)
+        qs = TezosDepositOperation.filter(bridge_deposits=None)
         async for l1_deposit in qs:
             l1_deposit: TezosDepositOperation
             bridge_deposit = await BridgeDepositOperation.create(l1_transaction=l1_deposit)
@@ -65,48 +65,24 @@ class BridgeMatcher:
     @classmethod
     async def check_pending_inbox(cls):
         qs = BridgeDepositOperation.filter(
-            l1_transaction__parameters_hash__isnull=False,
-            l2_transaction__isnull=True,
-            inbox_message__isnull=True,
-            status=BridgeOperationStatus.created,
-        ).order_by('level', 'transaction_index', 'log_index')
-        async for l1_deposit in qs:
-            l1_deposit: TezosDepositOperation
-            inbox_message = (
-                await RollupInboxMessage.filter(
-                    parameters_hash=l1_deposit.parameters_hash,
-                    level=l1_deposit.level,
-                )
-                .order_by('index')
-                .first()
-            )
+            inbox_message=None,
+        ).order_by(
+            'l1_transaction__level', 'l1_transaction__counter', 'l1_transaction__nonce',
+        ).prefetch_related('l1_transaction')
+        async for bridge_deposit in qs:
+            bridge_deposit: BridgeDepositOperation
+            inbox_message = await RollupInboxMessage.filter(
+                parameters_hash=bridge_deposit.l1_transaction.parameters_hash,
+                level=bridge_deposit.l1_transaction.level,
+            ).order_by('index').first()
 
             if inbox_message:
-                l1_deposit.bridge_deposits.inbox_message = inbox_message
-                l1_deposit.parameters_hash = None
+                bridge_deposit.inbox_message = inbox_message
+                await bridge_deposit.save()
+                bridge_deposit.l1_transaction.parameters_hash = None
+                await bridge_deposit.l1_transaction.save()
                 inbox_message.parameters_hash = None
-                await l1_deposit.save()
                 await inbox_message.save()
-
-    @classmethod
-    async def check_pending_etherlink_withdrawals(cls):
-        if not cls._pending_etherlink_withdrawals:
-            return
-        else:
-            cls._pending_etherlink_withdrawals = False
-
-        qs = EtherlinkWithdrawOperation.filter(bridge_withdrawals__isnull=True)
-        async for l2_withdrawal in qs:
-            bridge_withdrawal = await BridgeWithdrawOperation.create(l2_transaction=l2_withdrawal)
-            await BridgeOperation.create(
-                id=bridge_withdrawal.id,
-                type=BridgeOperationType.withdrawal,
-                l1_account=l2_withdrawal.l1_account,
-                l2_account=l2_withdrawal.l2_account,
-                created_at=l2_withdrawal.timestamp,
-                updated_at=l2_withdrawal.timestamp,
-                status=BridgeOperationStatus.created,
-            )
 
     @classmethod
     async def check_pending_etherlink_deposits(cls):
@@ -115,30 +91,27 @@ class BridgeMatcher:
         else:
             cls._pending_etherlink_deposits = False
 
-        qs = (
-            EtherlinkDepositOperation.filter(bridge_deposits__isnull=True)
-            .prefetch_related('l2_token')
-            .order_by('level', 'transaction_index')
-        )
+        qs = EtherlinkDepositOperation.filter(
+            bridge_deposits=None,
+        ).prefetch_related('l2_token').order_by('level', 'transaction_index', 'log_index')
+
         async for l2_deposit in qs:
-            bridge_deposit = (
-                await BridgeDepositOperation.filter(
-                    l2_transaction=None,
-                    l1_transaction__inbox_message_id=l2_deposit.inbox_message_id,
-                )
-                .prefetch_related()
-                .first()
-            )
+            l2_deposit: EtherlinkDepositOperation
+            bridge_deposit = await BridgeDepositOperation.filter(
+                inbox_message__level=l2_deposit.inbox_message_level,
+                inbox_message__index=l2_deposit.inbox_message_index,
+                l2_transaction=None,
+            ).first()
 
             if not bridge_deposit:
                 continue
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
 
-            bridge_operation = await BridgeOperation.get(id=bridge_deposit.id)
+            bridge_operation = await BridgeOperation.get(id=bridge_deposit.pk)
             bridge_operation.is_completed = True
             bridge_operation.is_successful = l2_deposit.l2_token is not None
-            bridge_operation.updated_at = max(bridge_operation.created_at, l2_deposit.timestamp)
+            bridge_operation.updated_at = l2_deposit.timestamp
             match (l2_deposit.l2_token_id, l2_deposit.ticket_id, l2_deposit.ticket_owner):
                 case str(), str(), str():
                     bridge_operation.status = BridgeOperationStatus.finished
@@ -161,39 +134,40 @@ class BridgeMatcher:
             cls._pending_etherlink_xtz_deposits = False
 
         qs = EtherlinkDepositOperation.filter(
-            bridge_deposits__isnull=True,
-            inbox_message_id__isnull=True,
+            bridge_deposits=None,
             l2_token_id='xtz',
-        ).order_by('level', 'transaction_index')
+        ).order_by('level', 'transaction_index').prefetch_related('l2_token', 'l2_token__ticket')
         async for l2_deposit in qs:
-            await l2_deposit.fetch_related('l2_token', 'l2_token__ticket')
+            l2_deposit: EtherlinkDepositOperation
             bridge_deposit = (
                 await BridgeDepositOperation.filter(
                     l2_transaction=None,
-                    l1_transaction__inbox_message_id__gt=0,
+                    inbox_message_id__isnull=False,
                     l1_transaction__ticket=l2_deposit.l2_token.ticket,
+                    l1_transaction__timestamp__lte=l2_deposit.timestamp,
                     l1_transaction__timestamp__gte=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX,
                     l1_transaction__l2_account=l2_deposit.l2_account,
                     l1_transaction__amount=l2_deposit.amount[:-12],
                 )
                 .order_by('l1_transaction__timestamp')
-                .prefetch_related('l1_transaction__inbox_message')
+                .prefetch_related('inbox_message', 'l1_transaction')
                 .first()
             )
 
             if not bridge_deposit:
                 continue
 
-            l2_deposit.inbox_message = bridge_deposit.l1_transaction.inbox_message
-            await l2_deposit.save()
-
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
+            bridge_deposit.l1_transaction.parameters_hash = None
+            await bridge_deposit.l1_transaction.save()
+            bridge_deposit.inbox_message.parameters_hash = None
+            await bridge_deposit.inbox_message.save()
 
             bridge_operation = await BridgeOperation.get(id=bridge_deposit.id)
             bridge_operation.is_completed = True
             bridge_operation.is_successful = l2_deposit.l2_token is not None
-            bridge_operation.updated_at = max(bridge_operation.created_at, l2_deposit.timestamp)
+            bridge_operation.updated_at = l2_deposit.timestamp
             bridge_operation.status = BridgeOperationStatus.finished
             await bridge_operation.save()
 

@@ -65,26 +65,6 @@
         {
             "type": "pg_create_array_relationship",
             "args": {
-                "name": "l2_withdrawals",
-                "table": {
-                    "name": "rollup_outbox_message",
-                    "schema": "public"
-                },
-                "using": {
-                    "foreign_key_constraint_on": {
-                        "table": {
-                            "name": "l2_withdrawal",
-                            "schema": "public"
-                        },
-                        "column": "outbox_message_id"
-                    }
-                },
-                "source": "default"
-            }
-        },
-        {
-            "type": "pg_create_array_relationship",
-            "args": {
                 "name": "tezos_tickets",
                 "table": {
                     "name": "tezos_token",

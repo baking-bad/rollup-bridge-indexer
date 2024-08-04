@@ -79,25 +79,25 @@ indexes:
     callback: tezos.on_head
 
   tezos_rollup_cement:
-    kind: tezos.operations
-    datasources:
-      - tzkt
-    types:
-      - sr_cement
-    contracts:
-      - tezos_smart_rollup
-    handlers:
-      - callback: tezos.on_cement_commitment
-        pattern:
-          - type: sr_cement
-            destination: tezos_smart_rollup
+#    kind: tezos.operations
+#    datasources:
+#      - tzkt
+#    types:
+#      - sr_cement
+#    contracts:
+#      - tezos_smart_rollup
+#    handlers:
+#      - callback: tezos.on_cement_commitment
+#        pattern:
+#          - type: sr_cement
+#            destination: tezos_smart_rollup
+#
 
-  tezos_rollup_operations:
+  tezos_deposit_operations:
     kind: tezos.operations
     datasources:
       - tzkt
     types:
-      - sr_execute
       - transaction
     contracts:
       - tezos_smart_rollup
@@ -107,12 +107,8 @@ indexes:
           - type: transaction
             destination: tezos_smart_rollup
             entrypoint: default
-      - callback: tezos.on_rollup_execute
-        pattern:
-          - type: sr_execute
-            destination: tezos_smart_rollup
 
-  etherlink_kernel_events:
+  etherlink_deposit_events:
     kind: evm.events
     datasources:
       - etherlink_subsquid
@@ -122,28 +118,7 @@ indexes:
         contract: etherlink_rollup_kernel
         name: Deposit
 
-      - callback: etherlink.on_withdraw
-        contract: etherlink_rollup_kernel
-        name: Withdrawal
-
-  etherlink_token_events:
-    kind: evm.events
-    datasources:
-      - etherlink_subsquid
-      - etherlink_node
-    handlers:
-      - callback: etherlink.on_transfer
-        contract: l2_tzbtc_token
-        name: Transfer
-      - callback: etherlink.on_transfer
-        contract: l2_sirs_token
-        name: Transfer
-      - callback: etherlink.on_transfer
-        contract: l2_usdt_token
-        name: Transfer
-
-
-  etherlink_kernel_transactions:
+  etherlink_xtz_deposit_transactions:
     kind: evm.transactions
     datasources:
       - etherlink_subsquid
