@@ -27,10 +27,6 @@ async def on_cement_commitment(
         },
     )
 
-    if not ctx.datasources['tzkt']._signalr_client:
-        ctx.logger.debug('Skip syncing message with level %d', cement.data.level)
-        return
-
     ctx.logger.info(f'Cemented Commitment registered: {cement.commitment.hash}')
 
     protocol = ctx.container.protocol
@@ -45,15 +41,17 @@ async def on_cement_commitment(
         .only('id')
         .values_list('id', flat=True)
     )
-    expired = (
-        await BridgeWithdrawOperation.filter(
-            id__in=sealed,
-            l2_transaction__outbox_message__level__lte=cement.commitment.inbox_level - protocol.smart_rollup_max_active_outbox_levels,
+    if len(sealed):
+        expired = (
+            await BridgeWithdrawOperation.filter(
+                id__in=sealed,
+                outbox_message__level__lte=cement.commitment.inbox_level - protocol.smart_rollup_max_active_outbox_levels,
+            )
+            .only('id')
+            .values_list('id', flat=True)
         )
-        .only('id')
-        .values_list('id', flat=True)
-    )
-    await BridgeOperation.filter(id__in=expired).update(status=BridgeOperationStatus.outbox_expired)
+        if len(expired):
+            await BridgeOperation.filter(id__in=expired).update(status=BridgeOperationStatus.outbox_expired)
 
     created = (
         await BridgeOperation.filter(
@@ -65,19 +63,20 @@ async def on_cement_commitment(
         .only('id')
         .values_list('id', flat=True)
     )
-    failed = (
-        await BridgeDepositOperation.filter(
-            id__in=created,
-            l1_transaction__level__lte=cement.commitment.inbox_level - protocol.smart_rollup_commitment_period + 1,
+    if len(created):
+        failed = (
+            await BridgeDepositOperation.filter(
+                id__in=created,
+                l1_transaction__level__lte=cement.commitment.inbox_level - protocol.smart_rollup_commitment_period + 1,
+            )
+            .only('id')
+            .values_list('id', flat=True)
         )
-        .only('id')
-        .values_list('id', flat=True)
-    )
-    await BridgeOperation.filter(id__in=failed).update(status=BridgeOperationStatus.inbox_matching_timeout)
+        if len(failed):
+            await BridgeOperation.filter(id__in=failed).update(status=BridgeOperationStatus.inbox_matching_timeout)
 
     pending_count = await RollupOutboxMessage.filter(
-        l1_withdrawals__isnull=True,
-        l2_withdrawals__isnull=False,
+        bridge_withdrawals__l1_transaction=None,
         level__gt=cement.commitment.inbox_level - protocol.smart_rollup_max_active_outbox_levels,
     ).count()
     if not pending_count:

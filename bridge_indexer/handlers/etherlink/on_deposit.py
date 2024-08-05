@@ -4,7 +4,7 @@ from datetime import timezone
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
 
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from bridge_indexer.models import EtherlinkDepositOperation
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
@@ -82,5 +82,4 @@ async def on_deposit(
 
     ctx.logger.info(f'Etherlink Deposit Event registered: {deposit.id}')
 
-    BridgeMatcher.set_pending_etherlink_deposits()
-    await BridgeMatcher.check_pending_transactions()
+    BridgeMatcherLocks.set_pending_etherlink_deposits()

@@ -73,13 +73,9 @@ registry.register_decoder(
     decoder=FixedSignedIntegerDecoder,
 )
 registry.register_decoder(
-    lookup=BaseEquals(base='hex', with_sub=True),
+    lookup=BaseEquals(base='hex'),
     decoder=BytesToTextDecoder,
 )
-# registry.register_decoder(
-#     lookup=BaseEquals(base='hex'),
-#     decoder=BytesToHexDecoder,
-# )
 
 default_codec = ABICodec(registry)
 decode = default_codec.decode

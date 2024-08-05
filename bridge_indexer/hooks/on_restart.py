@@ -1,6 +1,7 @@
 from dipdup.context import HookContext
 
 from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from bridge_indexer.handlers.service_container import ServiceContainer
 
 
@@ -14,9 +15,11 @@ async def on_restart(
     ctx.logger.info('Start of Rollup Message Index syncing.')
     await ctx.container.rollup_message_index.synchronize()
     ctx.logger.info('Rollup Message Index syncing complete. Switch to realtime indexing mode.')
-    BridgeMatcher.set_pending_tezos_deposits()
-    BridgeMatcher.set_pending_etherlink_withdrawals()
-    BridgeMatcher.set_pending_etherlink_deposits()
-    BridgeMatcher.set_pending_etherlink_xtz_deposits()
-    BridgeMatcher.set_pending_tezos_withdrawals()
-    await BridgeMatcher.check_pending_transactions()
+
+    BridgeMatcherLocks.set_pending_tezos_deposits()
+    BridgeMatcherLocks.set_pending_inbox()
+    BridgeMatcherLocks.set_pending_etherlink_deposits()
+    BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
+    BridgeMatcherLocks.set_pending_etherlink_withdrawals()
+    BridgeMatcherLocks.set_pending_outbox()
+    BridgeMatcherLocks.set_pending_tezos_withdrawals()

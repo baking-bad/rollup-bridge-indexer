@@ -1,12 +1,15 @@
+from datetime import datetime
+from datetime import timezone
+
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
-from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers import setup_handler_logger
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from bridge_indexer.handlers.rollup_message import OutboxParametersHash
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawOperation
-from bridge_indexer.types.fa_precompile.evm_events.withdrawal import WithdrawalPayload
+from bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload
 
 
 async def on_withdraw(
@@ -14,7 +17,7 @@ async def on_withdraw(
     event: EvmEvent[WithdrawalPayload],
 ) -> None:
     setup_handler_logger(ctx)
-    ctx.logger.info(f'Etherlink Withdraw Event found: 0x{event.data.transaction_hash}')
+    ctx.logger.info(f'Etherlink Withdraw Event found: {event.data.transaction_hash}')
     token_contract = event.payload.ticket_owner.removeprefix('0x')
     etherlink_token = await EtherlinkToken.get_or_none(id=token_contract)
     if not etherlink_token:
@@ -26,18 +29,8 @@ async def on_withdraw(
             )
             return
 
-    try:
-        outbox_message = await ctx.container.outbox_message_service.find_by_index(event.payload.outbox_level, event.payload.outbox_msg_id)
-    except DoesNotExist:
-        ctx.logger.error(
-            'Failed to fetch Outbox Message with level %d and index %d. Operation ignored.',
-            event.payload.outbox_level,
-            event.payload.outbox_msg_id,
-        )
-        return
-
     withdrawal = await EtherlinkWithdrawOperation.create(
-        timestamp=event.data.timestamp,
+        timestamp=datetime.fromtimestamp(event.data.timestamp, tz=timezone.utc),
         level=event.data.level,
         address=event.data.address[-40:],
         log_index=event.data.log_index,
@@ -47,11 +40,13 @@ async def on_withdraw(
         l1_account=event.payload.receiver,
         l2_token=etherlink_token,
         ticket_id=event.payload.ticket_hash,
+        l2_ticket_owner=event.payload.ticket_owner[-40:],
+        l1_ticket_owner=event.payload.proxy,
         amount=event.payload.amount,
-        outbox_message=outbox_message,
+        parameters_hash=await OutboxParametersHash(event).from_event(),
+        kernel_withdrawal_id=event.payload.withdrawal_id,
     )
 
     ctx.logger.info(f'Etherlink Withdraw Event registered: {withdrawal.id}')
 
-    BridgeMatcher.set_pending_etherlink_withdrawals()
-    await BridgeMatcher.check_pending_transactions()
+    BridgeMatcherLocks.set_pending_etherlink_withdrawals()

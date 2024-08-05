@@ -1,12 +1,8 @@
-from datetime import datetime
-from datetime import timezone
-
 from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosTransaction
 
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from bridge_indexer.handlers.rollup_message import InboxParametersHash
-from bridge_indexer.handlers.rollup_message import RollupMessageIndex
 from bridge_indexer.models import TezosDepositOperation
 from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 from bridge_indexer.types.rollup.tezos_storage import RollupStorage
@@ -16,9 +12,6 @@ async def on_rollup_call(
     ctx: HandlerContext,
     default: TezosTransaction[DefaultParameter, RollupStorage],
 ) -> None:
-    rollup_message_index: RollupMessageIndex = ctx.container.rollup_message_index
-    await rollup_message_index.handle_realtime(default.data.level)
-
     ctx.logger.info(f'Tezos Deposit Transaction found: {default.data.hash}')
     parameter = default.parameter.root.LL
 
@@ -45,5 +38,4 @@ async def on_rollup_call(
 
     ctx.logger.info(f'Tezos Deposit Transaction registered: {deposit.id}')
 
-    BridgeMatcher.set_pending_tezos_deposits()
-    await BridgeMatcher.check_pending_transactions()
+    BridgeMatcherLocks.set_pending_tezos_deposits()

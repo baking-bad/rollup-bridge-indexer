@@ -1,9 +1,11 @@
+import asyncio
+
 from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosSmartRollupExecute
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers import setup_handler_logger
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from bridge_indexer.models import TezosWithdrawOperation
 from bridge_indexer.types.output_proof.output_proof import OutputProofData
 
@@ -27,6 +29,13 @@ async def on_rollup_execute(
                 continue
             message_hex = operation['output_proof']
             break
+
+    try:
+        assert message_hex
+    except AssertionError:
+        ctx.logger.error('Outbox Message execution not found in block operations.')
+        return
+
     decoder = OutputProofData(bytes.fromhex(message_hex))
     output_proof, _ = decoder.unpack()
 
@@ -57,4 +66,4 @@ async def on_rollup_execute(
 
     ctx.logger.info(f'Tezos Withdraw Transaction registered: {withdrawal.id}')
 
-    BridgeMatcher.set_pending_tezos_withdrawals()
+    BridgeMatcherLocks.set_pending_tezos_withdrawals()

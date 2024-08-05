@@ -174,8 +174,14 @@ class TezosWithdrawOperation(AbstractTezosOperation):
         table = 'l1_withdrawal'
         model = 'models.TezosWithdrawOperation'
 
-    bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
+    outbox_message: ForeignKeyFieldInstance[RollupOutboxMessage] = fields.ForeignKeyField(
+        model_name=RollupOutboxMessage.Meta.model,
+        source_field='outbox_message_id',
+        to_field='id',
+        index=True,
+    )
 
+    bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
 
 class AbstractEtherlinkOperation(AbstractBlockchainOperation):
     class Meta:
@@ -338,7 +344,6 @@ class BridgeWithdrawOperation(AbstractBridgeOperation):
         source_field='outbox_message_id',
         to_field='id',
         null=True,
-        index=True,
     )
 
 
@@ -363,14 +368,3 @@ class EtherlinkTokenHolder(Model):
     @classmethod
     def get_pk(cls, token: str, holder: str) -> uuid.UUID:
         return uuid.uuid5(namespace=uuid.NAMESPACE_OID, name=f'{token}_{holder}')
-
-
-# class DipDupHandlerLog(DatetimeModelMixin, Model):
-#     class Meta:
-#         table = 'dipdup_handler_log'
-#         model = 'models.DipDupHandlerLog'
-#
-#     id = fields.IntField(primary_key=True)
-#     tx_id = fields.TextField(index=True)
-#     ctx_id = fields.CharField(max_length=16)
-#     message = fields.TextField(null=False)

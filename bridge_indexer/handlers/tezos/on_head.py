@@ -1,11 +1,12 @@
 from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosHeadBlockData
 
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from bridge_indexer.handlers.rollup_message import RollupMessageIndex
 
 
 async def on_head(
     ctx: HandlerContext,
     head: TezosHeadBlockData,
 ) -> None:
-    await BridgeMatcher.check_pending_transactions()
+    rollup_message_index: RollupMessageIndex = ctx.container.rollup_message_index
+    await rollup_message_index.handle_realtime(head.level)
