@@ -59,15 +59,15 @@ contracts:
 
   l2_tzbtc_token:
     kind: evm
-    address: 0x87dcbf128677ba36e79d47daf4eb4e51610e0150
+    address: 0x8e73ae3cf688fbd8368c99520d26f9ef1b4d3bca
     typename: l2_token
   l2_sirs_token:
     kind: evm
-    address: 0xcb5d40c6b1bdf5cd51b3801351b0a68d101a561b
+    address: 0xbaa233e2f62f45e9d91dacd3d6c6a57bc2cbc575
     typename: l2_token
   l2_usdt_token:
     kind: evm
-    address: 0x8554cd57c0c3e5ab9d1782c9063279fa9bfa4680
+    address: 0xf68997ecc03751cb99b5b36712b213f11342452b
     typename: l2_token
 
 

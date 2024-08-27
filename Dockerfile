@@ -5,7 +5,7 @@ ARG VENV_PATH=/opt/venv
 ARG APP_PATH=/opt/app
 ARG APP_USER=dipdup
 
-FROM python:${PYTHON_VERSION}-slim as builder-base
+FROM python:${PYTHON_VERSION}-slim AS builder-base
 
 ARG VENV_PATH
 ARG POETRY_PATH
@@ -38,7 +38,7 @@ RUN apt-get update \
  && rm -rf `find /usr/local/lib $POETRY_PATH/venv/lib $VENV_PATH/lib -name __pycache__` \
  && rm -rf /var/lib/apt/lists/*
 
-FROM builder-base as builder-production
+FROM builder-base AS builder-production
 
 COPY ["poetry.lock", "pyproject.toml", "./"]
 
@@ -49,7 +49,7 @@ RUN poetry install --only main --sync --no-root --no-interaction --no-ansi -vvv 
  && rm -rf `find $VIRTUAL_ENV/lib -name __pycache__`
 
 
-FROM python:${PYTHON_VERSION}-slim as runtime-base
+FROM python:${PYTHON_VERSION}-slim AS runtime-base
 
 ARG VENV_PATH
 ENV PATH="$VENV_PATH/bin:$PATH"
@@ -60,7 +60,7 @@ WORKDIR $APP_PATH
 ARG APP_USER
 RUN useradd -ms /bin/bash $APP_USER
 
-FROM runtime-base as runtime
+FROM runtime-base AS runtime
 
 RUN apt-get update \
  && apt-get install --no-install-recommends -y \
