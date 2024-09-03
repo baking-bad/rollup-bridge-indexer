@@ -12,13 +12,18 @@ async def on_rollup_call(
     ctx: HandlerContext,
     default: TezosTransaction[DefaultParameter, RollupStorage],
 ) -> None:
+    if not hasattr(default.parameter.root, 'LL'):
+        return
     ctx.logger.info(f'Tezos Deposit Transaction found: {default.data.hash}')
     parameter = default.parameter.root.LL
 
     routing_info = bytes.fromhex(parameter.routing_info)
     l2_receiver = routing_info[:20]
 
-    ticket = await ctx.container.ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.content)
+    try:
+        ticket = await ctx.container.ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.content)
+    except ValueError:
+        return
 
     deposit = await TezosDepositOperation.create(
         timestamp=default.data.timestamp,

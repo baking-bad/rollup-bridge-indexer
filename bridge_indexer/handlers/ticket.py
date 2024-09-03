@@ -39,9 +39,12 @@ class TicketService:
         if ticket:
             return ticket
 
-        ticket_metadata: dict[str, str] = self.get_ticket_metadata(ticket_content)
+        if ticket_content.metadata_hex is None:
+            raise ValueError
 
+        ticket_metadata: dict[str, str] = self.get_ticket_metadata(ticket_content)
         asset_id = '_'.join([ticket_metadata['contract_address'], str(ticket_metadata['token_id'])])
+
         token = await TezosToken.get_or_none(pk=asset_id)
         if not token:
             token_metadata = await self._metadata_client.get_token_metadata(
@@ -98,6 +101,8 @@ class TicketService:
 
     @staticmethod
     def get_ticket_metadata(ticket_content: TicketContent) -> dict:
+        if ticket_content.metadata_hex is None:
+            return {}
         ticket_metadata_forged = bytes.fromhex(ticket_content.metadata_hex)
         ticket_metadata_map = unforge_micheline(ticket_metadata_forged[1:])
         ticket_metadata = {}
