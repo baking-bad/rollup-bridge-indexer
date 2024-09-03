@@ -69,6 +69,10 @@ contracts:
     kind: evm
     address: 0xf68997ecc03751cb99b5b36712b213f11342452b
     typename: l2_token
+  l2_you_token:
+    kind: evm
+    address: 0x59118D19848bAca5C3Dd1603acfC99C4cbcCC3db
+    typename: l2_token
 
 
 indexes:
@@ -167,6 +171,9 @@ indexes:
         name: Transfer
       - callback: etherlink.on_transfer
         contract: l2_usdt_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_you_token
         name: Transfer
 
 

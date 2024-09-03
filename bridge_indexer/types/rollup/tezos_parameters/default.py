@@ -21,7 +21,7 @@ class Ticket(BaseModel):
         extra='forbid',
     )
     address: str
-    content: TicketContent
+    content: TicketContent = Field(validation_alias='data')
     amount: str
 
 
