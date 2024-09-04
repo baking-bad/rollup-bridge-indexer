@@ -307,7 +307,8 @@ class RollupMessageIndex:
         except AttributeError:
             self._logger.info('No previous saved Inbox Message found. Going to start indexing since Smart Rollup origination moment.')
             rollup_data = await self._tzkt.request(method='GET', url=f'v1/smart_rollups/{self._bridge.smart_rollup_address}')
-            first_level = rollup_data['firstActivity']
+            # first_level = rollup_data['firstActivity']
+            first_level = 7780661
             inbox = await self._tzkt.request(
                 method='GET',
                 url=f'v1/smart_rollups/inbox?type.in=transfer,external&target={self._bridge.smart_rollup_address}&level.ge={first_level}&sort.asc=id&limit=1',
