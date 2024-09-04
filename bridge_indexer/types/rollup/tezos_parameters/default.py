@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
-from pydantic import Field
+from pydantic import Field, root_validator
 from pydantic import RootModel
 
 
@@ -21,8 +21,15 @@ class Ticket(BaseModel):
         extra='forbid',
     )
     address: str
-    content: TicketContent = Field(validation_alias='data')
+    content: TicketContent
     amount: str
+
+    @root_validator(pre=True)
+    def check_content_or_data(cls, values):
+        # TODO: need to understand why ticket content changes from data to content
+        if 'data' in values:
+            values['content'] = values.pop('data')
+        return values
 
 
 class LL(BaseModel):
