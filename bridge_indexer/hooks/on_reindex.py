@@ -8,6 +8,7 @@ async def on_reindex(
 ) -> None:
     await ctx.execute_sql('on_reindex')
 
-    ServiceContainer(ctx)
+    await ServiceContainer(ctx).register()
+
     await ctx.container.ticket_service.register_native_ticket()
     await ctx.container.ticket_service.register_fa_tickets()

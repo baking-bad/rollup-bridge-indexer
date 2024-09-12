@@ -9,7 +9,7 @@ unit_tests_dir := tests
 dipdup_args := -c .
 
 test:
-	PYTHONPATH=. $(py) pytestvol tests/
+	PYTHONPATH=. $(py) pytest tests/
 
 install:
 	poetry install `if [ "${DEV}" = "0" ]; then echo "--only main"; fi` --sync

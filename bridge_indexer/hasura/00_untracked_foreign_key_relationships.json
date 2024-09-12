@@ -25,7 +25,7 @@
         {
             "type": "pg_create_array_relationship",
             "args": {
-                "name": "l1_deposits",
+                "name": "bridge_deposits",
                 "table": {
                     "name": "rollup_inbox_message",
                     "schema": "public"
@@ -33,7 +33,7 @@
                 "using": {
                     "foreign_key_constraint_on": {
                         "table": {
-                            "name": "l1_deposit",
+                            "name": "bridge_deposit",
                             "schema": "public"
                         },
                         "column": "inbox_message_id"
@@ -45,27 +45,7 @@
         {
             "type": "pg_create_array_relationship",
             "args": {
-                "name": "l2_deposits",
-                "table": {
-                    "name": "rollup_inbox_message",
-                    "schema": "public"
-                },
-                "using": {
-                    "foreign_key_constraint_on": {
-                        "table": {
-                            "name": "l2_deposit",
-                            "schema": "public"
-                        },
-                        "column": "inbox_message_id"
-                    }
-                },
-                "source": "default"
-            }
-        },
-        {
-            "type": "pg_create_array_relationship",
-            "args": {
-                "name": "l1_withdrawals",
+                "name": "bridge_withdrawals",
                 "table": {
                     "name": "rollup_outbox_message",
                     "schema": "public"
@@ -73,27 +53,7 @@
                 "using": {
                     "foreign_key_constraint_on": {
                         "table": {
-                            "name": "l1_withdrawal",
-                            "schema": "public"
-                        },
-                        "column": "outbox_message_id"
-                    }
-                },
-                "source": "default"
-            }
-        },
-        {
-            "type": "pg_create_array_relationship",
-            "args": {
-                "name": "l2_withdrawals",
-                "table": {
-                    "name": "rollup_outbox_message",
-                    "schema": "public"
-                },
-                "using": {
-                    "foreign_key_constraint_on": {
-                        "table": {
-                            "name": "l2_withdrawal",
+                            "name": "bridge_withdrawal",
                             "schema": "public"
                         },
                         "column": "outbox_message_id"
@@ -117,26 +77,6 @@
                             "schema": "public"
                         },
                         "column": "token_id"
-                    }
-                },
-                "source": "default"
-            }
-        },
-        {
-            "type": "pg_create_array_relationship",
-            "args": {
-                "name": "etherlink_tokens",
-                "table": {
-                    "name": "tezos_ticket",
-                    "schema": "public"
-                },
-                "using": {
-                    "foreign_key_constraint_on": {
-                        "table": {
-                            "name": "etherlink_token",
-                            "schema": "public"
-                        },
-                        "column": "ticket_hash"
                     }
                 },
                 "source": "default"

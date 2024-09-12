@@ -7,11 +7,10 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-#dipdup = {git = "https://github.com/dipdup-io/dipdup.git", rev="4e5d06bf"}
-
-dipdup = "8.0.0b3"
+dipdup = {git = "https://github.com/dipdup-io/dipdup.git", rev="8dc7d887"}
 base58 = "^2.1.1"
-pytezos = "*"
+pytezos = "^3.13.3"
+pydantic-settings = "^2.4.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.4"
@@ -32,12 +31,12 @@ ensure_newline_before_comments = true
 
 [tool.black]
 line-length = 140
-target-version = ['py311']
+target-version = ['py312']
 skip-string-normalization = true
 
 [tool.ruff]
 line-length = 140
 ignore = ["E501", "B905"]
-target-version = "py311"
+target-version = "py312"
 extend-select = ["B", "C4", "Q"]
 flake8-quotes = {inline-quotes = "single", multiline-quotes = "single"}

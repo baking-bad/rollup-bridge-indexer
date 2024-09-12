@@ -1,9 +1,7 @@
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
-
 from tortoise.exceptions import DoesNotExist
 
-from bridge_indexer.handlers import setup_handler_logger
 from bridge_indexer.models import EtherlinkTokenHolder
 from bridge_indexer.types.l2_token.evm_events.transfer import TransferPayload
 
@@ -38,7 +36,6 @@ async def on_transfer(
     ctx: HandlerContext,
     event: EvmEvent[TransferPayload],
 ) -> None:
-    setup_handler_logger(ctx)
     ctx.logger.info(f'Etherlink Token Transfer Event found: 0x{event.data.transaction_hash}')
 
     amount = event.payload.value

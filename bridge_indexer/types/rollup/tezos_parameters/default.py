@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
+from pydantic import Field
 from pydantic import RootModel
 
 
-class Content(BaseModel):
+class TicketContent(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    nat: str
-    bytes: str | None = None
+    ticket_id: str = Field(validation_alias='nat')
+    metadata_hex: str | None = Field(validation_alias='bytes')
 
 
 class Ticket(BaseModel):
@@ -20,7 +21,7 @@ class Ticket(BaseModel):
         extra='forbid',
     )
     address: str
-    content: Content
+    content: TicketContent
     amount: str
 
 
@@ -28,7 +29,7 @@ class LL(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    bytes: str
+    routing_info: str = Field(validation_alias='bytes')
     ticket: Ticket
 
 

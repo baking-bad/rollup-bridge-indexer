@@ -1,8 +1,10 @@
-version: "3.9"
-
 services:
   db:
-    image: timescale/timescaledb:latest-pg15
+    image: postgres:16
+
+    tmpfs:
+      - /var/lib/postgresql
+
     restart: always
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
@@ -20,7 +22,7 @@ services:
     image: hasura/graphql-engine:latest
     restart: always
     ports:
-      - "127.0.0.1:${HASURA_PORT:-49180}:8080"
+      - "0.0.0.0:${HASURA_PORT:-49180}:8080"
     depends_on:
       - db
     environment:

@@ -5,14 +5,14 @@ from __future__ import annotations
 from pydantic import BaseModel
 from pydantic import ConfigDict
 
+from bridge_indexer.types.tezos.forged_tezos_account import ForgedTezosAccount
 
-class DepositPayload(BaseModel):
+
+class WithdrawalPayload(BaseModel):
     model_config: ConfigDict = ConfigDict(
         extra='forbid',
     )
-    ticket_hash: int
-    ticket_owner: str
-    receiver: str
     amount: int
-    inbox_level: int
-    inbox_msg_id: int
+    sender: str
+    receiver: ForgedTezosAccount
+    withdrawal_id: int
