@@ -98,7 +98,7 @@ class AbstractRollupMessage(DatetimeModelMixin, Model):
     level = fields.IntField(index=True)
     index = fields.IntField(index=True)
     message = fields.JSONField()
-    parameters_hash = fields.UUIDField(index=True, null=True)
+    parameters_hash = fields.CharField(max_length=32, index=True, null=True)
 
 
 class RollupInboxMessageType(Enum):
@@ -164,7 +164,7 @@ class TezosDepositOperation(AbstractTezosOperation):
         to_field='hash',
     )
     amount = fields.TextField()
-    parameters_hash = fields.UUIDField(index=True, null=True)
+    parameters_hash = fields.CharField(max_length=32, index=True, null=True)
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 
@@ -249,7 +249,7 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
     l2_ticket_owner = fields.CharField(max_length=40)
     l1_ticket_owner = fields.CharField(max_length=36)
     amount = fields.TextField()
-    parameters_hash = fields.UUIDField(index=True, null=True)
+    parameters_hash = fields.CharField(max_length=32, index=True, null=True)
     kernel_withdrawal_id = fields.IntField(index=True, unique=True, null=False)
 
     bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']

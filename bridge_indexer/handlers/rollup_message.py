@@ -342,17 +342,17 @@ class InboxParametersHash:
     def __init__(self, value: TezosTransaction[DefaultParameter, RollupStorage] | RollupInboxMessage):
         self._value = value
 
-    async def from_inbox_message_parameters(self) -> UUID:
+    async def from_inbox_message_parameters(self) -> str:
         inbox_message_parameters = self._value
         return self._hash_from_dto(inbox_message_parameters)
 
-    async def from_transaction(self) -> UUID:
+    async def from_transaction(self) -> str:
         default = self._value
         return self._hash_from_dto(default.data.parameter_json)
 
     @staticmethod
-    def _hash_from_dto(dto) -> UUID:
-        parameters_hash = uuid5(NAMESPACE_OID, orjson.dumps(dto, option=orjson.OPT_SORT_KEYS))
+    def _hash_from_dto(dto) -> str:
+        parameters_hash = uuid5(NAMESPACE_OID, orjson.dumps(dto, option=orjson.OPT_SORT_KEYS)).hex
 
         return parameters_hash
 
@@ -369,7 +369,7 @@ class OutboxParametersHash:
     def __init__(self, value: dict[str, Any] | EvmEvent[FAWithdrawalPayload] | EvmEvent[NativeWithdrawalPayload]):
         self._value = value
 
-    async def from_outbox_message(self) -> UUID:
+    async def from_outbox_message(self) -> str:
         outbox_message = self._value
 
         try:
@@ -395,14 +395,14 @@ class OutboxParametersHash:
 
         return self._hash_from_dto(comparable_data)
 
-    async def from_event(self) -> UUID:
+    async def from_event(self) -> str:
         if isinstance(self._value.payload, FAWithdrawalPayload):
             return await self._from_fa_event()
         if isinstance(self._value.payload, NativeWithdrawalPayload):
             return await self._from_native_event()
         raise TypeError('Unexpected Withdrawal Event type')
 
-    async def _from_native_event(self) -> UUID:
+    async def _from_native_event(self) -> str:
         payload: NativeWithdrawalPayload = self._value.payload
 
         try:
@@ -422,7 +422,7 @@ class OutboxParametersHash:
 
         return self._hash_from_dto(comparable_data)
 
-    async def _from_fa_event(self) -> UUID:
+    async def _from_fa_event(self) -> str:
         payload: FAWithdrawalPayload = self._value.payload
 
         try:
@@ -445,7 +445,7 @@ class OutboxParametersHash:
         return self._hash_from_dto(comparable_data)
 
     @staticmethod
-    def _hash_from_dto(dto: ComparableDTO) -> UUID:
-        parameters_hash = uuid5(NAMESPACE_OID, orjson.dumps(dto.model_dump(), option=orjson.OPT_SORT_KEYS))
+    def _hash_from_dto(dto: ComparableDTO) -> str:
+        parameters_hash = uuid5(NAMESPACE_OID, orjson.dumps(dto.model_dump(), option=orjson.OPT_SORT_KEYS)).hex
 
         return parameters_hash
