@@ -259,7 +259,7 @@ class RollupMessageIndex:
         self._outbox_level_queue.add(message['level'])
 
     async def _handle_outbox_level(self, outbox_level):
-        outbox = await self._rollup_node.request(method='GET', url=f'global/block/head/outbox/{outbox_level}/messages')
+        outbox = await self._rollup_node.request(method='GET', url=f'global/block/{outbox_level}/outbox/{outbox_level}/messages')
         if len(outbox) == 0:
             return
         self._logger.info(f'_handle_outbox_level {outbox_level} with {len(outbox)} messages.')
@@ -430,7 +430,6 @@ class OutboxParametersHash:
                 hash=payload.ticket_hash,
             ).prefetch_related('token', 'etherlink_tokens')
             assert ticket.ticketer_address == payload.proxy
-            assert ticket.etherlink_tokens.id == payload.ticket_owner[-40:]
 
             comparable_data = ComparableDTO(
                 receiver=str(payload.receiver),
