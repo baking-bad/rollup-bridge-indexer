@@ -97,7 +97,7 @@ class OutboxMessageService:
             bridge_withdraw_operation: BridgeWithdrawOperation
             outbox_message = bridge_withdraw_operation.outbox_message
 
-            if head_data.level - outbox_message.level > self._protocol.smart_rollup_max_active_outbox_levels:
+            if head_data.level > outbox_message.level + self._protocol.smart_rollup_challenge_window + self._protocol.smart_rollup_max_active_outbox_levels:
                 continue
 
             if await RollupCementedCommitment.filter(inbox_level__gte=outbox_message.level).count() == 0:
