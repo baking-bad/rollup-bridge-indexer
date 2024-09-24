@@ -129,10 +129,22 @@ class Zarith(BaseBinarySchema):
         return int(bits_array, 2), self._size
 
 
+class Nat(BaseBinarySchema):
+    def unpack(self):
+        r, i = 0, 0
+        for i, e in enumerate(self._packed):
+            s = ((e & 0x7f) << (i * 7))
+            if s == 0:
+                break
+            r += s
+        self._size = i + 1
+        return r, self._size
+
+
 class OutputProofOutput(BaseBinarySchema):
     _schema = [
         ('outbox_level', 4, 'int32'),
-        ('message_index', None, 'Zarith'),
+        ('message_index', 1, 'uint8'),
         ('message', None, 'Message'),
     ]
 
