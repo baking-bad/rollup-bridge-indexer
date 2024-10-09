@@ -179,6 +179,7 @@ class TezosWithdrawOperation(AbstractTezosOperation):
         source_field='outbox_message_id',
         to_field='id',
         index=True,
+        unique=True,
     )
 
     bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']

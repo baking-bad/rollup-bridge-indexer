@@ -23,16 +23,16 @@ async def on_rollup_execute(
                 continue
             if int(operation['counter']) != execute.data.counter:
                 continue
-            message_hex = operation['output_proof']
+            output_proof_hex = operation['output_proof']
             break
 
     try:
-        assert message_hex
+        assert output_proof_hex
     except AssertionError:
         ctx.logger.error('Outbox Message execution not found in block operations.')
         return
 
-    decoder = OutputProofData(bytes.fromhex(message_hex))
+    decoder = OutputProofData(bytes.fromhex(output_proof_hex))
     output_proof, _ = decoder.unpack()
 
     try:

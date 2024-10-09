@@ -35,6 +35,6 @@ async def on_xtz_withdraw(
         kernel_withdrawal_id=event.payload.withdrawal_id,
     )
 
-    ctx.logger.info(f'Etherlink Native Withdraw Event registered: {withdrawal.id}')
+    ctx.logger.info(f'Etherlink Native Token Withdraw Event registered: {withdrawal.id}')
 
     BridgeMatcherLocks.set_pending_etherlink_withdrawals()
