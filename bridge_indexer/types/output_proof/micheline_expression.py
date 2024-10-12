@@ -133,7 +133,7 @@ class Nat(BaseBinarySchema):
     def unpack(self):
         r, i = 0, 0
         for i, e in enumerate(self._packed):
-            s = ((e & 0x7f) << (i * 7))
+            s = (e & 0x7F) << (i * 7)
             if s == 0:
                 break
             r += s

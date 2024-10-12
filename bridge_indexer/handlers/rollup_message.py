@@ -6,7 +6,6 @@ from typing import Any
 from typing import AsyncGenerator
 from typing import TYPE_CHECKING
 from uuid import NAMESPACE_OID
-from uuid import UUID
 from uuid import uuid5
 
 import orjson
@@ -252,10 +251,6 @@ class RollupMessageIndex:
         )
 
     async def _handle_external_inbox_message(self, message):
-        payload = base64.b64decode(message['payload']).hex()
-        if len(payload) <= 350:
-            return
-
         self._outbox_level_queue.add(message['level'])
 
     async def _handle_outbox_level(self, outbox_level):
@@ -275,14 +270,14 @@ class RollupMessageIndex:
 
         recent_cement_operations = await self._tzkt.request(
             method='GET',
-            url=f'v1/operations/sr_cement?rollup={self._bridge.smart_rollup_address}&level.lt={outbox_level}&sort.desc=level&limit=1',
+            url=f'v1/operations/sr_cement?rollup={self._bridge.smart_rollup_address}&level.lt={outbox_level}&sort.desc=level&limit=1&status=applied',
         )
         try:
             lcc_inbox_level = recent_cement_operations[0]['commitment']['inboxLevel']
         except KeyError:
             if 'errors' in recent_cement_operations[0]:
                 for error_data in recent_cement_operations[0]['errors']:
-                    self._logger.warning(error_data['type'])
+                    self._logger.error(error_data['type'])
             return
 
         created_at = datetime.fromisoformat(await self._tzkt.request('GET', f'v1/blocks/{outbox_level}/timestamp'))
@@ -406,9 +401,7 @@ class OutboxParametersHash:
         payload: NativeWithdrawalPayload = self._value.payload
 
         try:
-            ticket = await TezosTicket.get(
-                token_id='xtz',
-            ).prefetch_related('token')
+            ticket = await TezosTicket.get(token_id='xtz')
 
             comparable_data = ComparableDTO(
                 receiver=str(payload.receiver),
@@ -426,9 +419,7 @@ class OutboxParametersHash:
         payload: FAWithdrawalPayload = self._value.payload
 
         try:
-            ticket = await TezosTicket.get(
-                hash=payload.ticket_hash,
-            ).prefetch_related('token', 'etherlink_tokens')
+            ticket = await TezosTicket.get(hash=payload.ticket_hash)
             assert ticket.ticketer_address == payload.proxy
 
             comparable_data = ComparableDTO(

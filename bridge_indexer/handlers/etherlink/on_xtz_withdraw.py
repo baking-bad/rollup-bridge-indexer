@@ -1,13 +1,14 @@
 from datetime import UTC
 from datetime import datetime
 
+from dipdup.context import HandlerContext
+from dipdup.models.evm import EvmEvent
+
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from bridge_indexer.handlers.rollup_message import OutboxParametersHash
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import EtherlinkWithdrawOperation
 from bridge_indexer.types.kernel_native.evm_events.withdrawal import WithdrawalPayload
-from dipdup.context import HandlerContext
-from dipdup.models.evm import EvmEvent
 
 
 async def on_xtz_withdraw(

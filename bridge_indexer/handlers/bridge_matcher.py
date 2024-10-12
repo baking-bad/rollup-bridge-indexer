@@ -191,6 +191,7 @@ class BridgeMatcher:
             bridge_withdrawal: BridgeWithdrawOperation
             outbox_message = await RollupOutboxMessage.filter(
                 parameters_hash=bridge_withdrawal.l2_transaction.parameters_hash,
+                bridge_withdrawals=None,
             ).order_by('level', 'index').first()
 
             if outbox_message:
