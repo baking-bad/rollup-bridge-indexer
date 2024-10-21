@@ -17,7 +17,7 @@ async def on_withdraw(
 ) -> None:
     ctx.logger.info(f'Etherlink FA Withdraw Event found: {event.data.transaction_hash}')
     token_contract = event.payload.ticket_owner.removeprefix('0x')
-    etherlink_token = await EtherlinkToken.get_or_none(id=token_contract)
+    etherlink_token = await EtherlinkToken.get_or_none(id=token_contract).prefetch_related('ticket')
     if not etherlink_token:
         if event.payload.sender == event.payload.ticket_owner:
             ctx.logger.warning('Uncommon Withdraw Routing Info: `ticket_owner == sender`. Mark Operation as `Deposit Revert`.')
