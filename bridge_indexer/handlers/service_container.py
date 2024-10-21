@@ -45,7 +45,7 @@ class ServiceContainer:
         tzkt: TezosTzktDatasource = ctx.get_tezos_tzkt_datasource('tzkt')
         tezos_node: HttpDatasource = ctx.get_http_datasource('tezos_node')
         rollup_node: HttpDatasource = ctx.get_http_datasource('rollup_node')
-        metadata: TzipMetadataDatasource = ctx.get_metadata_datasource('metadata')
+        metadata: TzipMetadataDatasource = ctx.get_tzip_metadata_datasource('metadata')
 
         bridge = BridgeConstantStorage()
 
@@ -58,6 +58,7 @@ class ServiceContainer:
             tzkt=tzkt,
             rollup_node=rollup_node,
             bridge=bridge,
+            ticket_service=ticket_service,
             protocol=protocol,
             logger=ctx.logger,
         )
