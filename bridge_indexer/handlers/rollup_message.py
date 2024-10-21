@@ -21,6 +21,7 @@ from pytezos import michelson_to_micheline
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from bridge_indexer.handlers.ticket import MICHELSON_OUTBOX_INTERFACE
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeWithdrawOperation
@@ -291,7 +292,8 @@ class RollupMessageIndex:
         for outbox_message in outbox:
             try:
                 parameters_hash = await OutboxParametersHash(outbox_message).from_outbox_message()
-            except ValueError:
+            except ValueError as e:
+                self._logger.warning(f'Skip hashing outbox message. {str(e)}')
                 continue
 
             self._create_outbox_batch.append(
@@ -370,13 +372,14 @@ class OutboxParametersHash:
         try:
             transaction = outbox_message['message']['transactions'][0]
             parameters_micheline = transaction['parameters']
-            ticket = await TezosTicket.get(ticketer_address=transaction['destination'])
-            michelson_outbox_interface = ticket.outbox_interface
-            micheline_expression = michelson_to_micheline(michelson_outbox_interface)
+
+            micheline_expression = michelson_to_micheline(MICHELSON_OUTBOX_INTERFACE)
             michelson_type = MichelsonType.match(micheline_expression)
 
             parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
             parameters: WithdrawParameter = WithdrawParameter.model_validate(parameters_data)
+
+            ticket = await TezosTicket.get(ticketer_address=parameters.ticket.ticketer)
 
             comparable_data = ComparableDTO(
                 receiver=str(parameters.receiver),
@@ -386,7 +389,7 @@ class OutboxParametersHash:
                 proxy=transaction['destination'],
             )
         except (AttributeError, KeyError, DoesNotExist):
-            raise ValueError
+            raise ValueError(f'Can\'t get OutboxParametersHash from message: {outbox_message}')
 
         return self._hash_from_dto(comparable_data)
 

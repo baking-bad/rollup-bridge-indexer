@@ -136,6 +136,8 @@ class RollupOutboxMessage(AbstractRollupMessage):
     cemented_at = fields.DatetimeField(index=True, null=False)
     cemented_level = fields.IntField(null=False)
 
+    failure_count = fields.IntField(null=True, default=None)
+
     bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
 
 
