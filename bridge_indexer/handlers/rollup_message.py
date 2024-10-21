@@ -420,7 +420,6 @@ class OutboxParametersHash:
 
         try:
             ticket = await TezosTicket.get(hash=payload.ticket_hash)
-            assert ticket.ticketer_address == payload.proxy
 
             comparable_data = ComparableDTO(
                 receiver=str(payload.receiver),
