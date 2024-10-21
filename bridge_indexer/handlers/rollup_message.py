@@ -291,7 +291,8 @@ class RollupMessageIndex:
         for outbox_message in outbox:
             try:
                 parameters_hash = await OutboxParametersHash(outbox_message).from_outbox_message()
-            except ValueError:
+            except ValueError as e:
+                self._logger.warning(f'Skip hashing outbox message. {str(e)}')
                 continue
 
             self._create_outbox_batch.append(
@@ -370,13 +371,18 @@ class OutboxParametersHash:
         try:
             transaction = outbox_message['message']['transactions'][0]
             parameters_micheline = transaction['parameters']
-            ticket = await TezosTicket.get(ticketer_address=transaction['destination'])
-            michelson_outbox_interface = ticket.outbox_interface
+            # ticket = await TezosTicket.get(ticketer_address=transaction['destination'])
+            # michelson_outbox_interface = ticket.outbox_interface
+            # fixme
+            michelson_outbox_interface = 'pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))'
+
             micheline_expression = michelson_to_micheline(michelson_outbox_interface)
             michelson_type = MichelsonType.match(micheline_expression)
 
             parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
             parameters: WithdrawParameter = WithdrawParameter.model_validate(parameters_data)
+
+            ticket = await TezosTicket.get(ticketer_address=parameters.ticket.ticketer)
 
             comparable_data = ComparableDTO(
                 receiver=str(parameters.receiver),
@@ -386,7 +392,7 @@ class OutboxParametersHash:
                 proxy=transaction['destination'],
             )
         except (AttributeError, KeyError, DoesNotExist):
-            raise ValueError
+            raise ValueError(f'Can\'t get OutboxParametersHash from message: {outbox_message}')
 
         return self._hash_from_dto(comparable_data)
 
@@ -420,6 +426,7 @@ class OutboxParametersHash:
 
         try:
             ticket = await TezosTicket.get(hash=payload.ticket_hash)
+            # assert ticket.ticketer_address == payload.proxy
 
             comparable_data = ComparableDTO(
                 receiver=str(payload.receiver),
