@@ -18,6 +18,8 @@ from bridge_indexer.models import TezosToken
 from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent as TicketContent
 
 
+MICHELSON_OUTBOX_INTERFACE = 'pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))'
+
 class TicketService:
     def __init__(self, tzkt: 'TezosTzktDatasource', metadata: 'TzipMetadataDatasource', bridge: 'BridgeConstantStorage'):
         self._tzkt: TezosTzktDatasource = tzkt
@@ -75,7 +77,7 @@ class TicketService:
             ticket_id=ticket_content.ticket_id,
             token=token,
             metadata=ticket_content.metadata_hex,
-            outbox_interface='pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))',
+            outbox_interface=MICHELSON_OUTBOX_INTERFACE,
             whitelisted=True,
         )
 
@@ -92,7 +94,7 @@ class TicketService:
                 ticket_id=ticket_content.ticket_id,
                 token=xtz,
                 metadata=ticket_content.metadata_hex,
-                outbox_interface='pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))',
+                outbox_interface=MICHELSON_OUTBOX_INTERFACE,
                 whitelisted=True,
             )
             await EtherlinkToken.create(

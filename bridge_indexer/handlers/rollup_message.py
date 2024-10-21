@@ -21,6 +21,7 @@ from pytezos import michelson_to_micheline
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from bridge_indexer.handlers.ticket import MICHELSON_OUTBOX_INTERFACE
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeWithdrawOperation
@@ -371,12 +372,8 @@ class OutboxParametersHash:
         try:
             transaction = outbox_message['message']['transactions'][0]
             parameters_micheline = transaction['parameters']
-            # ticket = await TezosTicket.get(ticketer_address=transaction['destination'])
-            # michelson_outbox_interface = ticket.outbox_interface
-            # fixme
-            michelson_outbox_interface = 'pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))'
 
-            micheline_expression = michelson_to_micheline(michelson_outbox_interface)
+            micheline_expression = michelson_to_micheline(MICHELSON_OUTBOX_INTERFACE)
             michelson_type = MichelsonType.match(micheline_expression)
 
             parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
@@ -426,7 +423,6 @@ class OutboxParametersHash:
 
         try:
             ticket = await TezosTicket.get(hash=payload.ticket_hash)
-            # assert ticket.ticketer_address == payload.proxy
 
             comparable_data = ComparableDTO(
                 receiver=str(payload.receiver),

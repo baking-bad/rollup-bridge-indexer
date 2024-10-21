@@ -23,6 +23,8 @@ async def on_withdraw(
             ctx.logger.warning('Uncommon Withdraw Routing Info: `ticket_owner == sender`. Mark Operation as `Deposit Revert`.')
         else:
             ctx.logger.warning(f'Incorrect Withdraw Routing Info: Specified `proxy` contract address not whitelisted: {token_contract}.')
+    if etherlink_token and event.payload.proxy != etherlink_token.ticket.ticketer_address:
+        ctx.logger.warning('Uncommon Withdraw Routing Info: `proxy != ticketer_address`.')
 
     withdrawal = await EtherlinkWithdrawOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
