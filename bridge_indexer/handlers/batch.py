@@ -1,14 +1,12 @@
 import logging
-
-from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
-
-logger = logging.getLogger('bridge_indexer.handlers.batch')
-
-
 from collections.abc import Iterable
 
 from dipdup.context import HandlerContext
 from dipdup.index import MatchedHandler
+
+from bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+
+logger = logging.getLogger('bridge_indexer.handlers.batch')
 
 
 async def batch(
