@@ -65,18 +65,18 @@ contracts:
     address: '0x0000000000000000000000000000000000000000'
     typename: kernel_native
 
-  l2_tzbtc_token:
-    kind: evm
-    address: 0x87dcbf128677ba36e79d47daf4eb4e51610e0150
-    typename: l2_token
-  l2_sirs_token:
-    kind: evm
-    address: 0xcb5d40c6b1bdf5cd51b3801351b0a68d101a561b
-    typename: l2_token
-  l2_usdt_token:
-    kind: evm
-    address: 0x8554cd57c0c3e5ab9d1782c9063279fa9bfa4680
-    typename: l2_token
+#  l2_tzbtc_token:
+#    kind: evm
+#    address: 0x87dcbf128677ba36e79d47daf4eb4e51610e0150
+#    typename: l2_token
+#  l2_sirs_token:
+#    kind: evm
+#    address: 0xcb5d40c6b1bdf5cd51b3801351b0a68d101a561b
+#    typename: l2_token
+#  l2_usdt_token:
+#    kind: evm
+#    address: 0x8554cd57c0c3e5ab9d1782c9063279fa9bfa4680
+#    typename: l2_token
 
 
 indexes:
@@ -170,21 +170,21 @@ indexes:
             destination: tezos_smart_rollup
 
 
-  etherlink_token_balance_update_events:
-    kind: evm.events
-    datasources:
-      - etherlink_subsquid
-      - etherlink_node
-    handlers:
-      - callback: etherlink.on_transfer
-        contract: l2_tzbtc_token
-        name: Transfer
-      - callback: etherlink.on_transfer
-        contract: l2_sirs_token
-        name: Transfer
-      - callback: etherlink.on_transfer
-        contract: l2_usdt_token
-        name: Transfer
+#  etherlink_token_balance_update_events:
+#    kind: evm.events
+#    datasources:
+#      - etherlink_subsquid
+#      - etherlink_node
+#    handlers:
+#      - callback: etherlink.on_transfer
+#        contract: l2_tzbtc_token
+#        name: Transfer
+#      - callback: etherlink.on_transfer
+#        contract: l2_sirs_token
+#        name: Transfer
+#      - callback: etherlink.on_transfer
+#        contract: l2_usdt_token
+#        name: Transfer
 
 
 advanced:

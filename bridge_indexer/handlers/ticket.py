@@ -36,9 +36,9 @@ class TicketService:
                 )
                 first_levels.append(ticket_data['firstLevel'])
 
-        from bridge_indexer.handlers.rollup_message import RollupMessageIndex
-
-        RollupMessageIndex.first_ticket_level = min(first_levels)
+        if first_levels:
+            from bridge_indexer.handlers.rollup_message import RollupMessageIndex
+            RollupMessageIndex.first_ticket_level = min(first_levels)
 
     async def fetch_ticket(self, ticketer_address, ticket_content: TicketContent):
         ticket_hash = self.get_ticket_hash(ticketer_address, ticket_content)
