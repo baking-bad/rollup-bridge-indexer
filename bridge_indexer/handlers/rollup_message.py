@@ -1,4 +1,3 @@
-import base64
 import threading
 
 from datetime import datetime

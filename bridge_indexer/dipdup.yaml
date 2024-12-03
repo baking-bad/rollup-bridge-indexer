@@ -35,6 +35,10 @@ datasources:
   etherlink_node:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
+    http:
+      ratelimit_rate: 1000
+      ratelimit_period: 60
+      ratelimit_sleep: 1
 
   etherlink_subsquid:
     kind: evm.subsquid
