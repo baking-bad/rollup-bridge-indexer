@@ -65,10 +65,10 @@ contracts:
     address: '0x0000000000000000000000000000000000000000'
     typename: kernel_native
 
-#  l2_tzbtc_token:
-#    kind: evm
-#    address: 0x87dcbf128677ba36e79d47daf4eb4e51610e0150
-#    typename: l2_token
+  l2_pepe_token:
+    kind: evm
+    address: 0x9121b153bbcf8c23f20ee43b494f08760b91ad64
+    typename: l2_token
 #  l2_sirs_token:
 #    kind: evm
 #    address: 0xcb5d40c6b1bdf5cd51b3801351b0a68d101a561b
