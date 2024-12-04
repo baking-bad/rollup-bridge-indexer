@@ -170,15 +170,15 @@ indexes:
             destination: tezos_smart_rollup
 
 
-#  etherlink_token_balance_update_events:
-#    kind: evm.events
-#    datasources:
-#      - etherlink_subsquid
-#      - etherlink_node
-#    handlers:
-#      - callback: etherlink.on_transfer
-#        contract: l2_tzbtc_token
-#        name: Transfer
+  etherlink_token_balance_update_events:
+    kind: evm.events
+    datasources:
+      - etherlink_subsquid
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_transfer
+        contract: l2_pepe_token
+        name: Transfer
 #      - callback: etherlink.on_transfer
 #        contract: l2_sirs_token
 #        name: Transfer
