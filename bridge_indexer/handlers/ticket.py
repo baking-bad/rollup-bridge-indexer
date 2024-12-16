@@ -12,10 +12,13 @@ if TYPE_CHECKING:
     from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
     from dipdup.datasources.tzip_metadata import TzipMetadataDatasource
     from bridge_indexer.handlers.service_container import BridgeConstantStorage
+
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
 from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent as TicketContent
+
+MICHELSON_OUTBOX_INTERFACE = 'pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))'
 
 
 class TicketService:
@@ -30,7 +33,7 @@ class TicketService:
             for ticket_data in await self._tzkt.request('GET', f'v1/tickets?ticketer.eq={ticketer_address}'):
                 await self.fetch_ticket(
                     ticket_data['ticketer']['address'],
-                    TicketContent.parse_obj(ticket_data['content']),
+                    TicketContent.model_validate(ticket_data['content']),
                 )
                 first_levels.append(ticket_data['firstLevel'])
 
@@ -75,15 +78,15 @@ class TicketService:
             ticket_id=ticket_content.ticket_id,
             token=token,
             metadata=ticket_content.metadata_hex,
-            outbox_interface='pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))',
-            whitelisted=True,
+            outbox_interface=MICHELSON_OUTBOX_INTERFACE,
+            whitelisted=ticketer_address in self._bridge.fa_ticketer_list,
         )
 
         return ticket
 
     async def register_native_ticket(self):
         for ticket_data in await self._tzkt.request('GET', f'v1/tickets?ticketer={self._bridge.native_ticketer}'):
-            ticket_content = TicketContent.parse_obj(ticket_data['content'])
+            ticket_content = TicketContent.model_validate(ticket_data['content'])
             ticket_hash = self.get_ticket_hash(self._bridge.native_ticketer, ticket_content)
             xtz = await TezosToken.get(pk='xtz')
             ticket = await TezosTicket.create(
@@ -92,7 +95,7 @@ class TicketService:
                 ticket_id=ticket_content.ticket_id,
                 token=xtz,
                 metadata=ticket_content.metadata_hex,
-                outbox_interface='pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))',
+                outbox_interface=MICHELSON_OUTBOX_INTERFACE,
                 whitelisted=True,
             )
             await EtherlinkToken.create(

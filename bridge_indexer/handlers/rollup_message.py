@@ -1,4 +1,3 @@
-import base64
 import threading
 
 from datetime import datetime
@@ -21,6 +20,8 @@ from pytezos import michelson_to_micheline
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from bridge_indexer.handlers.ticket import MICHELSON_OUTBOX_INTERFACE
+from bridge_indexer.handlers.ticket import TicketService
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeWithdrawOperation
@@ -33,6 +34,7 @@ from bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload 
 from bridge_indexer.types.kernel_native.evm_events.withdrawal import WithdrawalPayload as NativeWithdrawalPayload
 
 from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
+from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent as RollupParametersTicketContent
 from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 from bridge_indexer.types.ticketer.tezos_parameters.withdraw import WithdrawParameter
 
@@ -137,12 +139,14 @@ class RollupMessageIndex:
         tzkt: TezosTzktDatasource,
         rollup_node: HttpDatasource,
         bridge: 'BridgeConstantStorage',
+        ticket_service: TicketService,
         protocol: 'ProtocolConstantStorage',
         logger: 'Logger',
     ):
         self._tzkt = tzkt
         self._rollup_node = rollup_node
         self._bridge = bridge
+        self._ticket_service = ticket_service
         self._protocol = protocol
         self._logger = logger
 
@@ -290,8 +294,9 @@ class RollupMessageIndex:
 
         for outbox_message in outbox:
             try:
-                parameters_hash = await OutboxParametersHash(outbox_message).from_outbox_message()
-            except ValueError:
+                parameters_hash = await OutboxParametersHash(outbox_message).from_outbox_message(self._ticket_service)
+            except ValueError as e:
+                self._logger.warning(f'Skip hashing outbox message. {str(e)}')
                 continue
 
             self._create_outbox_batch.append(
@@ -361,22 +366,36 @@ class ComparableDTO(BaseModel):
 
 
 class OutboxParametersHash:
-    def __init__(self, value: dict[str, Any] | EvmEvent[FAWithdrawalPayload] | EvmEvent[NativeWithdrawalPayload]):
+    def __init__(
+        self,
+        value: dict[str, Any] | EvmEvent[FAWithdrawalPayload] | EvmEvent[NativeWithdrawalPayload],
+    ):
         self._value = value
 
-    async def from_outbox_message(self) -> str:
+    async def from_outbox_message(self, ticket_service: TicketService) -> str:
         outbox_message = self._value
 
         try:
             transaction = outbox_message['message']['transactions'][0]
             parameters_micheline = transaction['parameters']
-            ticket = await TezosTicket.get(ticketer_address=transaction['destination'])
-            michelson_outbox_interface = ticket.outbox_interface
-            micheline_expression = michelson_to_micheline(michelson_outbox_interface)
+
+            micheline_expression = michelson_to_micheline(MICHELSON_OUTBOX_INTERFACE)
             michelson_type = MichelsonType.match(micheline_expression)
 
             parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
             parameters: WithdrawParameter = WithdrawParameter.model_validate(parameters_data)
+
+            bytes_field = None
+            if parameters.ticket.content.metadata:
+                bytes_field = parameters.ticket.content.metadata.hex()
+
+            ticket = await ticket_service.fetch_ticket(
+                parameters.ticket.ticketer,
+                RollupParametersTicketContent.model_validate(obj={
+                    'nat': str(parameters.ticket.content.ticket_id),
+                    'bytes': bytes_field,
+                }),
+            )
 
             comparable_data = ComparableDTO(
                 receiver=str(parameters.receiver),
@@ -386,7 +405,7 @@ class OutboxParametersHash:
                 proxy=transaction['destination'],
             )
         except (AttributeError, KeyError, DoesNotExist):
-            raise ValueError
+            raise ValueError(f"Can't get OutboxParametersHash from message: {outbox_message}") from None
 
         return self._hash_from_dto(comparable_data)
 
@@ -411,7 +430,7 @@ class OutboxParametersHash:
                 proxy=ticket.ticketer_address,
             )
         except (DoesNotExist, AssertionError, AttributeError):
-            raise ValueError
+            raise ValueError(f"Can't get OutboxParametersHash from NativeWithdrawal Event: {payload}") from None
 
         return self._hash_from_dto(comparable_data)
 
@@ -429,7 +448,7 @@ class OutboxParametersHash:
                 proxy=str(payload.proxy),
             )
         except (DoesNotExist, AssertionError, AttributeError):
-            raise ValueError
+            raise ValueError(f"Can't get OutboxParametersHash from FAWithdrawal Event: {payload}") from None
 
         return self._hash_from_dto(comparable_data)
 
