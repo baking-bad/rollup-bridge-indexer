@@ -1,0 +1,129 @@
+contracts:
+  tezos_smart_rollup:
+    kind: tezos
+    address: ${SMART_ROLLUP_ADDRESS}
+    typename: rollup
+
+  etherlink_rollup_kernel:
+    kind: evm
+    address: '0x0000000000000000000000000000000000000000'
+    typename: kernel
+
+  etherlink_rollup_kernel_native:
+    kind: evm
+    address: '0x0000000000000000000000000000000000000000'
+    typename: kernel_native
+
+  l2_pepe_token:
+    kind: evm
+    address: 0x9121b153bbcf8c23f20ee43b494f08760b91ad64
+    typename: l2_token
+  l2_ottez_token:
+    kind: evm
+    address: 0x8322723f5ca51cb20a80d6c55d24eaa1651f68c7
+    typename: l2_token
+
+
+indexes:
+  tezos_head:
+    kind: tezos.head
+    datasources:
+      - tzkt
+    callback: tezos.on_head
+
+  tezos_rollup_cement:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - sr_cement
+    contracts:
+      - tezos_smart_rollup
+    handlers:
+      - callback: tezos.on_cement_commitment
+        pattern:
+          - type: sr_cement
+            destination: tezos_smart_rollup
+
+
+  tezos_deposit_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_smart_rollup
+    handlers:
+      - callback: tezos.on_rollup_call
+        pattern:
+          - type: transaction
+            destination: tezos_smart_rollup
+            entrypoint: default
+
+  etherlink_deposit_events:
+    kind: evm.events
+    first_level: ${L2_FIRST_LEVEL}
+    datasources:
+      - etherlink_subsquid
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_deposit
+        contract: etherlink_rollup_kernel
+        name: Deposit
+
+  etherlink_xtz_deposit_transactions:
+    kind: evm.transactions
+    first_level: ${L2_FIRST_LEVEL}
+    datasources:
+      - etherlink_subsquid
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_xtz_deposit
+        from_: etherlink_rollup_kernel
+
+
+  etherlink_withdrawal_events:
+    kind: evm.events
+    first_level: ${L2_FIRST_LEVEL}
+    datasources:
+      - etherlink_subsquid
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_withdraw
+        contract: etherlink_rollup_kernel
+        name: Withdrawal
+      - callback: etherlink.on_xtz_withdraw
+        contract: etherlink_rollup_kernel_native
+        name: Withdrawal
+
+  tezos_withdrawal_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - sr_execute
+    contracts:
+      - tezos_smart_rollup
+    handlers:
+      - callback: tezos.on_rollup_execute
+        pattern:
+          - type: sr_execute
+            destination: tezos_smart_rollup
+
+
+  etherlink_token_balance_update_events:
+    kind: evm.events
+    datasources:
+      - etherlink_subsquid
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_transfer
+        contract: l2_pepe_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_ottez_token
+        name: Transfer
