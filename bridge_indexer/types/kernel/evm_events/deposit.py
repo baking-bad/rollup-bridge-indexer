@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
-from pydantic import ConfigDict
 
 
 class DepositPayload(BaseModel):
-    model_config: ConfigDict = ConfigDict(
-        extra='forbid',
-    )
+    class Config:
+        forbid: Literal['forbid'] = 'forbid'
+
     ticket_hash: int
     ticket_owner: str
     receiver: str

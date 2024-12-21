@@ -1,4 +1,5 @@
 from typing import Any
+from typing import ClassVar
 
 from pytezos.michelson.forge import unforge_address
 
@@ -10,14 +11,14 @@ class MichelineExpression(BaseBinarySchema):
 
 
 class MichelineExpression0(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Int (tag 0)', 1, 'uint8'),
         ('int', None, 'Zarith'),
     ]
 
 
 class MichelineExpression1(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('String (tag 1)', 1, 'uint8'),
         ('size_of_string', 4, 'uint32'),
         ('string', '&size_of_string', 'hex'),
@@ -25,7 +26,7 @@ class MichelineExpression1(BaseBinarySchema):
 
 
 class MichelineExpression2(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Sequence (tag 2)', 1, 'uint8'),
         ('size_of_sequence', 4, 'uint32'),
         ('sequence', '&size_of_sequence', 'MichelineExpression'),
@@ -33,14 +34,14 @@ class MichelineExpression2(BaseBinarySchema):
 
 
 class MichelineExpression3(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Prim__no_args__no_annots (tag 3)', 1, 'uint8'),
         ('prim', 1, 'Primitive'),
     ]
 
 
 class MichelineExpression4(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Prim__no_args__some_annots (tag 4)', 1, 'uint8'),
         ('prim', 1, 'Primitive'),
         ('size_of_annots', 4, 'uint32'),
@@ -49,7 +50,7 @@ class MichelineExpression4(BaseBinarySchema):
 
 
 class MichelineExpression5(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Prim__1_arg__no_annots (tag 5)', 1, 'uint8'),
         ('prim', 1, 'Primitive'),
         ('arg', None, 'MichelineExpression'),
@@ -57,7 +58,7 @@ class MichelineExpression5(BaseBinarySchema):
 
 
 class MichelineExpression6(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Prim__1_arg__some_annots (tag 6)', 1, 'uint8'),
         ('prim', 1, 'Primitive'),
         ('arg', None, 'MichelineExpression'),
@@ -67,7 +68,7 @@ class MichelineExpression6(BaseBinarySchema):
 
 
 class MichelineExpression7(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Prim__2_args__no_annots (tag 7)', 1, 'uint8'),
         ('prim', 1, 'Primitive'),
         ('arg1', None, 'MichelineExpression'),
@@ -76,7 +77,7 @@ class MichelineExpression7(BaseBinarySchema):
 
 
 class MichelineExpression8(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Prim__2_args__some_annots (tag 8)', 1, 'uint8'),
         ('prim', 1, 'Primitive'),
         ('arg1', None, 'MichelineExpression'),
@@ -87,7 +88,7 @@ class MichelineExpression8(BaseBinarySchema):
 
 
 class MichelineExpression9(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Prim__generic (tag 9)', 1, 'uint8'),
         ('prim', 1, 'Primitive'),
         ('size_of_args', 4, 'uint32'),
@@ -98,7 +99,7 @@ class MichelineExpression9(BaseBinarySchema):
 
 
 class MichelineExpression10(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Bytes (tag 10)', 1, 'uint8'),
         ('size_of_bytes', 4, 'uint32'),
         ('bytes', '&size_of_bytes', 'hex'),
@@ -121,7 +122,7 @@ class Zarith(BaseBinarySchema):
             if is_positive is None:
                 sign_bit, bits = bits[0], bits[1:]
                 is_positive = sign_bit == '0'
-            bits_array = [bits] + bits_array
+            bits_array = [bits, *bits_array]
             if leading_bit == '0':
                 break
 
@@ -142,7 +143,7 @@ class Nat(BaseBinarySchema):
 
 
 class OutputProofOutput(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('outbox_level', 4, 'int32'),
         ('message_index', 1, 'uint8'),
         ('message', None, 'Message'),
@@ -150,14 +151,14 @@ class OutputProofOutput(BaseBinarySchema):
 
 
 class OutboxMessage(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('size_of_message', 4, 'uint32'),
         ('message', '&size_of_message', 'Message'),
     ]
 
 
 class Transaction(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('parameters', None, 'MichelineExpression'),
         ('destination', 22, 'Originated'),
         ('size_of_entrypoint', 4, 'uint32'),

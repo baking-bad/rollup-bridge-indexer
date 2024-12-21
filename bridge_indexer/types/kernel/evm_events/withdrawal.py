@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-from pydantic import ConfigDict
+from typing import TYPE_CHECKING
+from typing import Literal
 
-from bridge_indexer.types.tezos.forged_tezos_account import ForgedTezosAccount
+from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from bridge_indexer.types.tezos.forged_tezos_account import ForgedTezosAccount
 
 
 class WithdrawalPayload(BaseModel):
-    model_config: ConfigDict = ConfigDict(
-        extra='forbid',
-    )
+    class Config:
+        forbid: Literal['forbid'] = 'forbid'
+
     ticket_hash: int
     sender: str
     ticket_owner: str

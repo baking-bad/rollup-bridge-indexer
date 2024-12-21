@@ -1,9 +1,10 @@
-import threading
+from __future__ import annotations
 
+import threading
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any
-from typing import AsyncGenerator
 from typing import TYPE_CHECKING
+from typing import Any
 from uuid import NAMESPACE_OID
 from uuid import uuid5
 
@@ -32,7 +33,6 @@ from bridge_indexer.models import RollupOutboxMessage
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload as FAWithdrawalPayload
 from bridge_indexer.types.kernel_native.evm_events.withdrawal import WithdrawalPayload as NativeWithdrawalPayload
-
 from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent as RollupParametersTicketContent
 from bridge_indexer.types.rollup.tezos_storage import RollupStorage
@@ -66,13 +66,13 @@ class InboxMessageService:
 
 
 class OutboxMessageService:
-    def __init__(self, tzkt: TezosTzktDatasource, rollup_node: HttpDatasource, protocol: 'ProtocolConstantStorage'):
+    def __init__(self, tzkt: TezosTzktDatasource, rollup_node: HttpDatasource, protocol: ProtocolConstantStorage):
         self._tzkt = tzkt
         self._rollup_node = rollup_node
         self._protocol = protocol
 
     @classmethod
-    def estimate_outbox_message_cemented_level(cls, outbox_level: int, lcc_inbox_level: int, protocol: 'ProtocolConstantStorage') -> int:
+    def estimate_outbox_message_cemented_level(cls, outbox_level: int, lcc_inbox_level: int, protocol: ProtocolConstantStorage) -> int:
         commitment_period = protocol.smart_rollup_commitment_period
         challenge_window = protocol.smart_rollup_challenge_window
 
@@ -98,7 +98,11 @@ class OutboxMessageService:
             bridge_withdraw_operation: BridgeWithdrawOperation
             outbox_message = bridge_withdraw_operation.outbox_message
 
-            if head_data.level > outbox_message.level + self._protocol.smart_rollup_challenge_window + self._protocol.smart_rollup_max_active_outbox_levels:
+            if head_data.level > sum([
+                outbox_message.level,
+                self._protocol.smart_rollup_challenge_window,
+                self._protocol.smart_rollup_max_active_outbox_levels,
+            ]):
                 continue
 
             if await RollupCementedCommitment.filter(inbox_level__gte=outbox_message.level).count() == 0:
@@ -138,10 +142,10 @@ class RollupMessageIndex:
         self,
         tzkt: TezosTzktDatasource,
         rollup_node: HttpDatasource,
-        bridge: 'BridgeConstantStorage',
+        bridge: BridgeConstantStorage,
         ticket_service: TicketService,
-        protocol: 'ProtocolConstantStorage',
-        logger: 'Logger',
+        protocol: ProtocolConstantStorage,
+        logger: Logger,
     ):
         self._tzkt = tzkt
         self._rollup_node = rollup_node
@@ -205,7 +209,7 @@ class RollupMessageIndex:
 
             if len(self._create_inbox_batch):
                 await RollupInboxMessage.bulk_create(self._create_inbox_batch)
-                self._logger.info(f'Successfully saved {len(self._create_inbox_batch)} new Inbox Messages.')
+                self._logger.info('Successfully saved %d new Inbox Messages.', len(self._create_inbox_batch))
                 self._inbox_level_cursor = self._create_inbox_batch[-1].level
                 BridgeMatcherLocks.set_pending_inbox()
 
@@ -219,14 +223,14 @@ class RollupMessageIndex:
 
         if len(self._create_outbox_batch):
             await RollupOutboxMessage.bulk_create(self._create_outbox_batch, ignore_conflicts=True)
-            self._logger.info(f'Successfully saved {len(self._create_outbox_batch)} new Outbox Messages.')
+            self._logger.info('Successfully saved %d new Outbox Messages.', len(self._create_outbox_batch))
             self._outbox_index_cursor = self._create_outbox_batch[-1].index
             self._outbox_level_cursor = self._create_outbox_batch[-1].level
             BridgeMatcherLocks.set_pending_outbox()
 
             del self._create_outbox_batch[:]
 
-        self._logger.info(f'Update Inbox Message cursor index to {self._inbox_id_cursor}')
+        self._logger.info('Update Inbox Message cursor index to %s', self._inbox_id_cursor)
         if not await RollupInboxMessage.exists(id=self._inbox_id_cursor):
             await RollupInboxMessage.create(
                 id=self._inbox_id_cursor,
@@ -261,7 +265,7 @@ class RollupMessageIndex:
         outbox = await self._rollup_node.request(method='GET', url=f'global/block/{outbox_level}/outbox/{outbox_level}/messages')
         if len(outbox) == 0:
             return
-        self._logger.info(f'_handle_outbox_level {outbox_level} with {len(outbox)} messages.')
+        self._logger.info('_handle_outbox_level %d with %d messages.', outbox_level, len(outbox))
 
         if len(outbox) == self._protocol.smart_rollup_max_outbox_messages_per_level:
             if outbox_level < self._outbox_level_cursor:
@@ -296,7 +300,7 @@ class RollupMessageIndex:
             try:
                 parameters_hash = await OutboxParametersHash(outbox_message).from_outbox_message(self._ticket_service)
             except ValueError as e:
-                self._logger.warning(f'Skip hashing outbox message. {str(e)}')
+                self._logger.warning(f'Skip hashing outbox message. {e!s}')
                 continue
 
             self._create_outbox_batch.append(

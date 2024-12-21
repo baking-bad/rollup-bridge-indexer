@@ -1,8 +1,10 @@
+from typing import ClassVar
+
 from bridge_indexer.types.output_proof.unpacker import BaseBinarySchema
 
 
 class InodeTree0(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 1, 'uint8'),
         ('Unnamed field 1', None, 'X11'),
@@ -10,7 +12,7 @@ class InodeTree0(BaseBinarySchema):
 
 
 class InodeTree1(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 2, 'uint16'),
         ('Unnamed field 1', None, 'X11'),
@@ -18,7 +20,7 @@ class InodeTree1(BaseBinarySchema):
 
 
 class InodeTree2(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 4, 'int32'),
         ('Unnamed field 1', None, 'X11'),
@@ -26,7 +28,7 @@ class InodeTree2(BaseBinarySchema):
 
 
 class InodeTree3(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 8, 'int64'),
         ('Unnamed field 1', None, 'X11'),
@@ -34,20 +36,20 @@ class InodeTree3(BaseBinarySchema):
 
 
 class InodeTree128(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
     ]
 
 
 class InodeTree129(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', None, 'X5'),
     ]
 
 
 class InodeTree130(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0[0]', None, 'X5'),
         ('Unnamed field 0[1]', None, 'X5'),
@@ -55,14 +57,14 @@ class InodeTree130(BaseBinarySchema):
 
 
 class InodeTree192(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Context_hash', 32, 'hex32'),
     ]
 
 
 class InodeTree208(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 1, 'uint8'),
         ('Unnamed field 1', None, 'X0'),
@@ -71,7 +73,7 @@ class InodeTree208(BaseBinarySchema):
 
 
 class InodeTree209(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 2, 'uint16'),
         ('Unnamed field 1', None, 'X0'),
@@ -80,7 +82,7 @@ class InodeTree209(BaseBinarySchema):
 
 
 class InodeTree210(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 4, 'int32'),
         ('Unnamed field 1', None, 'X0'),
@@ -89,7 +91,7 @@ class InodeTree210(BaseBinarySchema):
 
 
 class InodeTree211(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Unnamed field 0', 8, 'int64'),
         ('Unnamed field 1', None, 'X0'),
@@ -98,7 +100,7 @@ class InodeTree211(BaseBinarySchema):
 
 
 class InodeTree224(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
     ]
 

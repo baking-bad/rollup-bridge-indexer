@@ -1,7 +1,10 @@
+from typing import TYPE_CHECKING
+
 from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosHeadBlockData
 
-from bridge_indexer.handlers.rollup_message import RollupMessageIndex
+if TYPE_CHECKING:
+    from bridge_indexer.handlers.rollup_message import RollupMessageIndex
 
 
 async def on_head(

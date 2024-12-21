@@ -51,7 +51,7 @@ datasources:
 
 advanced:
   reindex:
-    config_modified: exception
+    config_modified: ignore
     schema_modified: exception
     migration: exception
 
