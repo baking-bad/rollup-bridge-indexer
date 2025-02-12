@@ -14,6 +14,16 @@ contracts:
     address: '0x0000000000000000000000000000000000000000'
     typename: kernel_native
 
+  l2_withdrawal_precompile_fa:
+    kind: evm
+    address: '0xff00000000000000000000000000000000000002'
+    typename: kernel
+
+  l2_withdrawal_precompile_native:
+    kind: evm
+    address: '0xff00000000000000000000000000000000000001'
+    typename: kernel_native
+
   l2_pepe_token:
     kind: evm
     address: 0x9121b153bbcf8c23f20ee43b494f08760b91ad64
@@ -97,6 +107,12 @@ indexes:
         name: Withdrawal
       - callback: etherlink.on_xtz_withdraw
         contract: etherlink_rollup_kernel_native
+        name: Withdrawal
+      - callback: etherlink.on_withdraw
+        contract: l2_withdrawal_precompile_fa
+        name: Withdrawal
+      - callback: etherlink.on_xtz_withdraw
+        contract: l2_withdrawal_precompile_native
         name: Withdrawal
 
   tezos_withdrawal_operations:
