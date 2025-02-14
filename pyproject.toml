@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
-dipdup = "^8.2.0"
+dipdup = {git = "https://github.com/ztepler/dipdup.git", rev="b7aab0d84d502fdff99bbb9bd91977aaddddb46d"}
 base58 = "^2.1.1"
 pytezos = "^3.13.3"
 pydantic-settings = "^2.4.0"
