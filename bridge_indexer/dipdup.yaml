@@ -37,6 +37,7 @@ datasources:
     url: ${ETHERLINK_NODE_URL}
     http:
       ratelimit_rate: 1000
+      batch_size: 999
       ratelimit_period: 60
       ratelimit_sleep: 10
 
