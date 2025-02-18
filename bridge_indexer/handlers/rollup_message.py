@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import TYPE_CHECKING
 from typing import Any
@@ -9,13 +8,9 @@ from uuid import NAMESPACE_OID
 from uuid import uuid5
 
 import orjson
-from dipdup.datasources.http import HttpDatasource
-from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
 from dipdup.models import IndexStatus
-from dipdup.models.evm import EvmEvent
-from dipdup.models.tezos import TezosOperationData
-from dipdup.models.tezos import TezosTransaction
 from pydantic import BaseModel
+from pytezos import MichelsonRuntimeError
 from pytezos import MichelsonType
 from pytezos import michelson_to_micheline
 from tortoise.exceptions import DoesNotExist
@@ -35,14 +30,21 @@ from bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload 
 from bridge_indexer.types.kernel_native.evm_events.withdrawal import WithdrawalPayload as NativeWithdrawalPayload
 from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent as RollupParametersTicketContent
-from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 from bridge_indexer.types.ticketer.tezos_parameters.withdraw import WithdrawParameter
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
     from logging import Logger
+
+    from dipdup.datasources.http import HttpDatasource
+    from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
+    from dipdup.models.evm import EvmEvent
+    from dipdup.models.tezos import TezosOperationData
+    from dipdup.models.tezos import TezosTransaction
 
     from bridge_indexer.handlers.service_container import BridgeConstantStorage
     from bridge_indexer.handlers.service_container import ProtocolConstantStorage
+    from bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
 
 class InboxMessageService:
@@ -195,7 +197,7 @@ class RollupMessageIndex:
                 self._status = IndexStatus.realtime
                 return
         else:
-            self._logger.info(f'Found {len(inbox)} not indexed Inbox Messages.')
+            self._logger.info('Found %d not indexed Inbox Messages.', len(inbox))
 
             for inbox_message in inbox:
                 match inbox_message['type']:
@@ -299,8 +301,8 @@ class RollupMessageIndex:
         for outbox_message in outbox:
             try:
                 parameters_hash = await OutboxParametersHash(outbox_message).from_outbox_message(self._ticket_service)
-            except ValueError as e:
-                self._logger.warning(f'Skip hashing outbox message. {e!s}')
+            except (ValueError, MichelsonRuntimeError) as e:
+                self._logger.warning('Skip hashing outbox message. %s', str(e))
                 continue
 
             self._create_outbox_batch.append(
@@ -316,7 +318,7 @@ class RollupMessageIndex:
             )
 
         if len(outbox) == self._protocol.smart_rollup_max_outbox_messages_per_level:
-            self._logger.info(f'Full outbox found at level {outbox_level}, going to check next level for the rest Outbox Messages...')
+            self._logger.info('Full outbox found at level %d, going to check next level for the rest Outbox Messages...', outbox_level)
             self._outbox_level_queue.add(outbox_level + 1)
 
     async def _prepare_new_index(self):
@@ -338,7 +340,7 @@ class RollupMessageIndex:
             )
             self._inbox_id_cursor = inbox[0]['id']
 
-        self._logger.info(f'Inbox Message cursor index is {self._inbox_id_cursor}.')
+        self._logger.info('Inbox Message cursor index is %d.', self._inbox_id_cursor)
         self._status = IndexStatus.syncing
 
 
@@ -395,10 +397,12 @@ class OutboxParametersHash:
 
             ticket = await ticket_service.fetch_ticket(
                 parameters.ticket.ticketer,
-                RollupParametersTicketContent.model_validate(obj={
-                    'nat': str(parameters.ticket.content.ticket_id),
-                    'bytes': bytes_field,
-                }),
+                RollupParametersTicketContent.model_validate(
+                    obj={
+                        'nat': str(parameters.ticket.content.ticket_id),
+                        'bytes': bytes_field,
+                    }
+                ),
             )
 
             comparable_data = ComparableDTO(

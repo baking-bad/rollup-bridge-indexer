@@ -53,26 +53,29 @@ class TicketService:
         if ticket_content.metadata_hex is None:
             raise ValueError('Tickets with empty TicketMetadata should have been registered')
 
-        ticket_metadata: dict[str, str] = self.get_ticket_metadata(ticket_content)
-        asset_id = '_'.join([ticket_metadata['contract_address'], str(ticket_metadata['token_id'])])
-
-        token = await TezosToken.get_or_none(pk=asset_id)
-        if not token:
-            token_metadata = await self._metadata_client.get_token_metadata(
-                ticket_metadata['contract_address'],
-                int(ticket_metadata['token_id']),
-            )
-            if token_metadata is None:
-                token_metadata = {}
-            token = await TezosToken.create(
-                id=asset_id,
-                contract_address=ticket_metadata['contract_address'],
-                token_id=ticket_metadata['token_id'],
-                name=token_metadata.get('name', None),
-                symbol=token_metadata.get('symbol', None),
-                decimals=token_metadata.get('decimals', 0),
-                type=ticket_metadata['token_type'],
-            )
+        try:
+            ticket_metadata: dict[str, str] = self.get_ticket_metadata(ticket_content)
+            asset_id = '_'.join([ticket_metadata['contract_address'], str(ticket_metadata['token_id'])])
+        except (AssertionError, KeyError):
+            token=None
+        else:
+            token = await TezosToken.get_or_none(pk=asset_id)
+            if not token:
+                token_metadata = await self._metadata_client.get_token_metadata(
+                    ticket_metadata['contract_address'],
+                    int(ticket_metadata['token_id']),
+                )
+                if token_metadata is None:
+                    token_metadata = {}
+                token = await TezosToken.create(
+                    id=asset_id,
+                    contract_address=ticket_metadata['contract_address'],
+                    token_id=ticket_metadata['token_id'],
+                    name=token_metadata.get('name', None),
+                    symbol=token_metadata.get('symbol', None),
+                    decimals=token_metadata.get('decimals', 0),
+                    type=ticket_metadata['token_type'],
+                )
 
         ticket = await TezosTicket.create(
             hash=ticket_hash,
