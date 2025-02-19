@@ -14,6 +14,7 @@ async def on_restart(
     ctx.logger.info('Start of Rollup Message Index syncing.')
     await ctx.container.rollup_message_index.synchronize()
     ctx.logger.info('Rollup Message Index syncing complete. Switch to realtime indexing mode.')
+    raise RuntimeError('Rollup Message Index syncing complete')
 
     BridgeMatcherLocks.set_pending_tezos_deposits()
     BridgeMatcherLocks.set_pending_inbox()
