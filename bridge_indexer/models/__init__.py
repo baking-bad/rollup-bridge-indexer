@@ -47,6 +47,7 @@ class TezosTicket(Model):
         model_name=TezosToken.Meta.model,
         source_field='token_id',
         to_field='id',
+        null=True,
     )
     metadata = fields.TextField(null=True)
     outbox_interface = fields.TextField()
