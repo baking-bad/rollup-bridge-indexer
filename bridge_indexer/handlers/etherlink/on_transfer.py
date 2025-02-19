@@ -36,7 +36,7 @@ async def on_transfer(
     ctx: HandlerContext,
     event: EvmEvent[TransferPayload],
 ) -> None:
-    ctx.logger.info(f'Etherlink Token Transfer Event found: 0x{event.data.transaction_hash}')
+    ctx.logger.info(f'Etherlink Token Transfer Event found: {event.data.transaction_hash}')
 
     amount = event.payload.value
     if not amount:

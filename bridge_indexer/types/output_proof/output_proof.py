@@ -1,18 +1,18 @@
-from __future__ import absolute_import
+from typing import ClassVar
 
 from bridge_indexer.types.output_proof.tree_encoding import TreeEncoding
 from bridge_indexer.types.output_proof.unpacker import BaseBinarySchema
 
 
 class OutputProofData(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('output_proof', None, 'OutputProof'),
         ('output_proof_output', None, 'OutputProofOutput'),
     ]
 
 
 class OutputProof0(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Version', 2, 'int16'),
         ('Before', 32, 'hex32'),
@@ -22,7 +22,7 @@ class OutputProof0(BaseBinarySchema):
 
 
 class OutputProof1(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Version', 2, 'int16'),
         ('Before', 32, 'hex32'),
@@ -32,7 +32,7 @@ class OutputProof1(BaseBinarySchema):
 
 
 class OutputProof2(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Version', 2, 'int16'),
         ('Before', 32, 'hex32'),
@@ -42,7 +42,7 @@ class OutputProof2(BaseBinarySchema):
 
 
 class OutputProof3(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),
         ('Version', 2, 'int16'),
         ('Before', 32, 'hex32'),
@@ -56,7 +56,7 @@ class OutputProof(BaseBinarySchema):
 
 
 class Message0(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('Atomic_transaction_batch (tag 0)', 1, 'uint8'),
         ('size_of_transactions', 4, 'uint32'),
         ('transactions', '&size_of_transactions', 'TransactionsSequence'),
@@ -79,7 +79,7 @@ class Boolean1(BaseBinarySchema):
 
 
 class Proof(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('size_of_pvm_step', 4, 'uint32'),
         ('pvm_step', '&size_of_pvm_step', 'hex'),
         # ('presence_of_input_proof', 1, 'Boolean1'),
@@ -88,7 +88,7 @@ class Proof(BaseBinarySchema):
 
 
 class X2v0(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('inbox proof (tag 0)', 1, 'uint8'),
         ('level', 4, 'int32'),
         ('message_counter', None, 'Zarith'),
@@ -98,14 +98,14 @@ class X2v0(BaseBinarySchema):
 
 
 class X2v1(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('reveal proof (tag 1)', 1, 'uint8'),
         ('reveal_proof', None, 'X1'),
     ]
 
 
 class X2v2(BaseBinarySchema):
-    _schema = [
+    _schema: ClassVar[list[tuple]] = [
         ('first input (tag 2)', 1, 'uint8'),
     ]
 

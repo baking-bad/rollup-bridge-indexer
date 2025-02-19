@@ -11,6 +11,7 @@ from web3._utils.encoding import hex_encode_abi_type
 if TYPE_CHECKING:
     from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
     from dipdup.datasources.tzip_metadata import TzipMetadataDatasource
+
     from bridge_indexer.handlers.service_container import BridgeConstantStorage
 
 from bridge_indexer.models import EtherlinkToken
@@ -160,7 +161,7 @@ class TicketService:
         )
 
         ticket_content_hex = ''.join(
-            remove_0x_prefix(hex_encode_abi_type(abi_type, value)) for abi_type, value in zip(abi_types, normalized_values)
+            remove_0x_prefix(hex_encode_abi_type(abi_type, value)) for abi_type, value in zip(abi_types, normalized_values, strict=True)
         )
 
         return bytes.fromhex(ticket_content_hex)

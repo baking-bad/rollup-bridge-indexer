@@ -24,8 +24,7 @@ class BridgeMatcher:
     async def check_pending_tezos_deposits(cls):
         if not BridgeMatcherLocks.pending_tezos_deposits:
             return
-        else:
-            BridgeMatcherLocks.pending_tezos_deposits = False
+        BridgeMatcherLocks.pending_tezos_deposits = False
 
         qs = TezosDepositOperation.filter(bridge_deposits=None)
         async for l1_deposit in qs:
@@ -45,8 +44,7 @@ class BridgeMatcher:
     async def check_pending_inbox(cls):
         if not BridgeMatcherLocks.pending_inbox:
             return
-        else:
-            BridgeMatcherLocks.pending_inbox = False
+        BridgeMatcherLocks.pending_inbox = False
 
         qs = BridgeDepositOperation.filter(
             inbox_message=None,
@@ -72,8 +70,7 @@ class BridgeMatcher:
     async def check_pending_etherlink_deposits(cls):
         if not BridgeMatcherLocks.pending_etherlink_deposits:
             return
-        else:
-            BridgeMatcherLocks.pending_etherlink_deposits = False
+        BridgeMatcherLocks.pending_etherlink_deposits = False
 
         qs = EtherlinkDepositOperation.filter(
             bridge_deposits=None,
@@ -114,8 +111,7 @@ class BridgeMatcher:
     async def check_pending_etherlink_xtz_deposits(cls):
         if not BridgeMatcherLocks.pending_etherlink_xtz_deposits:
             return
-        else:
-            BridgeMatcherLocks.pending_etherlink_xtz_deposits = False
+        BridgeMatcherLocks.pending_etherlink_xtz_deposits = False
 
         qs = EtherlinkDepositOperation.filter(
             bridge_deposits=None,
@@ -159,8 +155,7 @@ class BridgeMatcher:
     async def check_pending_etherlink_withdrawals(cls):
         if not BridgeMatcherLocks.pending_etherlink_withdrawals:
             return
-        else:
-            BridgeMatcherLocks.pending_etherlink_withdrawals = False
+        BridgeMatcherLocks.pending_etherlink_withdrawals = False
 
         qs = EtherlinkWithdrawOperation.filter(bridge_withdrawals=None)
         async for l2_withdrawal in qs:
@@ -179,8 +174,7 @@ class BridgeMatcher:
     async def check_pending_outbox(cls):
         if not BridgeMatcherLocks.pending_outbox:
             return
-        else:
-            BridgeMatcherLocks.pending_outbox = False
+        BridgeMatcherLocks.pending_outbox = False
 
         qs = BridgeWithdrawOperation.filter(
             outbox_message=None,
@@ -206,8 +200,7 @@ class BridgeMatcher:
     async def check_pending_tezos_withdrawals(cls):
         if not BridgeMatcherLocks.pending_tezos_withdrawals:
             return
-        else:
-            BridgeMatcherLocks.pending_tezos_withdrawals = False
+        BridgeMatcherLocks.pending_tezos_withdrawals = False
 
         qs = TezosWithdrawOperation.filter(bridge_withdrawals=None).order_by('level')
         async for l1_withdrawal in qs:

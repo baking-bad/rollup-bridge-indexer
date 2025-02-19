@@ -1,42 +1,47 @@
-[tool.poetry]
-name = "Tezos to Etherlink Bridge Indexer"
+[project]
+name = "bridge_indexer"
 version = "0.1.0"
-description = ""
+description = "Tezos to Etherlink Bridge Indexer"
 authors = ["Igor Sereda <sereda.igor.s@gmail.com>"]
 readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "dipdup",
+    "pytezos>=3.13.6",
+    "base58>=2.1.1",
+    "pydantic-settings>=2.7.0",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.12,<3.13"
-dipdup = {git = "https://github.com/dipdup-io/dipdup.git", rev="61553818"}
-base58 = "^2.1.1"
-pytezos = "^3.13.3"
-pydantic-settings = "^2.4.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.4.4"
-ruff = "^0.1.15"
-ssort = "^0.12.4"
-isort = "^5.13.2"
-mypy = "^1.8.0"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.isort]
-line_length = 140
-force_single_line = true
-group_by_package = true
-ensure_newline_before_comments = true
-
-[tool.black]
-line-length = 140
-target-version = ['py312']
-skip-string-normalization = true
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+    "ruff>=0.8.3",
+    "mypy>=1.13.0",
+    "black>=24.10.0",
+]
 
 [tool.ruff]
 line-length = 140
-ignore = ["E501", "B905"]
+indent-width = 4
 target-version = "py312"
-extend-select = ["B", "C4", "Q"]
-flake8-quotes = {inline-quotes = "single", multiline-quotes = "single"}
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+
+[tool.ruff.lint]
+extend-select = ["B", "C4", "FA", "G", "I", "PTH", "Q", "RET", "RUF", "TCH", "UP"]
+flake8-quotes = { inline-quotes = "single", multiline-quotes = "single" }
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.black]
+line-length = 140
+target-version = ["py312"]
+skip-string-normalization = true
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+strict = false

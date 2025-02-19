@@ -3,15 +3,14 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Literal
 
 from pydantic import BaseModel
-from pydantic import Extra
 
 
 class Content(BaseModel):
     class Config:
-        extra = Extra.forbid
+        forbid: Literal['forbid'] = 'forbid'
 
     nat: str
     bytes: str | None
@@ -19,14 +18,14 @@ class Content(BaseModel):
 
 class Token(BaseModel):
     class Config:
-        extra = Extra.forbid
+        forbid: Literal['forbid'] = 'forbid'
 
     fa12: str
 
 
 class Fa2(BaseModel):
     class Config:
-        extra = Extra.forbid
+        forbid: Literal['forbid'] = 'forbid'
 
     address: str
     nat: str
@@ -34,15 +33,15 @@ class Fa2(BaseModel):
 
 class Token1(BaseModel):
     class Config:
-        extra = Extra.forbid
+        forbid: Literal['forbid'] = 'forbid'
 
     fa2: Fa2
 
 
 class TicketerStorage(BaseModel):
     class Config:
-        extra = Extra.forbid
+        forbid: Literal['forbid'] = 'forbid'
 
     content: Content
-    metadata: Dict[str, str]
+    metadata: dict[str, str]
     token: Token | Token1

@@ -1,7 +1,7 @@
 import sys
 from collections import OrderedDict
 from typing import Any
-from typing import Type
+from typing import ClassVar
 
 from pydantic import BaseModel
 
@@ -11,11 +11,11 @@ from bridge_indexer.types.output_proof.decoder import decode
 class Part(BaseModel):
     name: str
     size: int | str | None
-    type: Type['BaseBinarySchema'] | str
+    type: type['BaseBinarySchema'] | str
 
 
 class BaseBinarySchema:
-    _schema: list[tuple]
+    _schema: ClassVar[list[tuple]]
     _tag: bool = False
     _tag_map: dict
 

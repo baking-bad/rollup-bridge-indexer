@@ -1,81 +1,73 @@
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.12-slim-bookworm
 ARG SOURCE_DIR=bridge_indexer
-ARG POETRY_PATH=/opt/poetry
-ARG VENV_PATH=/opt/venv
 ARG APP_PATH=/opt/app
 ARG APP_USER=dipdup
 
-FROM python:${PYTHON_VERSION}-slim AS builder-base
+FROM python:${PYTHON_VERSION} AS builder-base
 
-ARG VENV_PATH
-ARG POETRY_PATH
-ENV PIP_NO_CACHE_DIR=off \
-    PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100 \
-    POETRY_HOME="$POETRY_PATH" \
-    VIRTUAL_ENV=$VENV_PATH \
-    PATH="$POETRY_PATH/bin:$VENV_PATH/bin:$PATH"
+SHELL ["/bin/bash", "-exc"]
 
-RUN apt-get update \
- && apt-get install --no-install-recommends -y \
-        # deps for installing poetry
-        curl \
+RUN apt-get update -qy \
+ && apt-get install --no-install-recommends --no-install-suggests -qyy \
         # deps for building python deps
         build-essential \
         # pytezos deps
         libsodium-dev libgmp-dev pkg-config \
     \
-    # install poetry
- && curl -sSL https://install.python-poetry.org | python - \
-    \
-    # configure poetry & make a virtualenv ahead of time since we only need one
- && python -m venv $VENV_PATH \
- && poetry config virtualenvs.create false \
-    \
-    # cleanup
+    # cleanup \
+ && apt-get clean \
  && rm -rf /tmp/* \
+ && rm -rf /var/tmp/* \
  && rm -rf /root/.cache \
- && rm -rf `find /usr/local/lib $POETRY_PATH/venv/lib $VENV_PATH/lib -name __pycache__` \
  && rm -rf /var/lib/apt/lists/*
+
+ARG APP_PATH
+ENV UV_PROJECT_ENVIRONMENT=$APP_PATH
+
 
 FROM builder-base AS builder-production
 
-COPY ["poetry.lock", "pyproject.toml", "./"]
+RUN --mount=from=ghcr.io/astral-sh/uv,source=/uv,target=/bin/uv \
+	--mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+	uv sync --frozen --exact --no-install-project --no-editable --no-dev --no-installer-metadata
 
-RUN poetry install --only main --sync --no-root --no-interaction --no-ansi -vvv \
- && rm -rf /tmp \
+
+FROM python:${PYTHON_VERSION} AS runtime-base
+
+SHELL ["/bin/bash", "-exc"]
+
+RUN apt-get update -qy \
+ && apt-get install --no-install-recommends --no-install-suggests -qyy \
+        # pytezos deps
+        libsodium-dev libgmp-dev pkg-config \
+    \
+    # cleanup \
+ && apt-get clean \
+ && rm -rf /tmp/* \
+ && rm -rf /var/tmp/* \
  && rm -rf /root/.cache \
- && rm -rf $VIRTUAL_ENV/src \
- && rm -rf `find $VIRTUAL_ENV/lib -name __pycache__`
-
-
-FROM python:${PYTHON_VERSION}-slim AS runtime-base
-
-ARG VENV_PATH
-ENV PATH="$VENV_PATH/bin:$PATH"
+ && rm -rf /var/lib/apt/lists/*
 
 ARG APP_PATH
+ENV PATH=$APP_PATH/bin:$PATH
+
 WORKDIR $APP_PATH
 
 ARG APP_USER
 RUN useradd -ms /bin/bash $APP_USER
 
+
 FROM runtime-base AS runtime
 
-RUN apt-get update \
- && apt-get install --no-install-recommends -y \
-        libsodium-dev libgmp-dev pkg-config \
-    # cleanup
- && rm -rf /tmp/* \
- && rm -rf /root/.cache \
- && rm -rf /var/lib/apt/lists/*
-
-ARG VENV_PATH
-COPY --from=builder-production ["$VENV_PATH", "$VENV_PATH"]
-
 ARG APP_USER
+ARG APP_PATH
+COPY --from=builder-production --chown=$APP_USER ["$APP_PATH", "$APP_PATH"]
+
 USER $APP_USER
 ARG SOURCE_DIR
+ENV DIPDUP_PACKAGE_PATH=$APP_PATH/$SOURCE_DIR
 COPY --chown=$APP_USER $SOURCE_DIR ./$SOURCE_DIR
 
 ENTRYPOINT ["dipdup"]

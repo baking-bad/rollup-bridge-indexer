@@ -1,5 +1,6 @@
+from typing import TYPE_CHECKING
+
 from dipdup.context import DipDupContext
-from dipdup.datasources.http import HttpDatasource
 from dipdup.datasources.tezos_tzkt import TezosTzktDatasource
 from dipdup.datasources.tzip_metadata import TzipMetadataDatasource
 from pydantic import BaseModel
@@ -10,11 +11,14 @@ from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.handlers.rollup_message import RollupMessageIndex
 from bridge_indexer.handlers.ticket import TicketService
 
+if TYPE_CHECKING:
+    from dipdup.datasources.http import HttpDatasource
+
 
 class BridgeConstantStorage(BaseSettings):
     smart_rollup_address: str = Field(alias='SMART_ROLLUP_ADDRESS')
     native_ticketer: str = Field(alias='NATIVE_TICKETER')
-    fa_ticketer_list: list[str] = Field(alias='FA_TICKETERS', default_factory=list[str])
+    fa_ticketer_list: list[str] = Field(alias='FA_TICKETERS')
 
 
 class ProtocolConstantStorage(BaseModel):

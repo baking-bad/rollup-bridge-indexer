@@ -38,7 +38,7 @@ async def on_deposit(
     ctx: HandlerContext,
     event: EvmEvent[DepositPayload],
 ) -> None:
-    ctx.logger.info(f'Etherlink Deposit Event found: 0x{event.data.transaction_hash}')
+    ctx.logger.info(f'Etherlink Deposit Event found: {event.data.transaction_hash}')
 
     try:
         await _validate_ticket(event.payload.ticket_hash)
