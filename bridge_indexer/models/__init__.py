@@ -50,7 +50,6 @@ class TezosTicket(Model):
         null=True,
     )
     metadata = fields.TextField(null=True)
-    outbox_interface = fields.TextField()
     whitelisted = fields.BooleanField(index=True, null=True, default=None)
 
 
