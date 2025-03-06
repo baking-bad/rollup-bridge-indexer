@@ -6,6 +6,7 @@ class BridgeMatcherLocks:
     pending_tezos_withdrawals: bool = False
     pending_inbox: bool = False
     pending_outbox: bool = False
+    pending_claimed_fast_withdrawals: bool = False
 
     @classmethod
     def set_pending_tezos_deposits(cls):
@@ -34,3 +35,7 @@ class BridgeMatcherLocks:
     @classmethod
     def set_pending_outbox(cls):
         BridgeMatcherLocks.pending_outbox = True
+
+    @classmethod
+    def set_pending_claimed_fast_withdrawals(cls):
+        BridgeMatcherLocks.pending_claimed_fast_withdrawals = True

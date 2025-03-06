@@ -1,13 +1,13 @@
 services:
   db:
-    image: postgres:16
+    image: postgres:17
 
     tmpfs:
       - /var/lib/postgresql
 
     restart: always
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      - "0.0.0.0:${POSTGRES_PORT:-5432}:5432"
     environment:
       - POSTGRES_USER=dipdup
       - POSTGRES_DB=dipdup

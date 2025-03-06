@@ -60,7 +60,7 @@ class BaseBinarySchema:
     def _handle_field_processed(self, name: str, value: Any):
         pass
 
-    def unpack(self):
+    def unpack(self) -> tuple[OrderedDict, int]:
         if self._tag:
             unpacked_part, part_size = self._handle_tag()
             return unpacked_part, part_size

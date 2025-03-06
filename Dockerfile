@@ -8,7 +8,7 @@ FROM python:${PYTHON_VERSION} AS builder-base
 SHELL ["/bin/bash", "-exc"]
 
 RUN apt-get update -qy \
- && apt-get install --no-install-recommends --no-install-suggests -qyy \
+ && apt-get install --no-install-recommends --no-install-suggests -qy \
         # deps for building python deps
         build-essential \
         # pytezos deps
@@ -39,7 +39,7 @@ FROM python:${PYTHON_VERSION} AS runtime-base
 SHELL ["/bin/bash", "-exc"]
 
 RUN apt-get update -qy \
- && apt-get install --no-install-recommends --no-install-suggests -qyy \
+ && apt-get install --no-install-recommends --no-install-suggests -qy \
         # pytezos deps
         libsodium-dev libgmp-dev pkg-config \
     \
