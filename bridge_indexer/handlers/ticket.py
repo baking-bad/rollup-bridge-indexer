@@ -83,7 +83,6 @@ class TicketService:
             ticket_id=ticket_content.ticket_id,
             token=token,
             metadata=ticket_content.metadata_hex,
-            outbox_interface=MICHELSON_OUTBOX_INTERFACE,
             whitelisted=ticketer_address in self._bridge.fa_ticketer_list,
         )
 
@@ -100,7 +99,6 @@ class TicketService:
                 ticket_id=ticket_content.ticket_id,
                 token=xtz,
                 metadata=ticket_content.metadata_hex,
-                outbox_interface=MICHELSON_OUTBOX_INTERFACE,
                 whitelisted=True,
             )
             await EtherlinkToken.create(
