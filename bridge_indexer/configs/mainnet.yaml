@@ -32,6 +32,10 @@ contracts:
     kind: evm
     address: 0x8322723f5ca51cb20a80d6c55d24eaa1651f68c7
     typename: l2_token
+  l2_wine_token:
+    kind: evm
+    address: 0xbfc8d679893ec19c4e658fb2f3cf08e3497620f9
+    typename: l2_token
 
 
 indexes:
@@ -142,4 +146,7 @@ indexes:
         name: Transfer
       - callback: etherlink.on_transfer
         contract: l2_ottez_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_wine_token
         name: Transfer
