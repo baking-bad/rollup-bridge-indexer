@@ -20,6 +20,9 @@ dev = [
     "black>=24.10.0",
 ]
 
+[tool.uv.sources]
+dipdup = { git = "https://github.com/dipdup-io/dipdup", branch = "next" }
+
 [tool.ruff]
 line-length = 140
 indent-width = 4
