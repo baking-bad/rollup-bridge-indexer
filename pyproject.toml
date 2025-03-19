@@ -1,27 +1,24 @@
 [project]
 name = "bridge_indexer"
-version = "0.1.0"
+version = "1.0.0"
 description = "Tezos to Etherlink Bridge Indexer"
 authors = ["Igor Sereda <sereda.igor.s@gmail.com>"]
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "dipdup",
-    "pytezos>=3.13.6",
+    "dipdup>=8.2.2",
+    "pytezos>=3.14.0",
     "base58>=2.1.1",
-    "pydantic-settings>=2.7.0",
+    "pydantic-settings>=2.8.1",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.4",
-    "ruff>=0.8.3",
-    "mypy>=1.13.0",
-    "black>=24.10.0",
+    "pytest>=8.3.5",
+    "ruff>=0.11.2",
+    "mypy>=1.15.0",
+    "black>=25.1.0",
 ]
-
-[tool.uv.sources]
-dipdup = { git = "https://github.com/dipdup-io/dipdup", branch = "next" }
 
 [tool.ruff]
 line-length = 140
