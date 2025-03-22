@@ -13,7 +13,6 @@ RUN apt-get update -qy \
         build-essential \
         # pytezos deps
         libsodium-dev libgmp-dev pkg-config \
-    	git \
     \
     # cleanup \
  && apt-get clean \
