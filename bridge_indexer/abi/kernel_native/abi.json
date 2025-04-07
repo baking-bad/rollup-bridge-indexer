@@ -1,33 +1,76 @@
 [
-  {
-    "type": "event",
-    "name": "Withdrawal",
-    "inputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "sender",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "receiver",
-        "type": "bytes22",
-        "indexed": false,
-        "internalType": "bytes22"
-      },
-      {
-        "name": "withdrawalId",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  }
+    {
+        "type": "event",
+        "name": "Withdrawal",
+        "inputs": [
+            {
+                "name": "amount",
+                "type": "uint256",
+                "indexed": false,
+                "internalType": "uint256"
+            },
+            {
+                "name": "sender",
+                "type": "address",
+                "indexed": false,
+                "internalType": "address"
+            },
+            {
+                "name": "receiver",
+                "type": "bytes22",
+                "indexed": false,
+                "internalType": "bytes22"
+            },
+            {
+                "name": "withdrawal_id",
+                "type": "uint256",
+                "indexed": false,
+                "internalType": "uint256"
+            }
+        ],
+        "anonymous": false
+    },
+    {
+        "type": "event",
+        "name": "FastWithdrawal",
+        "inputs": [
+            {
+                "name": "receiver",
+                "type": "bytes22",
+                "indexed": false,
+                "internalType": "bytes22"
+            },
+            {
+                "name": "withdrawal_id",
+                "type": "uint256",
+                "indexed": false,
+                "internalType": "uint256"
+            },
+            {
+                "name": "amount",
+                "type": "uint256",
+                "indexed": false,
+                "internalType": "uint256"
+            },
+            {
+                "name": "timestamp",
+                "type": "uint256",
+                "indexed": false,
+                "internalType": "uint256"
+            },
+            {
+                "name": "payload",
+                "type": "bytes",
+                "indexed": false,
+                "internalType": "bytes"
+            },
+            {
+                "name": "l2_caller",
+                "type": "address",
+                "indexed": false,
+                "internalType": "address"
+            }
+        ],
+        "anonymous": false
+    }
 ]

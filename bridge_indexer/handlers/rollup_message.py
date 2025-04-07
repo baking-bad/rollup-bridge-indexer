@@ -16,7 +16,8 @@ from pytezos import michelson_to_micheline
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
-from bridge_indexer.handlers.ticket import MICHELSON_OUTBOX_INTERFACE
+from bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
+from bridge_indexer.handlers.ticket import WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from bridge_indexer.handlers.ticket import TicketService
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeOperationStatus
@@ -26,11 +27,15 @@ from bridge_indexer.models import RollupInboxMessage
 from bridge_indexer.models import RollupInboxMessageType
 from bridge_indexer.models import RollupOutboxMessage
 from bridge_indexer.models import TezosTicket
+from bridge_indexer.types.fast_withdrawal.tezos_parameters.default import (
+    DefaultParameter as ExecuteOutboxMessageFastWithdrawalDefaultParameter,
+)
 from bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload as FAWithdrawalPayload
+from bridge_indexer.types.kernel_native.evm_events.fast_withdrawal import FastWithdrawalPayload
 from bridge_indexer.types.kernel_native.evm_events.withdrawal import WithdrawalPayload as NativeWithdrawalPayload
 from bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent as RollupParametersTicketContent
-from bridge_indexer.types.ticketer.tezos_parameters.withdraw import WithdrawParameter
+from bridge_indexer.types.ticketer.tezos_parameters.withdraw import WithdrawParameter as ExecuteOutboxMessageTicketerWithdrawParameter
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -234,6 +239,11 @@ class RollupMessageIndex:
 
         self._logger.info('Update Inbox Message cursor index to %s', self._inbox_id_cursor)
         if not await RollupInboxMessage.exists(id=self._inbox_id_cursor):
+            await RollupInboxMessage.filter(
+                level=0,
+                type=RollupInboxMessageType.external.value,
+                id__lt=self._inbox_id_cursor,
+            ).delete()
             await RollupInboxMessage.create(
                 id=self._inbox_id_cursor,
                 level=0,
@@ -242,11 +252,6 @@ class RollupMessageIndex:
                 parameters_hash=None,
                 type=RollupInboxMessageType.external,
             )
-            await RollupInboxMessage.filter(
-                level=0,
-                type=RollupInboxMessageType.external.value,
-                id__lt=self._inbox_id_cursor,
-            ).delete()
 
     async def _handle_transfer_inbox_message(self, message):
         self._create_inbox_batch.append(
@@ -301,6 +306,8 @@ class RollupMessageIndex:
         for outbox_message in outbox:
             try:
                 parameters_hash = await OutboxParametersHash(outbox_message).from_outbox_message(self._ticket_service)
+            except (ValueError, MichelsonRuntimeError):
+                parameters_hash = await OutboxParametersHash(outbox_message).from_fast_outbox_message(self._ticket_service)
             except (ValueError, MichelsonRuntimeError) as e:
                 self._logger.warning('Skip hashing outbox message. %s', str(e))
                 continue
@@ -358,23 +365,27 @@ class InboxParametersHash:
 
     @staticmethod
     def _hash_from_dto(dto) -> str:
-        parameters_hash = uuid5(NAMESPACE_OID, orjson.dumps(dto, option=orjson.OPT_SORT_KEYS)).hex
+        parameters_hash: str = uuid5(NAMESPACE_OID, orjson.dumps(dto, option=orjson.OPT_SORT_KEYS)).hex
 
         return parameters_hash
 
 
-class ComparableDTO(BaseModel):
+class WithdrawalParametersHashableDTO(BaseModel):
     receiver: str
     ticket_hash: str
     amount: int
     ticketer_address: str
     proxy: str
 
+class FastWithdrawalParametersHashableDTO(BaseModel):
+    withdrawal_id: int
+
+
 
 class OutboxParametersHash:
     def __init__(
         self,
-        value: dict[str, Any] | EvmEvent[FAWithdrawalPayload] | EvmEvent[NativeWithdrawalPayload],
+        value: dict[str, Any] | EvmEvent[FAWithdrawalPayload | NativeWithdrawalPayload | FastWithdrawalPayload],
     ):
         self._value = value
 
@@ -385,11 +396,11 @@ class OutboxParametersHash:
             transaction = outbox_message['message']['transactions'][0]
             parameters_micheline = transaction['parameters']
 
-            micheline_expression = michelson_to_micheline(MICHELSON_OUTBOX_INTERFACE)
+            micheline_expression = michelson_to_micheline(WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE)
             michelson_type = MichelsonType.match(micheline_expression)
 
             parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
-            parameters: WithdrawParameter = WithdrawParameter.model_validate(parameters_data)
+            parameters: ExecuteOutboxMessageTicketerWithdrawParameter = ExecuteOutboxMessageTicketerWithdrawParameter.model_validate(parameters_data)
 
             bytes_field = None
             if parameters.ticket.content.metadata:
@@ -405,7 +416,7 @@ class OutboxParametersHash:
                 ),
             )
 
-            comparable_data = ComparableDTO(
+            comparable_data = WithdrawalParametersHashableDTO(
                 receiver=str(parameters.receiver),
                 ticket_hash=ticket.hash,
                 amount=parameters.ticket.amount,
@@ -417,11 +428,41 @@ class OutboxParametersHash:
 
         return self._hash_from_dto(comparable_data)
 
+
+    async def from_fast_outbox_message(self, ticket_service: TicketService) -> str:
+        outbox_message = self._value
+        try:
+            transaction = outbox_message['message']['transactions'][0]
+            parameters_micheline = transaction['parameters']
+
+            micheline_expression = michelson_to_micheline(FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE)
+            michelson_type = MichelsonType.match(micheline_expression)
+
+            parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
+            parameters: ExecuteOutboxMessageFastWithdrawalDefaultParameter = ExecuteOutboxMessageFastWithdrawalDefaultParameter.model_validate(parameters_data)
+            assert parameters
+
+            comparable_data = FastWithdrawalParametersHashableDTO(
+                withdrawal_id=int(parameters_data['withdrawal_id'])
+                # receiver=str(parameters.receiver),
+                # ticket_hash=ticket.hash,
+                # amount=parameters.ticket.amount,
+                # ticketer_address=str(parameters.ticket.ticketer),
+                # proxy=transaction['destination'],
+            )
+        except (AttributeError, KeyError, DoesNotExist) as e:
+            raise ValueError(f"Can't get FastOutboxParametersHash from message: {outbox_message}, {e}") from None
+
+        return self._hash_from_dto(comparable_data)
+
+
     async def from_event(self) -> str:
         if isinstance(self._value.payload, FAWithdrawalPayload):
             return await self._from_fa_event()
         if isinstance(self._value.payload, NativeWithdrawalPayload):
             return await self._from_native_event()
+        if isinstance(self._value.payload, FastWithdrawalPayload):
+            return await self._from_fast_native_event()
         raise TypeError('Unexpected Withdrawal Event type')
 
     async def _from_native_event(self) -> str:
@@ -430,7 +471,7 @@ class OutboxParametersHash:
         try:
             ticket = await TezosTicket.get(token_id='xtz')
 
-            comparable_data = ComparableDTO(
+            comparable_data = WithdrawalParametersHashableDTO(
                 receiver=str(payload.receiver),
                 ticket_hash=ticket.hash,
                 amount=int(str(payload.amount)[:-12]),
@@ -442,13 +483,32 @@ class OutboxParametersHash:
 
         return self._hash_from_dto(comparable_data)
 
+    async def _from_fast_native_event(self) -> str:
+        payload: FastWithdrawalPayload = self._value.payload
+
+        try:
+            # ticket = await TezosTicket.get(token_id='xtz')
+
+            comparable_data = FastWithdrawalParametersHashableDTO(
+                withdrawal_id=int(payload.withdrawal_id),
+                # receiver=str(payload.receiver),
+                # ticket_hash=ticket.hash,
+                # amount=int(str(payload.amount)[:-12]),
+                # ticketer_address=ticket.ticketer_address,
+                # proxy=ticket.ticketer_address,
+            )
+        except (DoesNotExist, AssertionError, AttributeError):
+            raise ValueError(f"Can't get OutboxParametersHash from NativeFastWithdrawal Event: {payload}") from None
+
+        return self._hash_from_dto(comparable_data)
+
     async def _from_fa_event(self) -> str:
         payload: FAWithdrawalPayload = self._value.payload
 
         try:
             ticket = await TezosTicket.get(hash=payload.ticket_hash)
 
-            comparable_data = ComparableDTO(
+            comparable_data = WithdrawalParametersHashableDTO(
                 receiver=str(payload.receiver),
                 ticket_hash=ticket.hash,
                 amount=payload.amount,
@@ -461,7 +521,7 @@ class OutboxParametersHash:
         return self._hash_from_dto(comparable_data)
 
     @staticmethod
-    def _hash_from_dto(dto: ComparableDTO) -> str:
-        parameters_hash = uuid5(NAMESPACE_OID, orjson.dumps(dto.model_dump(), option=orjson.OPT_SORT_KEYS)).hex
+    def _hash_from_dto(dto: WithdrawalParametersHashableDTO|FastWithdrawalParametersHashableDTO) -> str:
+        parameters_hash: str = uuid5(NAMESPACE_OID, orjson.dumps(dto.model_dump(), option=orjson.OPT_SORT_KEYS)).hex
 
         return parameters_hash

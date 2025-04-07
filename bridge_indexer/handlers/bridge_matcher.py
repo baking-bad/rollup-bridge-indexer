@@ -4,6 +4,7 @@ from datetime import timedelta
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from bridge_indexer.models import BridgeDepositOperation
 from bridge_indexer.models import BridgeOperation
+from bridge_indexer.models import BridgeOperationKind
 from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeOperationType
 from bridge_indexer.models import BridgeWithdrawOperation
@@ -168,6 +169,7 @@ class BridgeMatcher:
                 created_at=l2_withdrawal.timestamp,
                 updated_at=l2_withdrawal.timestamp,
                 status=BridgeOperationStatus.created,
+                kind=BridgeOperationKind.fast_withdrawal if l2_withdrawal.fast_payload else None,
             )
 
     @classmethod
