@@ -11,7 +11,7 @@ async def on_rollup_execute(
     ctx: HandlerContext,
     execute: TezosSmartRollupExecute,
 ) -> None:
-    ctx.logger.info(f'Tezos Withdraw Transaction found: {execute.data.hash}')
+    ctx.logger.info('Tezos Withdraw Transaction found: %s', execute.data.hash)
 
     rpc = ctx.get_http_datasource('tezos_node')
     block_operations = await rpc.request('GET', f'chains/main/blocks/{execute.data.level}/operations')
@@ -60,6 +60,6 @@ async def on_rollup_execute(
         outbox_message=outbox_message,
     )
 
-    ctx.logger.info(f'Tezos Withdraw Transaction registered: {withdrawal.id}')
+    ctx.logger.info('Tezos Withdraw Transaction registered: %s', withdrawal.id)
 
     BridgeMatcherLocks.set_pending_tezos_withdrawals()
