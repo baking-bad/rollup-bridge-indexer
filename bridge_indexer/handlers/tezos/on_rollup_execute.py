@@ -1,8 +1,10 @@
 from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosSmartRollupExecute
+from eth_abi.exceptions import ParseError
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from bridge_indexer.models import BridgeWithdrawOperation
 from bridge_indexer.models import TezosWithdrawOperation
 from bridge_indexer.types.output_proof.output_proof import OutputProofData
 
@@ -13,40 +15,51 @@ async def on_rollup_execute(
 ) -> None:
     ctx.logger.info('Tezos Withdraw Transaction found: %s', execute.data.hash)
 
-    rpc = ctx.get_http_datasource('tezos_node')
-    block_operations = await rpc.request('GET', f'chains/main/blocks/{execute.data.level}/operations')
-    for group in block_operations[3]:
-        if group['hash'] != execute.data.hash:
-            continue
-        for operation in group['contents']:
-            if operation['kind'] != 'smart_rollup_execute_outbox_message':
+    if execute.data.parameter_json and 'withdrawal_id' in execute.data.parameter_json:
+        bridge_withdrawal = await BridgeWithdrawOperation.filter(
+            l2_transaction__kernel_withdrawal_id=execute.data.parameter_json['withdrawal_id'],
+            outbox_message_id__isnull=False,
+        ).first()
+        outbox_message = bridge_withdrawal.outbox_message
+    else:
+        rpc = ctx.get_http_datasource('tezos_node')
+        block_operations = await rpc.request('GET', f'chains/main/blocks/{execute.data.level}/operations')
+        for group in block_operations[3]:
+            if group['hash'] != execute.data.hash:
                 continue
-            if int(operation['counter']) != execute.data.counter:
-                continue
-            output_proof_hex = operation['output_proof']
-            break
+            for operation in group['contents']:
+                if operation['kind'] != 'smart_rollup_execute_outbox_message':
+                    continue
+                if int(operation['counter']) != execute.data.counter:
+                    continue
+                output_proof_hex = operation['output_proof']
+                break
 
-    try:
-        assert output_proof_hex
-    except AssertionError:
-        ctx.logger.error('Outbox Message execution not found in block operations.')
-        return
+        try:
+            assert output_proof_hex
+        except AssertionError:
+            ctx.logger.error('Outbox Message execution not found in block operations.')
+            return
 
-    decoder = OutputProofData(bytes.fromhex(output_proof_hex))
-    output_proof, _ = decoder.unpack()
+        try:
+            decoder = OutputProofData(bytes.fromhex(output_proof_hex))
+            output_proof, _ = decoder.unpack()
+        except ParseError:
+            ctx.logger.error('Failed to decode Outbox Message output_proof.')
+            return
 
-    try:
-        outbox_message = await ctx.container.outbox_message_service.find_by_index(
-            output_proof['output_proof_output']['outbox_level'],
-            output_proof['output_proof_output']['message_index'],
-        )
-    except DoesNotExist:
-        ctx.logger.error(
-            'Failed to fetch Outbox Message with level %d and index %d.',
-            output_proof['output_proof_output']['outbox_level'],
-            output_proof['output_proof_output']['message_index'],
-        )
-        return
+        try:
+            outbox_message = await ctx.container.outbox_message_service.find_by_index(
+                output_proof['output_proof_output']['outbox_level'],
+                output_proof['output_proof_output']['message_index'],
+            )
+        except DoesNotExist:
+            ctx.logger.error(
+                'Failed to fetch Outbox Message with level %d and index %d.',
+                output_proof['output_proof_output']['outbox_level'],
+                output_proof['output_proof_output']['message_index'],
+            )
+            return
 
     withdrawal = await TezosWithdrawOperation.create(
         timestamp=execute.data.timestamp,

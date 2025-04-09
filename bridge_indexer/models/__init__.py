@@ -104,6 +104,11 @@ class RollupInboxMessageType(Enum):
     level_end: str = 'level_end'
 
 
+class RollupOutboxMessageBuilder(Enum):
+    kernel: str = 'kernel'
+    service_provider: str = 'service_provider'
+
+
 class RollupInboxMessage(AbstractRollupMessage):
     class Meta:
         table = 'rollup_inbox_message'
@@ -132,7 +137,7 @@ class RollupOutboxMessage(AbstractRollupMessage):
         ordering = ['level', 'index']
 
     id = fields.UUIDField(pk=True)
-
+    builder = fields.EnumField(RollupOutboxMessageBuilder, null=False, default=RollupOutboxMessageBuilder.kernel)
     proof = fields.TextField(null=True)
     commitment: ForeignKeyFieldInstance[RollupCementedCommitment] = fields.ForeignKeyField(
         model_name=RollupCementedCommitment.Meta.model,
@@ -284,8 +289,7 @@ class BridgeOperationType(Enum):
 class BridgeOperationKind(Enum):
     fast_withdrawal: str = 'fast_withdrawal'
     fast_withdrawal_claimed: str = 'fast_withdrawal_payed_out'
-    fast_withdrawal_claimed_expired: str = 'fast_withdrawal_payed_out_expired'
-    fast_withdrawal_provider_reward: str = 'fast_withdrawal_payed_out_reward'
+    fast_withdrawal_service_provider: str = 'fast_withdrawal_service_provider'
 
 class BridgeOperationStatus(Enum):
     created: str = 'CREATED'

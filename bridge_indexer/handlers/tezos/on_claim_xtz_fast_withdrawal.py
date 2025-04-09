@@ -2,29 +2,43 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosTransaction
 
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from bridge_indexer.models import RollupOutboxMessage
+from bridge_indexer.models import RollupOutboxMessageBuilder
 from bridge_indexer.models import TezosWithdrawOperation
-from bridge_indexer.types.fast_withdrawal.tezos_parameters.default import DefaultParameter
+from bridge_indexer.types.fast_withdrawal.tezos_parameters.payout_withdrawal import PayoutWithdrawalParameter
 from bridge_indexer.types.fast_withdrawal.tezos_storage import FastWithdrawalStorage
 
 
 async def on_claim_xtz_fast_withdrawal(
     ctx: HandlerContext,
-    default: TezosTransaction[DefaultParameter, FastWithdrawalStorage],
+    payout: TezosTransaction[PayoutWithdrawalParameter, FastWithdrawalStorage],
 ) -> None:
-    assert default
 
-    withdrawal = await TezosWithdrawOperation.create(
-        timestamp=default.data.timestamp,
-        level=default.data.level,
-        operation_hash=default.data.hash,
-        counter=default.data.counter,
-        nonce=default.data.nonce,
-        initiator=default.data.initiator_address,
-        sender=default.data.sender_address,
-        target=default.data.target_address,
-        outbox_message=None,
-        amount=default.data.amount,
+    outbox_message = await RollupOutboxMessage.create(
+        builder=RollupOutboxMessageBuilder.service_provider,
+        level=payout.data.level,
+        index=payout.data.counter,
+        message=payout.data.parameter_json,
+        created_at=payout.data.timestamp,
+        cemented_at=payout.data.timestamp,
+        cemented_level=payout.data.level,
+        parameters_hash=payout.data.parameter_json['withdrawal']['withdrawal_id'],
+        proof=None,
+        commitment_id=None,
+        failure_count=None,
     )
-    ctx.logger.info('Tezos PayoutFastWithdrawal Transaction registered: %s', withdrawal.id)
+    payout_transaction = await TezosWithdrawOperation.create(
+        timestamp=payout.data.timestamp,
+        level=payout.data.level,
+        operation_hash=payout.data.hash,
+        counter=payout.data.counter,
+        nonce=payout.data.nonce,
+        initiator=payout.data.sender_address,
+        sender=payout.data.sender_address,
+        target=payout.data.target_address,
+        amount=payout.data.amount,
+        outbox_message=outbox_message,
+    )
+    ctx.logger.info('Tezos PayoutFastWithdrawal Transaction registered: %s', payout_transaction.id)
 
-    BridgeMatcherLocks.set_pending_tezos_withdrawals()
+    BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()

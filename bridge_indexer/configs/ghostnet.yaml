@@ -101,7 +101,7 @@ indexes:
         pattern:
           - type: transaction
             destination: tezos_fast_withdrawal_native
-            entrypoint: default
+            entrypoint: payout_withdrawal
 
   etherlink_deposit_events:
     kind: evm.events
