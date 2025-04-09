@@ -47,3 +47,5 @@ async def on_withdraw(
     ctx.logger.info('Etherlink FA Token Withdraw Event registered: %s', withdrawal.id)
 
     BridgeMatcherLocks.set_pending_etherlink_withdrawals()
+    BridgeMatcherLocks.set_pending_outbox()
+    BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()

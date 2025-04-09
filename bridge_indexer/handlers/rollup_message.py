@@ -105,11 +105,13 @@ class OutboxMessageService:
             bridge_withdraw_operation: BridgeWithdrawOperation
             outbox_message = bridge_withdraw_operation.outbox_message
 
-            if head_data.level > sum([
-                outbox_message.level,
-                self._protocol.smart_rollup_challenge_window,
-                self._protocol.smart_rollup_max_active_outbox_levels,
-            ]):
+            if head_data.level > sum(
+                [
+                    outbox_message.level,
+                    self._protocol.smart_rollup_challenge_window,
+                    self._protocol.smart_rollup_max_active_outbox_levels,
+                ]
+            ):
                 continue
 
             if await RollupCementedCommitment.filter(inbox_level__gte=outbox_message.level).count() == 0:
@@ -439,7 +441,9 @@ class OutboxParametersHash:
             michelson_type = MichelsonType.match(micheline_expression)
 
             parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
-            parameters: ExecuteOutboxMessageFastWithdrawalDefaultParameter = ExecuteOutboxMessageFastWithdrawalDefaultParameter.model_validate(parameters_data)
+            parameters: ExecuteOutboxMessageFastWithdrawalDefaultParameter = (
+                ExecuteOutboxMessageFastWithdrawalDefaultParameter.model_validate(parameters_data)
+            )
             assert parameters
 
             comparable_data = FastWithdrawalParametersHashableDTO(
@@ -454,7 +458,6 @@ class OutboxParametersHash:
             raise ValueError(f"Can't get FastOutboxParametersHash from message: {outbox_message}, {e}") from None
 
         return self._hash_from_dto(comparable_data)
-
 
     async def from_event(self) -> str:
         if isinstance(self._value.payload, FAWithdrawalPayload):
@@ -521,7 +524,7 @@ class OutboxParametersHash:
         return self._hash_from_dto(comparable_data)
 
     @staticmethod
-    def _hash_from_dto(dto: WithdrawalParametersHashableDTO|FastWithdrawalParametersHashableDTO) -> str:
+    def _hash_from_dto(dto: WithdrawalParametersHashableDTO | FastWithdrawalParametersHashableDTO) -> str:
         parameters_hash: str = uuid5(NAMESPACE_OID, orjson.dumps(dto.model_dump(), option=orjson.OPT_SORT_KEYS)).hex
 
         return parameters_hash
