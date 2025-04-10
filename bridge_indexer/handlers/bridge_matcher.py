@@ -1,7 +1,6 @@
 import threading
 from datetime import datetime
 from datetime import timedelta
-from uuid import uuid4
 
 from tortoise.exceptions import DoesNotExist
 
@@ -296,15 +295,16 @@ class BridgeMatcher:
                 customers_bridge_operation.status = BridgeOperationStatus.finished
                 await customers_bridge_operation.save()
 
-                service_provider_l2_transaction = l2_withdrawal.clone(pk=uuid4())
-
-                service_provider_l2_transaction.l1_account=message['service_provider']
-                service_provider_l2_transaction.kernel_withdrawal_id=int(l2_withdrawal.kernel_withdrawal_id)*-1
-                await service_provider_l2_transaction.save()
+                # service_provider_l2_transaction = l2_withdrawal.clone(pk=uuid4())
+                #
+                # service_provider_l2_transaction.l1_account=message['service_provider']
+                # await service_provider_l2_transaction.save()
 
                 service_provider_bridge_withdrawal = await BridgeWithdrawOperation.create(
-                    created_at=service_provider_l2_transaction.timestamp,
-                    l2_transaction=service_provider_l2_transaction,
+                    # created_at=service_provider_l2_transaction.timestamp,
+                    # l2_transaction=service_provider_l2_transaction,
+                    created_at=l2_withdrawal.timestamp,
+                    l2_transaction=l2_withdrawal,
                     outbox_message=service_provider_outbox_message,
                 )
 
@@ -312,8 +312,10 @@ class BridgeMatcher:
                     id=service_provider_bridge_withdrawal.id,
                     type=BridgeOperationType.withdrawal,
                     kind=BridgeOperationKind.fast_withdrawal_service_provider,
-                    l1_account=service_provider_l2_transaction.l1_account,
-                    l2_account=service_provider_l2_transaction.l2_account,
+                    # l1_account=service_provider_l2_transaction.l1_account,
+                    # l2_account=service_provider_l2_transaction.l2_account,
+                    l1_account=message['service_provider'],
+                    l2_account=l2_withdrawal.l2_account,
                     created_at=l2_withdrawal.timestamp,
                     updated_at=l1_withdrawal.timestamp,
                     status=BridgeOperationStatus.created,

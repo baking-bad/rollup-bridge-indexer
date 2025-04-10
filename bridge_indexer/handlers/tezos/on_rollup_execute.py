@@ -4,6 +4,10 @@ from eth_abi.exceptions import ParseError
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from bridge_indexer.models import BridgeOperation
+from bridge_indexer.models import BridgeOperationKind
+from bridge_indexer.models import BridgeOperationStatus
+from bridge_indexer.models import BridgeOperationType
 from bridge_indexer.models import BridgeWithdrawOperation
 from bridge_indexer.models import TezosWithdrawOperation
 from bridge_indexer.types.output_proof.output_proof import OutputProofData
@@ -16,11 +20,21 @@ async def on_rollup_execute(
     ctx.logger.info('Tezos Withdraw Transaction found: %s', execute.data.hash)
 
     if execute.data.parameter_json and 'withdrawal_id' in execute.data.parameter_json:
-        bridge_withdrawal = await BridgeWithdrawOperation.filter(
+        bridge_withdrawals_qs = BridgeWithdrawOperation.filter(
             l2_transaction__kernel_withdrawal_id=execute.data.parameter_json['withdrawal_id'],
             outbox_message_id__isnull=False,
-        ).first()
-        outbox_message = bridge_withdrawal.outbox_message
+        )
+        async for bridge_withdrawal in bridge_withdrawals_qs:
+            if await BridgeOperation.exists(
+                id=bridge_withdrawal.id,
+                type=BridgeOperationType.withdrawal,
+                kind__in=[BridgeOperationKind.fast_withdrawal_service_provider, BridgeOperationKind.fast_withdrawal],
+                status__in=[BridgeOperationStatus.created, BridgeOperationStatus.sealed],
+            ):
+                outbox_message = bridge_withdrawal.outbox_message
+                break
+
+        assert outbox_message
     else:
         rpc = ctx.get_http_datasource('tezos_node')
         block_operations = await rpc.request('GET', f'chains/main/blocks/{execute.data.level}/operations')

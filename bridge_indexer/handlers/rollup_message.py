@@ -191,7 +191,12 @@ class RollupMessageIndex:
         with self._lock:
             if self._status == IndexStatus.realtime:
                 self._realtime_head_level = max(self._realtime_head_level, head_level)
+                previous_outbox_level_cursor = self._outbox_level_cursor
                 await self._process()
+                if self._outbox_level_cursor > previous_outbox_level_cursor:
+                    BridgeMatcherLocks.set_pending_outbox()
+                    BridgeMatcherLocks.set_pending_tezos_withdrawals()
+                    BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()
 
     async def _process(self):
         inbox = await self._tzkt.request(
