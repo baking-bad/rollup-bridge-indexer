@@ -4,7 +4,7 @@
     "name": "withdraw",
     "inputs": [
       {
-        "name": "ticketOwner",
+        "name": "ticket_owner",
         "type": "address",
         "internalType": "address"
       },
@@ -37,13 +37,13 @@
     "name": "Deposit",
     "inputs": [
       {
-        "name": "ticketHash",
+        "name": "ticket_hash",
         "type": "uint256",
         "indexed": true,
         "internalType": "uint256"
       },
       {
-        "name": "ticketOwner",
+        "name": "ticket_owner",
         "type": "address",
         "indexed": false,
         "internalType": "address"
@@ -61,13 +61,13 @@
         "internalType": "uint256"
       },
       {
-        "name": "inboxLevel",
+        "name": "inbox_level",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
-        "name": "inboxMsgId",
+        "name": "inbox_msg_id",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -80,7 +80,7 @@
     "name": "Withdrawal",
     "inputs": [
       {
-        "name": "ticketHash",
+        "name": "ticket_hash",
         "type": "uint256",
         "indexed": true,
         "internalType": "uint256"
@@ -92,7 +92,7 @@
         "internalType": "address"
       },
       {
-        "name": "ticketOwner",
+        "name": "ticket_owner",
         "type": "address",
         "indexed": false,
         "internalType": "address"
@@ -116,7 +116,7 @@
         "internalType": "uint256"
       },
       {
-        "name": "withdrawalId",
+        "name": "withdrawal_id",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"

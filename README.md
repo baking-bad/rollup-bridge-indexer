@@ -2,7 +2,7 @@
 DipDup indexer for tracking Bridge operations.
 ## Setup with docker
 #### Build docker image
-* `docker build . -t etherlink-bridge-indexer`
+* `docker buildx build . -t etherlink-bridge-indexer`
 #### Setup environment
 * copy example file: `cp .env.dist .env` and replace sample values with your settings
 * edit `bridge_indexer/dipdup.yaml` if required

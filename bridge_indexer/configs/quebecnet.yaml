@@ -4,6 +4,11 @@ contracts:
     address: ${SMART_ROLLUP_ADDRESS}
     typename: rollup
 
+  tezos_fast_withdrawal_native:
+    kind: tezos
+    address: ${FAST_WITHDRAWAL_NATIVE_ADDRESS}
+    typename: fast_withdrawal
+
   etherlink_rollup_kernel:
     kind: evm
     address: '0x0000000000000000000000000000000000000000'
@@ -24,22 +29,11 @@ contracts:
     address: '0xff00000000000000000000000000000000000001'
     typename: kernel_native
 
-  l2_pepe_token:
-    kind: evm
-    address: '0x9121b153bbcf8c23f20ee43b494f08760b91ad64'
-    typename: l2_token
-  l2_ottez_token:
-    kind: evm
-    address: '0x8322723f5ca51cb20a80d6c55d24eaa1651f68c7'
-    typename: l2_token
-  l2_wine_token:
-    kind: evm
-    address: '0xbfc8d679893ec19c4e658fb2f3cf08e3497620f9'
-    typename: l2_token
-  l2_catami_token:
-    kind: evm
-    address: '0x0d48d8079631068e95d8cff1ed62e9302404fbac'
-    typename: l2_token
+#  l2_sirs_token:
+#    kind: evm
+#    address: '0xbaa233e2f62f45e9d91dacd3d6c6a57bc2cbc575'
+#    typename: l2_token
+
 
 
 indexes:
@@ -80,6 +74,23 @@ indexes:
           - type: transaction
             destination: tezos_smart_rollup
             entrypoint: default
+
+
+  tezos_claim_fast_withdrawal_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_fast_withdrawal_native
+    handlers:
+      - callback: tezos.on_claim_xtz_fast_withdrawal
+        pattern:
+          - type: transaction
+            destination: tezos_fast_withdrawal_native
+            entrypoint: payout_withdrawal
 
   etherlink_deposit_events:
     kind: evm.events
@@ -122,6 +133,9 @@ indexes:
       - callback: etherlink.on_xtz_withdraw
         contract: l2_withdrawal_precompile_native
         name: Withdrawal
+      - callback: etherlink.on_xtz_withdraw
+        contract: l2_withdrawal_precompile_native
+        name: FastWithdrawal
 
   tezos_withdrawal_operations:
     kind: tezos.operations
@@ -132,28 +146,24 @@ indexes:
       - sr_execute
     contracts:
       - tezos_smart_rollup
+      - tezos_fast_withdrawal_native
     handlers:
       - callback: tezos.on_rollup_execute
         pattern:
           - type: sr_execute
             destination: tezos_smart_rollup
+      - callback: tezos.on_rollup_execute
+        pattern:
+          - type: sr_execute
+            destination: tezos_fast_withdrawal_native
 
 
-  etherlink_token_balance_update_events:
-    kind: evm.events
-    datasources:
-      - etherlink_subsquid
-      - etherlink_node
-    handlers:
-      - callback: etherlink.on_transfer
-        contract: l2_pepe_token
-        name: Transfer
-      - callback: etherlink.on_transfer
-        contract: l2_ottez_token
-        name: Transfer
-      - callback: etherlink.on_transfer
-        contract: l2_wine_token
-        name: Transfer
-      - callback: etherlink.on_transfer
-        contract: l2_catami_token
-        name: Transfer
+#  etherlink_token_balance_update_events:
+#    kind: evm.events
+#    datasources:
+#      - etherlink_subsquid
+#      - etherlink_node
+#    handlers:
+#      - callback: etherlink.on_transfer
+#        contract: l2_sirs_token
+#        name: Transfer
