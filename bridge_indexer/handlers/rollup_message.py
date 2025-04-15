@@ -8,6 +8,7 @@ from uuid import NAMESPACE_OID
 from uuid import uuid5
 
 import orjson
+from dipdup.http import safe_exceptions
 from dipdup.models import IndexStatus
 from pydantic import BaseModel
 from pytezos import MichelsonRuntimeError
@@ -117,10 +118,13 @@ class OutboxMessageService:
             if await RollupCementedCommitment.filter(inbox_level__gte=outbox_message.level).count() == 0:
                 continue
 
-            proof_data = await self._rollup_node.request(
-                'GET',
-                f'global/block/head/helpers/proofs/outbox/{outbox_message.level}/messages?index={outbox_message.index}',
-            )
+            try:
+                proof_data = await self._rollup_node.request(
+                    'GET',
+                    f'global/block/head/helpers/proofs/outbox/{outbox_message.level}/messages?index={outbox_message.index}',
+                )
+            except safe_exceptions:
+                continue
 
             outbox_message.proof = proof_data['proof']
             commitment = await RollupCementedCommitment.get(hash=proof_data['commitment'])

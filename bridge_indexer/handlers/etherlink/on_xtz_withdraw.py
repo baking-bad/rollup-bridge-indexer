@@ -51,4 +51,5 @@ async def on_xtz_withdraw(
 
     BridgeMatcherLocks.set_pending_etherlink_withdrawals()
     BridgeMatcherLocks.set_pending_outbox()
-    BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()
+    if isinstance(event.payload, FastWithdrawalPayload):
+        BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()
