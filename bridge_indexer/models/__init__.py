@@ -8,17 +8,17 @@ from tortoise import OneToOneFieldInstance
 
 
 class DatetimeModelMixin:
-    created_at = fields.DatetimeField(index=True, auto_now_add=True)
-    updated_at = fields.DatetimeField(index=True, auto_now=True)
+    created_at = fields.DatetimeField(db_index=True, auto_now_add=True)
+    updated_at = fields.DatetimeField(db_index=True, auto_now=True)
 
 
 class AbstractBlockchainOperation(Model):
     class Meta:
         abstract = True
 
-    id = fields.UUIDField(pk=True)
-    timestamp = fields.DatetimeField(index=True)
-    level = fields.IntField(index=True)
+    id = fields.UUIDField(primary_key=True)
+    timestamp = fields.DatetimeField(db_index=True)
+    level = fields.IntField(db_index=True)
 
 
 class TezosToken(Model):
@@ -26,7 +26,7 @@ class TezosToken(Model):
         table = 'tezos_token'
         model = 'models.TezosToken'
 
-    id = fields.TextField(pk=True)
+    id = fields.TextField(primary_key=True)
     contract_address = fields.CharField(max_length=36)
     token_id = fields.TextField(default='0')
     name = fields.TextField(null=True)
@@ -40,7 +40,7 @@ class TezosTicket(Model):
         table = 'tezos_ticket'
         model = 'models.TezosTicket'
 
-    hash = fields.CharField(pk=True, max_length=78)
+    hash = fields.CharField(primary_key=True, max_length=78)
     ticketer_address = fields.CharField(max_length=36)
     ticket_id = fields.TextField(default='0')
     token: ForeignKeyFieldInstance[TezosToken] = fields.ForeignKeyField(
@@ -50,7 +50,7 @@ class TezosTicket(Model):
         null=True,
     )
     metadata = fields.TextField(null=True)
-    whitelisted = fields.BooleanField(index=True, null=True, default=None)
+    whitelisted = fields.BooleanField(db_index=True, null=True, default=None)
 
 
 class EtherlinkToken(Model):
@@ -58,7 +58,7 @@ class EtherlinkToken(Model):
         table = 'etherlink_token'
         model = 'models.EtherlinkToken'
 
-    id = fields.CharField(max_length=40, pk=True)
+    id = fields.CharField(max_length=40, primary_key=True)
     name = fields.TextField(null=True)
     symbol = fields.TextField(null=True)
     decimals = fields.IntField(default=0)
@@ -77,10 +77,10 @@ class RollupCementedCommitment(DatetimeModelMixin, Model):
         table = 'rollup_commitment'
         model = 'models.RollupCementedCommitment'
 
-    id = fields.BigIntField(pk=True)
-    inbox_level = fields.IntField(index=True)
+    id = fields.BigIntField(primary_key=True)
+    inbox_level = fields.IntField(db_index=True)
     state = fields.CharField(max_length=54)
-    hash = fields.CharField(max_length=54, index=True)
+    hash = fields.CharField(max_length=54, db_index=True)
 
     outbox_messages: fields.ReverseRelation['RollupOutboxMessage']
 
@@ -89,11 +89,11 @@ class AbstractRollupMessage(DatetimeModelMixin, Model):
     class Meta:
         abstract = True
 
-    id = fields.BigIntField(pk=True)
-    level = fields.IntField(index=True)
-    index = fields.IntField(index=True)
+    # id = fields.BigIntField(primary_key=True)
+    level = fields.IntField(db_index=True)
+    index = fields.IntField(db_index=True)
     message = fields.JSONField()
-    parameters_hash = fields.CharField(max_length=32, index=True, null=True)
+    parameters_hash = fields.CharField(max_length=32, db_index=True, null=True)
 
 
 class RollupInboxMessageType(Enum):
@@ -120,6 +120,7 @@ class RollupInboxMessage(AbstractRollupMessage):
         )
         ordering = ['level', 'index']
 
+    id = fields.BigIntField(primary_key=True)
     type = fields.EnumField(RollupInboxMessageType)
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
@@ -136,7 +137,7 @@ class RollupOutboxMessage(AbstractRollupMessage):
         )
         ordering = ['level', 'index']
 
-    id = fields.UUIDField(pk=True)
+    id = fields.UUIDField(primary_key=True)
     builder = fields.EnumField(RollupOutboxMessageBuilder, null=False, default=RollupOutboxMessageBuilder.kernel)
     proof = fields.TextField(null=True)
     commitment: ForeignKeyFieldInstance[RollupCementedCommitment] = fields.ForeignKeyField(
@@ -145,7 +146,7 @@ class RollupOutboxMessage(AbstractRollupMessage):
         to_field='id',
         null=True,
     )
-    cemented_at = fields.DatetimeField(index=True, null=False)
+    cemented_at = fields.DatetimeField(db_index=True, null=False)
     cemented_level = fields.IntField(null=False)
 
     failure_count = fields.IntField(null=True, default=None)
@@ -178,7 +179,7 @@ class TezosDepositOperation(AbstractTezosOperation):
         to_field='hash',
     )
     amount = fields.TextField()
-    parameters_hash = fields.CharField(max_length=32, index=True, null=True)
+    parameters_hash = fields.CharField(max_length=32, db_index=True, null=True)
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 
@@ -192,7 +193,7 @@ class TezosWithdrawOperation(AbstractTezosOperation):
         model_name=RollupOutboxMessage.Meta.model,
         source_field='outbox_message_id',
         to_field='id',
-        index=True,
+        db_index=True,
         unique=True,
         null=False,
     )
@@ -269,8 +270,8 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
     l1_ticket_owner = fields.CharField(max_length=36)
     amount = fields.TextField()
     fast_payload = fields.BinaryField(null=True)
-    parameters_hash = fields.CharField(max_length=32, index=True, null=True)
-    kernel_withdrawal_id = fields.IntField(index=True, unique=True, null=True)
+    parameters_hash = fields.CharField(max_length=32, db_index=True, null=True)
+    kernel_withdrawal_id = fields.IntField(db_index=True, unique=True, null=True)
 
     bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
 
@@ -279,7 +280,7 @@ class AbstractBridgeOperation(DatetimeModelMixin, Model):
     class Meta:
         abstract = True
 
-    id = fields.UUIDField(pk=True)
+    id = fields.UUIDField(primary_key=True)
 
 
 class BridgeOperationType(Enum):
@@ -313,13 +314,13 @@ class BridgeOperation(AbstractBridgeOperation):
 
         ordering = ['-created_at']
 
-    l1_account = fields.CharField(max_length=36, index=True)
-    l2_account = fields.CharField(max_length=40, index=True)
-    type = fields.EnumField(enum_type=BridgeOperationType, index=True)
-    kind = fields.EnumField(enum_type=BridgeOperationKind, index=True, null=True)
-    is_completed = fields.BooleanField(default=False, index=True)
-    is_successful = fields.BooleanField(default=False, index=True)
-    status = fields.EnumField(enum_type=BridgeOperationStatus, index=True, null=True)
+    l1_account = fields.CharField(max_length=36, db_index=True)
+    l2_account = fields.CharField(max_length=40, db_index=True)
+    type = fields.EnumField(enum_type=BridgeOperationType, db_index=True)
+    kind = fields.EnumField(enum_type=BridgeOperationKind, db_index=True, null=True)
+    is_completed = fields.BooleanField(default=False, db_index=True)
+    is_successful = fields.BooleanField(default=False, db_index=True)
+    status = fields.EnumField(enum_type=BridgeOperationStatus, db_index=True, null=True)
 
 
 class BridgeDepositOperation(AbstractBridgeOperation):
@@ -389,9 +390,9 @@ class EtherlinkTokenHolder(Model):
             'holder',
         )
 
-    id = fields.UUIDField(pk=True)
-    token = fields.TextField(index=True)
-    holder = fields.TextField(index=True)
+    id = fields.UUIDField(primary_key=True)
+    token = fields.TextField(db_index=True)
+    holder = fields.TextField(db_index=True)
     balance = fields.DecimalField(decimal_places=0, max_digits=78, default=0)
     turnover = fields.DecimalField(decimal_places=0, max_digits=96, default=0)
     tx_count = fields.BigIntField(default=0)

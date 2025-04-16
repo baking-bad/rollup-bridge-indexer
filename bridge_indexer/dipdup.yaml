@@ -49,9 +49,9 @@ datasources:
     kind: http
     url: ${ROLLUP_NODE_URL}
     http:
-      retry_count: 3
-      retry_sleep: 1
-      retry_multiplier: 2
+      retry_count: 2
+      retry_sleep: 1.0
+      retry_multiplier: 1.0
       connection_timeout: 1
       request_timeout: 4
 

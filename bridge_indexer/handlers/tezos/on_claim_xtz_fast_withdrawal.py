@@ -23,9 +23,6 @@ async def on_claim_xtz_fast_withdrawal(
         cemented_at=payout.data.timestamp,
         cemented_level=payout.data.level,
         parameters_hash=payout.parameter.withdrawal.withdrawal_id,
-        # proof=None,
-        # commitment_id=None,
-        # failure_count=None,
     )
     payout_transaction = await TezosWithdrawOperation.create(
         timestamp=payout.data.timestamp,

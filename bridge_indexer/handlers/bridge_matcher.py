@@ -216,7 +216,7 @@ class BridgeMatcher:
             l1_withdrawal: TezosWithdrawOperation
             bridge_withdrawal = await BridgeWithdrawOperation.filter(
                 l1_transaction=None,
-                outbox_message_id=l1_withdrawal.outbox_message_id,
+                outbox_message=l1_withdrawal.outbox_message,
             ).first()
 
             if not bridge_withdrawal:
@@ -244,12 +244,12 @@ class BridgeMatcher:
             outbox_message__parameters_hash__isnull=False,
         ).prefetch_related('outbox_message').order_by('level')
 
-        async for l1_withdrawal in qs:
-            l1_withdrawal: TezosWithdrawOperation
+        async for l1_payout in qs:
+            l1_payout: TezosWithdrawOperation
 
             try:
                 l2_withdrawal = await EtherlinkWithdrawOperation.get(
-                    kernel_withdrawal_id=l1_withdrawal.outbox_message.parameters_hash
+                    kernel_withdrawal_id=l1_payout.outbox_message.parameters_hash
                 )
             except DoesNotExist:
                 continue
@@ -259,18 +259,18 @@ class BridgeMatcher:
                 l2_transaction=l2_withdrawal,
             )
             if withdrawal_id_finished:
-                l1_withdrawal.outbox_message.parameters_hash=None
-                await l1_withdrawal.outbox_message.save()
+                l1_payout.outbox_message.parameters_hash=None
+                await l1_payout.outbox_message.save()
                 continue
 
-            message = l1_withdrawal.outbox_message.message
+            l1_payout_parameters = l1_payout.outbox_message.message
             if (
-                message['withdrawal']['ticketer'] == l2_withdrawal.l1_ticket_owner and
-                message['withdrawal']['payload'] == l2_withdrawal.fast_payload.hex() and
-                message['withdrawal']['l2_caller'] == l2_withdrawal.l2_account and
-                int(datetime.fromisoformat(message['withdrawal']['timestamp']).timestamp()) == int(l2_withdrawal.timestamp.timestamp()) and
-                int(message['withdrawal']['full_amount'])*int(1e12) == int(l2_withdrawal.amount) and
-                message['withdrawal']['base_withdrawer'] ==l2_withdrawal.l1_account
+                l1_payout_parameters['withdrawal']['ticketer'] == l2_withdrawal.l1_ticket_owner and
+                l1_payout_parameters['withdrawal']['payload'] == l2_withdrawal.fast_payload.hex() and
+                l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account and
+                int(datetime.fromisoformat(l1_payout_parameters['withdrawal']['timestamp']).timestamp()) == int(l2_withdrawal.timestamp.timestamp()) and
+                int(l1_payout_parameters['withdrawal']['full_amount'])*int(1e12) == int(l2_withdrawal.amount) and
+                l1_payout_parameters['withdrawal']['base_withdrawer'] == l2_withdrawal.l1_account
             ):
 
                 customers_bridge_withdrawal = await BridgeWithdrawOperation.get(
@@ -280,43 +280,34 @@ class BridgeMatcher:
 
                 service_provider_outbox_message = customers_bridge_withdrawal.outbox_message
 
-                l1_withdrawal.outbox_message.parameters_hash=None
-                await l1_withdrawal.outbox_message.save()
+                l1_payout.outbox_message.parameters_hash=None
+                await l1_payout.outbox_message.save()
 
-                customers_bridge_withdrawal.outbox_message=l1_withdrawal.outbox_message
-                customers_bridge_withdrawal.l1_transaction=l1_withdrawal
+                customers_bridge_withdrawal.outbox_message=l1_payout.outbox_message
+                customers_bridge_withdrawal.l1_transaction=l1_payout
                 await customers_bridge_withdrawal.save()
 
                 customers_bridge_operation = await BridgeOperation.get(id=customers_bridge_withdrawal.pk)
                 customers_bridge_operation.is_completed = True
                 customers_bridge_operation.is_successful = True
-                customers_bridge_operation.updated_at = l1_withdrawal.timestamp
+                customers_bridge_operation.updated_at = l1_payout.timestamp
                 customers_bridge_operation.kind = BridgeOperationKind.fast_withdrawal_claimed
                 customers_bridge_operation.status = BridgeOperationStatus.finished
                 await customers_bridge_operation.save()
 
-                # service_provider_l2_transaction = l2_withdrawal.clone(pk=uuid4())
-                #
-                # service_provider_l2_transaction.l1_account=message['service_provider']
-                # await service_provider_l2_transaction.save()
-
                 service_provider_bridge_withdrawal = await BridgeWithdrawOperation.create(
-                    # created_at=service_provider_l2_transaction.timestamp,
-                    # l2_transaction=service_provider_l2_transaction,
                     created_at=l2_withdrawal.timestamp,
                     l2_transaction=l2_withdrawal,
                     outbox_message=service_provider_outbox_message,
                 )
 
                 await BridgeOperation.create(
-                    id=str(service_provider_bridge_withdrawal.id),
+                    id=service_provider_bridge_withdrawal.id,
                     type=BridgeOperationType.withdrawal,
                     kind=BridgeOperationKind.fast_withdrawal_service_provider,
-                    # l1_account=service_provider_l2_transaction.l1_account,
-                    # l2_account=service_provider_l2_transaction.l2_account,
-                    l1_account=message['service_provider'],
+                    l1_account=l1_payout_parameters['service_provider'],
                     l2_account=l2_withdrawal.l2_account,
                     created_at=l2_withdrawal.timestamp,
-                    updated_at=l1_withdrawal.timestamp,
+                    updated_at=l1_payout.timestamp,
                     status=BridgeOperationStatus.created,
                 )

@@ -318,10 +318,11 @@ class RollupMessageIndex:
             try:
                 parameters_hash = await OutboxParametersHash(outbox_message).from_outbox_message(self._ticket_service)
             except (ValueError, MichelsonRuntimeError):
-                parameters_hash = await OutboxParametersHash(outbox_message).from_fast_outbox_message(self._ticket_service)
-            except (ValueError, MichelsonRuntimeError) as e:
-                self._logger.warning('Skip hashing outbox message. %s', str(e))
-                continue
+                try:
+                    parameters_hash = await OutboxParametersHash(outbox_message).from_fast_outbox_message(self._ticket_service)
+                except (ValueError, MichelsonRuntimeError) as e:
+                    self._logger.warning('Skip hashing outbox message. %s', str(e))
+                    continue
 
             self._create_outbox_batch.append(
                 RollupOutboxMessage(
