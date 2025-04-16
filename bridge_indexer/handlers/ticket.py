@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 from bridge_indexer.models import EtherlinkToken
 from bridge_indexer.models import TezosTicket
 from bridge_indexer.models import TezosToken
-from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent as TicketContent
+from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent
 
-MICHELSON_OUTBOX_INTERFACE = 'pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))'
-
+WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE = 'pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))'
+FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE = 'pair (nat %withdrawal_id) (pair (pair %ticket (address %address) (pair (pair %content (nat %nat) (option %bytes bytes)) (nat %amount))) (pair (timestamp %timestamp) (pair (address %base_withdrawer) (pair (bytes %payload) (bytes %l2_caller)))))'
 
 class TicketService:
     def __init__(self, tzkt: 'TezosTzktDatasource', metadata: 'TzipMetadataDatasource', bridge: 'BridgeConstantStorage'):
@@ -83,7 +83,6 @@ class TicketService:
             ticket_id=ticket_content.ticket_id,
             token=token,
             metadata=ticket_content.metadata_hex,
-            outbox_interface=MICHELSON_OUTBOX_INTERFACE,
             whitelisted=ticketer_address in self._bridge.fa_ticketer_list,
         )
 
@@ -100,7 +99,6 @@ class TicketService:
                 ticket_id=ticket_content.ticket_id,
                 token=xtz,
                 metadata=ticket_content.metadata_hex,
-                outbox_interface=MICHELSON_OUTBOX_INTERFACE,
                 whitelisted=True,
             )
             await EtherlinkToken.create(

@@ -25,7 +25,7 @@ async def on_cement_commitment(
         },
     )
 
-    ctx.logger.info(f'Cemented Commitment registered: {cement.commitment.hash}')
+    ctx.logger.info('Cemented Commitment registered: %s', cement.commitment.hash)
 
     protocol = ctx.container.protocol
 
@@ -80,5 +80,5 @@ async def on_cement_commitment(
     if not pending_count:
         return
 
-    ctx.logger.info(f'Updating Proof for {pending_count} Outbox Messages...')
+    ctx.logger.info('Updating Proof for %d Outbox Messages...', pending_count)
     await ctx.container.outbox_message_service.update_proof()

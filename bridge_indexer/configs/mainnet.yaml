@@ -4,6 +4,11 @@ contracts:
     address: ${SMART_ROLLUP_ADDRESS}
     typename: rollup
 
+  tezos_fast_withdrawal_native:
+    kind: tezos
+    address: ${FAST_WITHDRAWAL_NATIVE_ADDRESS}
+    typename: fast_withdrawal
+
   etherlink_rollup_kernel:
     kind: evm
     address: '0x0000000000000000000000000000000000000000'
@@ -81,6 +86,23 @@ indexes:
             destination: tezos_smart_rollup
             entrypoint: default
 
+
+  tezos_claim_fast_withdrawal_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_fast_withdrawal_native
+    handlers:
+      - callback: tezos.on_claim_xtz_fast_withdrawal
+        pattern:
+          - type: transaction
+            destination: tezos_fast_withdrawal_native
+            entrypoint: payout_withdrawal
+
   etherlink_deposit_events:
     kind: evm.events
     first_level: ${L2_FIRST_LEVEL}
@@ -122,6 +144,9 @@ indexes:
       - callback: etherlink.on_xtz_withdraw
         contract: l2_withdrawal_precompile_native
         name: Withdrawal
+      - callback: etherlink.on_xtz_withdraw
+        contract: l2_withdrawal_precompile_native
+        name: FastWithdrawal
 
   tezos_withdrawal_operations:
     kind: tezos.operations
@@ -132,11 +157,16 @@ indexes:
       - sr_execute
     contracts:
       - tezos_smart_rollup
+      - tezos_fast_withdrawal_native
     handlers:
       - callback: tezos.on_rollup_execute
         pattern:
           - type: sr_execute
             destination: tezos_smart_rollup
+      - callback: tezos.on_rollup_execute
+        pattern:
+          - type: sr_execute
+            destination: tezos_fast_withdrawal_native
 
 
   etherlink_token_balance_update_events:
