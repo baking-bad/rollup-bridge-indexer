@@ -36,8 +36,8 @@ datasources:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
     http:
-      ratelimit_rate: 900
       batch_size: 900
+      ratelimit_rate: 900
       ratelimit_period: 60
       ratelimit_sleep: 10
 
@@ -48,6 +48,12 @@ datasources:
   rollup_node:
     kind: http
     url: ${ROLLUP_NODE_URL}
+    http:
+      retry_count: 3
+      retry_sleep: 1
+      retry_multiplier: 2
+      connection_timeout: 1
+      request_timeout: 4
 
 
 advanced:

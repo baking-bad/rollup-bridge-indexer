@@ -309,7 +309,7 @@ class BridgeMatcher:
                 )
 
                 await BridgeOperation.create(
-                    id=service_provider_bridge_withdrawal.id,
+                    id=str(service_provider_bridge_withdrawal.id),
                     type=BridgeOperationType.withdrawal,
                     kind=BridgeOperationKind.fast_withdrawal_service_provider,
                     # l1_account=service_provider_l2_transaction.l1_account,
