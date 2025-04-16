@@ -26,11 +26,19 @@ contracts:
 
   l2_pepe_token:
     kind: evm
-    address: 0x9121b153bbcf8c23f20ee43b494f08760b91ad64
+    address: '0x9121b153bbcf8c23f20ee43b494f08760b91ad64'
     typename: l2_token
   l2_ottez_token:
     kind: evm
-    address: 0x8322723f5ca51cb20a80d6c55d24eaa1651f68c7
+    address: '0x8322723f5ca51cb20a80d6c55d24eaa1651f68c7'
+    typename: l2_token
+  l2_wine_token:
+    kind: evm
+    address: '0xbfc8d679893ec19c4e658fb2f3cf08e3497620f9'
+    typename: l2_token
+  l2_catami_token:
+    kind: evm
+    address: '0x0d48d8079631068e95d8cff1ed62e9302404fbac'
     typename: l2_token
 
 
@@ -142,4 +150,10 @@ indexes:
         name: Transfer
       - callback: etherlink.on_transfer
         contract: l2_ottez_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_wine_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_catami_token
         name: Transfer
