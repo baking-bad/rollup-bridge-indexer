@@ -211,7 +211,7 @@ class BridgeMatcher:
         qs = TezosWithdrawOperation.filter(
             bridge_withdrawals=None,
             outbox_message__builder=RollupOutboxMessageBuilder.kernel,
-        ).order_by('level')
+        ).prefetch_related('outbox_message').order_by('level')
         async for l1_withdrawal in qs:
             l1_withdrawal: TezosWithdrawOperation
             bridge_withdrawal = await BridgeWithdrawOperation.filter(
