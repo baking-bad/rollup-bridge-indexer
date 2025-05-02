@@ -29,3 +29,5 @@ async def batch(
         await BridgeMatcher.check_pending_outbox()
 
         await BridgeMatcher.check_pending_tezos_withdrawals()
+
+        await BridgeMatcher.check_pending_claimed_fast_withdrawals()

@@ -22,3 +22,4 @@ async def on_restart(
     BridgeMatcherLocks.set_pending_etherlink_withdrawals()
     BridgeMatcherLocks.set_pending_outbox()
     BridgeMatcherLocks.set_pending_tezos_withdrawals()
+    BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()

@@ -5,7 +5,7 @@ from pydantic import create_model
 from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.handlers.service_container import ProtocolConstantStorage
 
-TestProtocolConstantStorage = create_model(
+TestProtocolConstantStorage: type[ProtocolConstantStorage] = create_model(
     'TestProtocolConstantStorage',
     __base__=ProtocolConstantStorage,
     time_between_blocks=(int, 0),
