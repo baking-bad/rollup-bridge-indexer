@@ -47,7 +47,7 @@ contracts:
     typename: l2_token
   l2_ctxtz_token:
     kind: evm
-    address: '0x01F07f4d78d47A64F4C3B2b65f513f15Be6E1854'
+    address: '0x01f07f4d78d47a64f4c3b2b65f513f15be6e1854'
     typename: l2_token
 
 
