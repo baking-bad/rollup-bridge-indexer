@@ -45,6 +45,10 @@ contracts:
     kind: evm
     address: '0x0d48d8079631068e95d8cff1ed62e9302404fbac'
     typename: l2_token
+  l2_ctxtz_token:
+    kind: evm
+    address: '0x01f07f4d78d47a64f4c3b2b65f513f15be6e1854'
+    typename: l2_token
 
 
 indexes:
@@ -186,4 +190,7 @@ indexes:
         name: Transfer
       - callback: etherlink.on_transfer
         contract: l2_catami_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_ctxtz_token
         name: Transfer
