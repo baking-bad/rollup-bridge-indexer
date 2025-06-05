@@ -197,3 +197,6 @@ indexes:
       - callback: etherlink.on_transfer
         contract: l2_ctxtz_token
         name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_lyzi_token
+        name: Transfer
