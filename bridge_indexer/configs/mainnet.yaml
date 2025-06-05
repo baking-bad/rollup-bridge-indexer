@@ -49,7 +49,10 @@ contracts:
     kind: evm
     address: '0x01f07f4d78d47a64f4c3b2b65f513f15be6e1854'
     typename: l2_token
-
+  l2_lyzi_token:
+    kind: evm
+    address: '0x19418d0af0f36865cdfbb2437dfed29ba34d3190'
+    typename: l2_token
 
 indexes:
   tezos_head:
