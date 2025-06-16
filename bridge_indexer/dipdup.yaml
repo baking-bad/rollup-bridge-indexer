@@ -17,6 +17,10 @@ hasura:
   allow_aggregations: true
   rest: true
 
+sentry:
+  dsn: ${SENTRY_DSN:-''}
+  environment: ${SENTRY_ENVIRONMENT:-''}
+
 
 datasources:
   tzkt:
