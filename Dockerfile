@@ -9,6 +9,7 @@ SHELL ["/bin/bash", "-exc"]
 
 RUN apt-get update -qy \
  && apt-get install --no-install-recommends --no-install-suggests -qy \
+        git \
         # deps for building python deps
         build-essential \
         # pytezos deps
