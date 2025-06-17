@@ -45,3 +45,6 @@ skip-string-normalization = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
 strict = false
+
+[tool.uv.sources]
+dipdup = { git = "https://github.com/dipdup-io/dipdup", branch = "fix/uuid-serialize" }
