@@ -47,4 +47,4 @@ plugins = ["pydantic.mypy"]
 strict = false
 
 [tool.uv.sources]
-dipdup = { git = "https://github.com/dipdup-io/dipdup", branch = "fix/uuid-serialize" }
+dipdup = { git = "https://github.com/dipdup-io/dipdup", branch = "fix/seoulnet" }
