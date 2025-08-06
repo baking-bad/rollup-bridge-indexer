@@ -48,3 +48,4 @@ strict = false
 
 [tool.uv.sources]
 dipdup = { git = "https://github.com/dipdup-io/dipdup", branch = "fix/seoulnet" }
+pytezos = { git = "https://github.com/baking-bad/pytezos", branch = "seoulnet" }
