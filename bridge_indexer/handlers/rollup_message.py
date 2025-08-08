@@ -20,7 +20,7 @@ from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from bridge_indexer.handlers.ticket import WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from bridge_indexer.handlers.ticket import TicketService
-from bridge_indexer.models import BridgeOperation
+from bridge_indexer.models import BridgeOperation, json_dumps_fallback
 from bridge_indexer.models import BridgeOperationStatus
 from bridge_indexer.models import BridgeWithdrawOperation
 from bridge_indexer.models import RollupCementedCommitment
@@ -383,7 +383,7 @@ class InboxParametersHash:
 
     @staticmethod
     def _hash_from_dto(dto) -> str:
-        parameters_hash: str = uuid5(NAMESPACE_OID, orjson.dumps(dto, option=orjson.OPT_SORT_KEYS)).hex
+        parameters_hash: str = uuid5(NAMESPACE_OID, json_dumps_fallback(dto, option=orjson.OPT_SORT_KEYS)).hex
 
         return parameters_hash
 
@@ -395,9 +395,9 @@ class WithdrawalParametersHashableDTO(BaseModel):
     ticketer_address: str
     proxy: str
 
+
 class FastWithdrawalParametersHashableDTO(BaseModel):
     withdrawal_id: int
-
 
 
 class OutboxParametersHash:
@@ -418,7 +418,9 @@ class OutboxParametersHash:
             michelson_type = MichelsonType.match(micheline_expression)
 
             parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
-            parameters: ExecuteOutboxMessageTicketerWithdrawParameter = ExecuteOutboxMessageTicketerWithdrawParameter.model_validate(parameters_data)
+            parameters: ExecuteOutboxMessageTicketerWithdrawParameter = ExecuteOutboxMessageTicketerWithdrawParameter.model_validate(
+                parameters_data
+            )
 
             bytes_field = None
             if parameters.ticket.content.metadata:
@@ -445,7 +447,6 @@ class OutboxParametersHash:
             raise ValueError(f"Can't get OutboxParametersHash from message: {outbox_message}") from None
 
         return self._hash_from_dto(comparable_data)
-
 
     async def from_fast_outbox_message(self, ticket_service: TicketService) -> str:
         outbox_message = self._value
@@ -541,6 +542,6 @@ class OutboxParametersHash:
 
     @staticmethod
     def _hash_from_dto(dto: WithdrawalParametersHashableDTO | FastWithdrawalParametersHashableDTO) -> str:
-        parameters_hash: str = uuid5(NAMESPACE_OID, orjson.dumps(dto.model_dump(), option=orjson.OPT_SORT_KEYS)).hex
+        parameters_hash: str = uuid5(NAMESPACE_OID, json_dumps_fallback(dto.model_dump(), option=orjson.OPT_SORT_KEYS)).hex
 
         return parameters_hash

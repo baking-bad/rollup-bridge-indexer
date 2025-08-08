@@ -13,6 +13,7 @@ from bridge_indexer.types.kernel_native.evm_events.withdrawal import WithdrawalP
 
 WithdrawalPayload = LegacyWithdrawalPayload | FastWithdrawalPayload
 
+
 async def on_xtz_withdraw(
     ctx: HandlerContext,
     event: EvmEvent[WithdrawalPayload],

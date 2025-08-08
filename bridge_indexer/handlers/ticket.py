@@ -22,6 +22,7 @@ from bridge_indexer.types.rollup.tezos_parameters.default import TicketContent
 WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE = 'pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))'
 FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE = 'pair (nat %withdrawal_id) (pair (pair %ticket (address %address) (pair (pair %content (nat %nat) (option %bytes bytes)) (nat %amount))) (pair (timestamp %timestamp) (pair (address %base_withdrawer) (pair (bytes %payload) (bytes %l2_caller)))))'
 
+
 class TicketService:
     def __init__(self, tzkt: 'TezosTzktDatasource', metadata: 'TzipMetadataDatasource', bridge: 'BridgeConstantStorage'):
         self._tzkt: TezosTzktDatasource = tzkt
@@ -57,7 +58,7 @@ class TicketService:
             ticket_metadata: dict[str, str] = self.get_ticket_metadata(ticket_content)
             asset_id = '_'.join([ticket_metadata['contract_address'], str(ticket_metadata['token_id'])])
         except (AssertionError, KeyError):
-            token=None
+            token = None
         else:
             token = await TezosToken.get_or_none(pk=asset_id)
             if not token:
