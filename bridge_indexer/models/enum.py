@@ -1,16 +1,4 @@
-from decimal import Decimal
 from enum import Enum
-from typing import Any
-
-from asyncpg.pgproto import pgproto
-
-
-def _custom_default(obj: Any) -> Any:
-    if isinstance(obj, Decimal):
-        return str(obj)
-    if isinstance(obj, pgproto.UUID):
-        return obj.hex
-    raise TypeError
 
 
 class RollupInboxMessageType(Enum):

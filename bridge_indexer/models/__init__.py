@@ -1,6 +1,10 @@
+import json
 import uuid
+from decimal import Decimal
+from typing import Any
 
 import orjson
+from asyncpg.pgproto import pgproto
 from dipdup import fields
 from dipdup.models import Model
 from tortoise import ForeignKeyFieldInstance
@@ -12,7 +16,34 @@ from bridge_indexer.models.enum import BridgeOperationStatus
 from bridge_indexer.models.enum import BridgeOperationType
 from bridge_indexer.models.enum import RollupInboxMessageType
 from bridge_indexer.models.enum import RollupOutboxMessageBuilder
-from bridge_indexer.models.enum import _custom_default
+
+
+# TODO: move to framework
+def _custom_default(obj: Any) -> Any:
+    if isinstance(obj, Decimal):
+        return str(obj)
+    if isinstance(obj, pgproto.UUID):
+        return obj.hex
+    raise TypeError
+
+
+# TODO: move to framework
+def json_dumps_fallback(obj: Any, option: int | None = None) -> str:
+    try:
+        return orjson.dumps(
+            obj,
+            default=_custom_default,
+            option=option,
+        ).decode()
+    except TypeError as e:
+        if str(e) == 'Integer exceeds 64-bit range':
+            sort_keys = option == orjson.OPT_SORT_KEYS
+            return json.dumps(
+                obj,
+                sort_keys=sort_keys,
+                default=_custom_default,
+            )
+        raise e
 
 
 class DatetimeModelMixin:
@@ -96,9 +127,7 @@ class AbstractRollupMessage(DatetimeModelMixin, Model):
 
     level = fields.IntField(db_index=True)
     index = fields.IntField(db_index=True)
-    message = JSONField(
-        encoder=lambda x: orjson.dumps(x, default=_custom_default, option=orjson.OPT_INDENT_2).decode(),
-    )
+    message = JSONField(encoder=json_dumps_fallback)
     parameters_hash = fields.CharField(max_length=32, db_index=True, null=True)
 
 
