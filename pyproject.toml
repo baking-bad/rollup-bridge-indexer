@@ -6,7 +6,7 @@ authors = ["Igor Sereda <sereda.igor.s@gmail.com>"]
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "dipdup>=8.3.2",
+    "dipdup>=8.4.3",
     "pytezos>=3.14.0",
     "base58>=2.1.1",
     "pydantic-settings>=2.8.1",
@@ -47,5 +47,4 @@ plugins = ["pydantic.mypy"]
 strict = false
 
 [tool.uv.sources]
-dipdup = { git = "https://github.com/dipdup-io/dipdup", branch = "fix/seoulnet" }
 pytezos = { git = "https://github.com/baking-bad/pytezos", branch = "seoulnet" }
