@@ -39,3 +39,7 @@ up:
 
 down:
 	docker compose down --volumes
+
+update:         ## Update dependencies
+	dipdup self update -q
+	uv sync --all-extras --all-groups --link-mode symlink -U
