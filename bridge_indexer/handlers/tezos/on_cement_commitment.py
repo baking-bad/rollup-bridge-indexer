@@ -36,7 +36,6 @@ async def on_cement_commitment(
         )
         .order_by('created_at')
         .limit(100)
-        .only('id')
         .values_list('id', flat=True)
     )
     if len(sealed):
@@ -45,7 +44,6 @@ async def on_cement_commitment(
                 id__in=sealed,
                 outbox_message__level__lte=cement.commitment.inbox_level - protocol.smart_rollup_max_active_outbox_levels,
             )
-            .only('id')
             .values_list('id', flat=True)
         )
         if len(expired):
@@ -58,7 +56,6 @@ async def on_cement_commitment(
         )
         .order_by('created_at')
         .limit(100)
-        .only('id')
         .values_list('id', flat=True)
     )
     if len(created):
@@ -67,7 +64,6 @@ async def on_cement_commitment(
                 id__in=created,
                 l1_transaction__level__lte=cement.commitment.inbox_level - protocol.smart_rollup_commitment_period + 1,
             )
-            .only('id')
             .values_list('id', flat=True)
         )
         if len(failed):
