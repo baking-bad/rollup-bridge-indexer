@@ -59,7 +59,7 @@ contracts:
     typename: l2_token
   l2_usdtz_token:
     kind: evm
-    address: '0x4d4e081505349838d0256410938fdb8fe1c6e52c'
+    address: '0x5b456255fc3389a1ed284a74be0d1f38734d3d6a'
     typename: l2_token
 
 indexes:
