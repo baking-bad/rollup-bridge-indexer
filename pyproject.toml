@@ -7,9 +7,9 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "dipdup>=8.4.3",
-    "pytezos>=3.14.0",
     "base58>=2.1.1",
     "pydantic-settings>=2.8.1",
+    "pytezos",
 ]
 
 [dependency-groups]
@@ -47,4 +47,4 @@ plugins = ["pydantic.mypy"]
 strict = false
 
 [tool.uv.sources]
-pytezos = { git = "https://github.com/baking-bad/pytezos", rev = "7900d795f4271ae3d21dedc658d917b9fe3898e9" }
+pytezos = { git = "https://github.com/baking-bad/pytezos", branch = "seoulnet" }
