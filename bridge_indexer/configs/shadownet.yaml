@@ -1,3 +1,40 @@
+datasources:
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+  metadata:
+    kind: tzip_metadata
+    network: ${NETWORK}
+    url: ${METADATA_URL}
+
+  tezos_node:
+    kind: http
+    url: ${TEZOS_NODE_URL}
+
+  etherlink_node:
+    kind: evm.node
+    url: ${ETHERLINK_NODE_URL}
+    http:
+      batch_size: 100
+      ratelimit_rate: 900
+      ratelimit_period: 60
+      ratelimit_sleep: 10
+
+  etherlink_subsquid:
+    kind: evm.subsquid
+    url: ${ETHERLINK_SUBSQUID_URL:-~}
+
+  rollup_node:
+    kind: http
+    url: ${ROLLUP_NODE_URL}
+    http:
+      retry_count: 2
+      retry_sleep: 1.0
+      retry_multiplier: 1.0
+      connection_timeout: 1
+      request_timeout: 4
+
 contracts:
   tezos_smart_rollup:
     kind: tezos
