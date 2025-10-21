@@ -211,7 +211,7 @@ class RollupMessageIndex:
     async def _process(self):
         inbox = await self._tzkt.request(
             method='GET',
-            url=f'v1/smart_rollups/inbox?id.gt={self._inbox_id_cursor}&type.in=transfer,external&target={self._bridge.smart_rollup_address}&micheline=0&sort=id&limit={self.request_limit}',
+            url=f'v1/smart_rollups/inbox?id.gt={self._inbox_id_cursor}&type.in=transfer,external&micheline=0&sort=id&limit={self.request_limit}',
         )
 
         if len(inbox) == 0:
@@ -224,6 +224,14 @@ class RollupMessageIndex:
             for inbox_message in inbox:
                 match inbox_message['type']:
                     case RollupInboxMessageType.transfer.value:
+                        # Validate that transfer messages always have a target field
+                        if 'target' not in inbox_message or 'address' not in inbox_message.get('target', {}):
+                            raise ValueError(f"Transfer inbox message {inbox_message['id']} is missing target field")
+
+                        # Filter by target rollup (TzKT API doesn't support target= parameter)
+                        if inbox_message['target']['address'] != self._bridge.smart_rollup_address:
+                            continue
+
                         await self._handle_transfer_inbox_message(inbox_message)
                     case RollupInboxMessageType.external.value:
                         await self._handle_external_inbox_message(inbox_message)
@@ -359,9 +367,10 @@ class RollupMessageIndex:
                 self._logger.info('No previous saved Inbox Message found. Going to start indexing since Smart Rollup origination moment.')
                 rollup_data = await self._tzkt.request(method='GET', url=f'v1/smart_rollups/{self._bridge.smart_rollup_address}')
                 first_level = rollup_data['firstActivity']
+            # Note: TzKT API doesn't support target= filter, transfer messages will be filtered in _process()
             inbox = await self._tzkt.request(
                 method='GET',
-                url=f'v1/smart_rollups/inbox?type.in=transfer,external&target={self._bridge.smart_rollup_address}&level.ge={first_level}&sort.asc=id&limit=1',
+                url=f'v1/smart_rollups/inbox?type.in=transfer,external&level.ge={first_level}&sort.asc=id&limit=1',
             )
             self._inbox_id_cursor = inbox[0]['id']
 
