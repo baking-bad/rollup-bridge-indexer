@@ -128,6 +128,9 @@ indexes:
       - callback: etherlink.on_deposit
         contract: etherlink_rollup_kernel
         name: Deposit
+      - callback: etherlink.on_deposit
+        contract: l2_withdrawal_precompile_fa
+        name: Deposit
 
   etherlink_xtz_deposit_transactions:
     kind: evm.transactions
