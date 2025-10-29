@@ -9,9 +9,14 @@ contracts:
     address: ${FAST_WITHDRAWAL_NATIVE_ADDRESS}
     typename: fast_withdrawal
 
-  etherlink_rollup_kernel:
+  etherlink_legacy_rollup_kernel:
     kind: evm
     address: '0x0000000000000000000000000000000000000000'
+    typename: kernel
+
+  etherlink_rollup_kernel:
+    kind: evm
+    address: '0xff00000000000000000000000000000000000002'
     typename: kernel
 
   etherlink_rollup_kernel_native:
