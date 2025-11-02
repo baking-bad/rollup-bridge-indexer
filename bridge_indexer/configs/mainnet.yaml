@@ -61,6 +61,14 @@ contracts:
     kind: evm
     address: '0x5b456255fc3389a1ed284a74be0d1f38734d3d6a'
     typename: l2_token
+  l2_btctz_token:
+    kind: evm
+    address: '0x8fb3f935eb6d1f15ce6b3a1034b52a6ed19d4f45'
+    typename: l2_token
+  l2_ethtz_token:
+    kind: evm
+    address: '0x15995a651e82899e65aecf9fa66930722985718a'
+    typename: l2_token
 
 indexes:
   tezos_head:
@@ -216,4 +224,10 @@ indexes:
         name: Transfer
       - callback: etherlink.on_transfer
         contract: l2_usdtz_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_btctz_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_ethtz_token
         name: Transfer
