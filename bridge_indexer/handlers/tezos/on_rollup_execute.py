@@ -4,6 +4,7 @@ from eth_abi.exceptions import ParseError
 from tortoise.exceptions import DoesNotExist
 
 from bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from bridge_indexer.handlers.rollup_message import OutboxMessageService
 from bridge_indexer.models import BridgeOperation
 from bridge_indexer.models import BridgeOperationKind
 from bridge_indexer.models import BridgeOperationStatus
@@ -75,6 +76,16 @@ async def on_rollup_execute(
             )
             return
 
+    try:
+        amount = OutboxMessageService.extract_l1_amount(outbox_message.message)
+    except ValueError:
+        ctx.logger.warning(
+            'Could not extract ticket.amount from outbox message %s/%s',
+            outbox_message.level,
+            outbox_message.index,
+        )
+        amount = None
+
     withdrawal = await TezosWithdrawOperation.create(
         timestamp=execute.data.timestamp,
         level=execute.data.level,
@@ -84,6 +95,7 @@ async def on_rollup_execute(
         initiator=execute.data.initiator_address,
         sender=execute.data.sender_address,
         target=execute.data.target_address,
+        amount=amount,
         outbox_message=outbox_message,
     )
 
