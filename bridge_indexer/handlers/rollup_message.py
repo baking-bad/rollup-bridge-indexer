@@ -80,13 +80,13 @@ class OutboxMessageService:
         self._protocol = protocol
 
     @classmethod
-    def estimate_outbox_message_cemented_level(cls, outbox_level: int, lcc_inbox_level: int, protocol: ProtocolConstantStorage) -> int:
+    def estimate_outbox_message_cemented_level(cls, outbox_level: int, origination_level: int, protocol: ProtocolConstantStorage) -> int:
         commitment_period = protocol.smart_rollup_commitment_period
         challenge_window = protocol.smart_rollup_challenge_window
 
         return (
             outbox_level
-            + (lcc_inbox_level - outbox_level) % commitment_period
+            + (origination_level - outbox_level) % commitment_period
             + challenge_window
             + (commitment_period - challenge_window % commitment_period)
             % commitment_period  # well, at this line, I'm just fucking around already.
@@ -180,10 +180,20 @@ class RollupMessageIndex:
         self._outbox_level_cursor: int = 0
         self._outbox_index_cursor: int = 0
         self._realtime_head_level: int = 0
+        self._origination_level: int | None = None
 
         self._outbox_level_queue: set = set()
         self._create_inbox_batch: list[RollupInboxMessage] = []
         self._create_outbox_batch: list[RollupOutboxMessage] = []
+
+    async def _get_origination_level(self) -> int:
+        if self._origination_level is None:
+            rollup_data = await self._tzkt.request(
+                method='GET',
+                url=f'v1/smart_rollups/{self._bridge.smart_rollup_address}',
+            )
+            self._origination_level = rollup_data['firstActivity']
+        return self._origination_level
 
     async def synchronize(self):
         with self._lock:
@@ -308,22 +318,10 @@ class RollupMessageIndex:
                 else:
                     return
 
-        recent_cement_operations = await self._tzkt.request(
-            method='GET',
-            url=f'v1/operations/sr_cement?rollup={self._bridge.smart_rollup_address}&level.lt={outbox_level}&sort.desc=level&limit=1&status=applied',
-        )
-        try:
-            lcc_inbox_level = recent_cement_operations[0]['commitment']['inboxLevel']
-        except KeyError:
-            if 'errors' in recent_cement_operations[0]:
-                for error_data in recent_cement_operations[0]['errors']:
-                    self._logger.error(error_data['type'])
-            return
-
         created_at = datetime.fromisoformat(await self._tzkt.request('GET', f'v1/blocks/{outbox_level}/timestamp'))
         cemented_level = OutboxMessageService.estimate_outbox_message_cemented_level(
             outbox_level,
-            lcc_inbox_level,
+            await self._get_origination_level(),
             self._protocol,
         )
         cemented_at = datetime.fromisoformat(await self._tzkt.request('GET', f'v1/blocks/{cemented_level}/timestamp'))
