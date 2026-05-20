@@ -25,6 +25,12 @@ mypy:
 
 lint: black ruff mypy
 
+check-config:
+	@test -n "$(NET)" -a -n "$(ENV)" || (echo "usage: make check-config NET=<network> ENV=<path-to-env-file>"; exit 1)
+	set -a; . $(ENV); set +a
+	$(py) dipdup -c $(source_dir) -c $(source_dir)/configs/$(NET).yaml config export --unsafe > /dev/null
+	@echo "Config OK: $(NET)"
+
 wipe:
 	$(py) dipdup $(dipdup_args) schema wipe --force
 
