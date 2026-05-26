@@ -3,7 +3,9 @@
 !*/
 
 # Add metadata and build files
-!evm_indexer
+# Package is the repo root itself; rollup_bridge_indexer is a self-symlink (-> .) that
+# makes `import rollup_bridge_indexer` resolve. Track it so checkouts/CI/Docker get it.
+!rollup_bridge_indexer
 !.gitignore
 !.dockerignore
 !py.typed
@@ -12,6 +14,7 @@
 !**/pyproject.toml
 !**/*.lock
 !**/README.md
+!**/TESTING.md
 !**/.keep
 
 # Add Python code

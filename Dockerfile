@@ -1,5 +1,4 @@
 ARG PYTHON_VERSION=3.12-slim-bookworm
-ARG SOURCE_DIR=bridge_indexer
 ARG APP_PATH=/opt/app
 ARG APP_USER=dipdup
 
@@ -67,9 +66,12 @@ ARG APP_PATH
 COPY --from=builder-production --chown=$APP_USER ["$APP_PATH", "$APP_PATH"]
 
 USER $APP_USER
-ARG SOURCE_DIR
-ENV DIPDUP_PACKAGE_PATH=$APP_PATH/$SOURCE_DIR
-COPY --chown=$APP_USER $SOURCE_DIR ./$SOURCE_DIR
+# Package code, dipdup.yaml and configs/ now live at the repo root (the package is the
+# repo itself; rollup_bridge_indexer is a self-symlink -> .). .dockerignore narrows this
+# COPY to the package files + the symlink. WORKDIR is $APP_PATH, so config is at
+# $APP_PATH/dipdup.yaml and overlays at $APP_PATH/configs/<network>.yaml.
+ENV DIPDUP_PACKAGE_PATH=$APP_PATH
+COPY --chown=$APP_USER . ./
 
 ENTRYPOINT ["dipdup"]
 CMD ["run"]

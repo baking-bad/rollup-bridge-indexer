@@ -2,7 +2,7 @@ from collections import OrderedDict
 
 import pytest
 
-from bridge_indexer.types.output_proof.output_proof import OutputProofData
+from rollup_bridge_indexer.types.output_proof.output_proof import OutputProofData
 
 
 @pytest.fixture()

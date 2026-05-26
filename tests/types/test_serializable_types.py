@@ -3,7 +3,7 @@ from datetime import datetime
 
 from asyncpg.pgproto import pgproto
 
-from bridge_indexer.models import RollupOutboxMessage
+from rollup_bridge_indexer.models import RollupOutboxMessage
 
 
 class TestSerializableTypes:

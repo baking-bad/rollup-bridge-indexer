@@ -1,4 +1,4 @@
-from bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload
+from rollup_bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload
 
 
 class TestTezosTypes:

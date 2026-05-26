@@ -3,32 +3,35 @@
 
 py := uv run
 
-source_dir := bridge_indexer
+# The package lives at the repo root (rollup_bridge_indexer is a self-symlink -> .),
+# so lint targets and the dipdup config are all relative to the root.
+source_dir := .
 unit_tests_dir := tests
 
+# dipdup.yaml is at the repo root, so a bare -c . locates it and the package.
 dipdup_args := -c .
 
 test:
 	PYTHONPATH=. $(py) pytest tests/
 
 install:
-	poetry install `if [ "${DEV}" = "0" ]; then echo "--only main"; fi` --sync
+	uv sync --all-extras --all-groups --link-mode symlink --locked
 
 black:
-	$(py) black $(source_dir) $(unit_tests_dir)
+	$(py) black $(source_dir)
 
 ruff:
-	$(py) ruff check --fix-only --show-fixes $(source_dir) $(unit_tests_dir)
+	$(py) ruff check --fix-only --show-fixes $(source_dir)
 
 mypy:
-	$(py) mypy $(source_dir) $(unit_tests_dir)
+	$(py) mypy $(source_dir)
 
 lint: black ruff mypy
 
 check-config:
 	@test -n "$(NET)" -a -n "$(ENV)" || (echo "usage: make check-config NET=<network> ENV=<path-to-env-file>"; exit 1)
 	set -a; . $(ENV); set +a
-	$(py) dipdup -c $(source_dir) -c $(source_dir)/configs/$(NET).yaml config export --unsafe > /dev/null
+	$(py) dipdup -c . -c configs/$(NET).yaml config export --unsafe > /dev/null
 	@echo "Config OK: $(NET)"
 
 wipe:

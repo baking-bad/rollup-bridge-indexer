@@ -2,7 +2,7 @@
 *
 
 # Add metadata and build files
-!bridge_indexer
+!rollup_bridge_indexer
 !pyproject.toml
 !*.lock
 !README.md
@@ -20,3 +20,8 @@
 !**/*.yml
 !**/*.j2
 !**/.keep
+
+# Never copy local-only trees, even though *.py/*.yaml/*.json are re-included above.
+# (COPY . ./ now copies from the repo root since the package was flattened.)
+.venv/**
+.git/**

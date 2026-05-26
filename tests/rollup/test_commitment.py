@@ -2,8 +2,8 @@ import pytest
 from pydantic import Field
 from pydantic import create_model
 
-from bridge_indexer.handlers.rollup_message import OutboxMessageService
-from bridge_indexer.handlers.service_container import ProtocolConstantStorage
+from rollup_bridge_indexer.handlers.rollup_message import OutboxMessageService
+from rollup_bridge_indexer.handlers.service_container import ProtocolConstantStorage
 
 TestProtocolConstantStorage: type[ProtocolConstantStorage] = create_model(
     'TestProtocolConstantStorage',
@@ -33,7 +33,7 @@ class TestCommitment:
             # these are exactly the situations where the old LCC-based heuristic crashed.
             (1015, 1000, 60, 40, 1125),
             (1060, 1000, 60, 40, 1125),
-            (1015, 100, 60, 40, 1125),    # multi-period gap, equivalent residue
+            (1015, 100, 60, 40, 1125),  # multi-period gap, equivalent residue
             (100, 5, 30, 20, 160),
             (50, 0, 25, 50, 105),
         ],
