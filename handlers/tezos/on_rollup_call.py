@@ -2,7 +2,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosTransaction
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
-from rollup_bridge_indexer.handlers.rollup_message import InboxParametersHash
+from rollup_bridge_indexer.handlers.rollup_message import TransactionParametersHash
 from rollup_bridge_indexer.handlers.service_container import get_container
 from rollup_bridge_indexer.models import TezosDepositOperation
 from rollup_bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
@@ -39,7 +39,7 @@ async def on_rollup_call(
         l2_account=l2_receiver.hex(),
         ticket=ticket,
         amount=parameter.ticket.amount,
-        parameters_hash=await InboxParametersHash(default).from_transaction(),
+        parameters_hash=await TransactionParametersHash(default).from_transaction(),
     )
 
     ctx.logger.info('Tezos Deposit Transaction registered: %s', deposit.id)

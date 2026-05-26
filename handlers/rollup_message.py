@@ -5,7 +5,6 @@ import threading
 from datetime import datetime
 from typing import TYPE_CHECKING
 from typing import Any
-from typing import cast
 from uuid import NAMESPACE_OID
 from uuid import uuid5
 
@@ -312,7 +311,7 @@ class RollupMessageIndex:
                 index=message['index'],
                 type=RollupInboxMessageType.transfer,
                 message=message['parameter'],
-                parameters_hash=await InboxParametersHash(message['parameter']).from_inbox_message_parameters(),
+                parameters_hash=await InboxMessageParametersHash(message['parameter']).from_inbox_message_parameters(),
             )
         )
 
@@ -344,10 +343,10 @@ class RollupMessageIndex:
 
         for outbox_message in outbox:
             try:
-                parameters_hash = await OutboxParametersHash(outbox_message).from_outbox_message(self._ticket_service)
+                parameters_hash = await OutboxMessageParametersHash(outbox_message).from_outbox_message(self._ticket_service)
             except (ValueError, MichelsonRuntimeError):
                 try:
-                    parameters_hash = await OutboxParametersHash(outbox_message).from_fast_outbox_message(self._ticket_service)
+                    parameters_hash = await OutboxMessageParametersHash(outbox_message).from_fast_outbox_message(self._ticket_service)
                 except (ValueError, MichelsonRuntimeError) as e:
                     self._logger.warning('Skip hashing outbox message. %s', str(e))
                     continue
@@ -397,23 +396,24 @@ class RollupMessageIndex:
         self._status = IndexStatus.syncing
 
 
-class InboxParametersHash:
-    def __init__(self, value: TezosTransaction[DefaultParameter, RollupStorage] | RollupInboxMessage):
-        self._value = value
+def _inbox_parameters_hash(dto: Any) -> str:
+    return uuid5(NAMESPACE_OID, json_dumps_fallback(dto, option=orjson.OPT_SORT_KEYS)).hex
+
+
+class InboxMessageParametersHash:
+    def __init__(self, parameters: Any):
+        self._parameters = parameters
 
     async def from_inbox_message_parameters(self) -> str:
-        inbox_message_parameters = self._value
-        return self._hash_from_dto(inbox_message_parameters)
+        return _inbox_parameters_hash(self._parameters)
+
+
+class TransactionParametersHash:
+    def __init__(self, transaction: TezosTransaction[DefaultParameter, RollupStorage]):
+        self._transaction = transaction
 
     async def from_transaction(self) -> str:
-        default = cast('TezosTransaction[DefaultParameter, RollupStorage]', self._value)
-        return self._hash_from_dto(default.data.parameter_json)
-
-    @staticmethod
-    def _hash_from_dto(dto) -> str:
-        parameters_hash: str = uuid5(NAMESPACE_OID, json_dumps_fallback(dto, option=orjson.OPT_SORT_KEYS)).hex
-
-        return parameters_hash
+        return _inbox_parameters_hash(self._transaction.data.parameter_json)
 
 
 class WithdrawalParametersHashableDTO(BaseModel):
@@ -428,18 +428,17 @@ class FastWithdrawalParametersHashableDTO(BaseModel):
     withdrawal_id: int
 
 
-class OutboxParametersHash:
-    def __init__(
-        self,
-        value: dict[str, Any] | EvmEvent[Any],
-    ):
-        self._value = value
+def _comparable_parameters_hash(dto: WithdrawalParametersHashableDTO | FastWithdrawalParametersHashableDTO) -> str:
+    return uuid5(NAMESPACE_OID, json_dumps_fallback(dto.model_dump(), option=orjson.OPT_SORT_KEYS)).hex
+
+
+class OutboxMessageParametersHash:
+    def __init__(self, message: dict[str, Any]):
+        self._message = message
 
     async def from_outbox_message(self, ticket_service: TicketService) -> str:
-        outbox_message = cast('dict[str, Any]', self._value)
-
         try:
-            transaction = outbox_message['message']['transactions'][0]
+            transaction = self._message['message']['transactions'][0]
             parameters_micheline = transaction['parameters']
 
             micheline_expression = michelson_to_micheline(WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE)
@@ -472,14 +471,13 @@ class OutboxParametersHash:
                 proxy=transaction['destination'],
             )
         except (AttributeError, KeyError, DoesNotExist):
-            raise ValueError(f"Can't get OutboxParametersHash from message: {outbox_message}") from None
+            raise ValueError(f"Can't get OutboxParametersHash from message: {self._message}") from None
 
-        return self._hash_from_dto(comparable_data)
+        return _comparable_parameters_hash(comparable_data)
 
     async def from_fast_outbox_message(self, ticket_service: TicketService) -> str:
-        outbox_message = cast('dict[str, Any]', self._value)
         try:
-            transaction = outbox_message['message']['transactions'][0]
+            transaction = self._message['message']['transactions'][0]
             parameters_micheline = transaction['parameters']
 
             micheline_expression = michelson_to_micheline(FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE)
@@ -500,23 +498,29 @@ class OutboxParametersHash:
                 # proxy=transaction['destination'],
             )
         except (AttributeError, KeyError, DoesNotExist) as e:
-            raise ValueError(f"Can't get FastOutboxParametersHash from message: {outbox_message}, {e}") from None
+            raise ValueError(f"Can't get FastOutboxParametersHash from message: {self._message}, {e}") from None
 
-        return self._hash_from_dto(comparable_data)
+        return _comparable_parameters_hash(comparable_data)
+
+
+class WithdrawalEventParametersHash:
+    def __init__(
+        self,
+        event: EvmEvent[FAWithdrawalPayload] | EvmEvent[NativeWithdrawalPayload | FastWithdrawalPayload],
+    ):
+        self._event = event
 
     async def from_event(self) -> str:
-        payload = cast('EvmEvent[Any]', self._value).payload
+        payload = self._event.payload
         if isinstance(payload, FAWithdrawalPayload):
-            return await self._from_fa_event()
+            return await self._from_fa_event(payload)
         if isinstance(payload, NativeWithdrawalPayload):
-            return await self._from_native_event()
+            return await self._from_native_event(payload)
         if isinstance(payload, FastWithdrawalPayload):
-            return await self._from_fast_native_event()
+            return await self._from_fast_native_event(payload)
         raise TypeError('Unexpected Withdrawal Event type')
 
-    async def _from_native_event(self) -> str:
-        payload: NativeWithdrawalPayload = cast('EvmEvent[Any]', self._value).payload
-
+    async def _from_native_event(self, payload: NativeWithdrawalPayload) -> str:
         try:
             ticket = await TezosTicket.get(token_id='xtz')
 
@@ -530,11 +534,9 @@ class OutboxParametersHash:
         except (DoesNotExist, AssertionError, AttributeError):
             raise ValueError(f"Can't get OutboxParametersHash from NativeWithdrawal Event: {payload}") from None
 
-        return self._hash_from_dto(comparable_data)
+        return _comparable_parameters_hash(comparable_data)
 
-    async def _from_fast_native_event(self) -> str:
-        payload: FastWithdrawalPayload = cast('EvmEvent[Any]', self._value).payload
-
+    async def _from_fast_native_event(self, payload: FastWithdrawalPayload) -> str:
         try:
             # ticket = await TezosTicket.get(token_id='xtz')
 
@@ -549,11 +551,9 @@ class OutboxParametersHash:
         except (DoesNotExist, AssertionError, AttributeError):
             raise ValueError(f"Can't get OutboxParametersHash from NativeFastWithdrawal Event: {payload}") from None
 
-        return self._hash_from_dto(comparable_data)
+        return _comparable_parameters_hash(comparable_data)
 
-    async def _from_fa_event(self) -> str:
-        payload: FAWithdrawalPayload = cast('EvmEvent[Any]', self._value).payload
-
+    async def _from_fa_event(self, payload: FAWithdrawalPayload) -> str:
         try:
             ticket = await TezosTicket.get(hash=payload.ticket_hash)
 
@@ -567,10 +567,4 @@ class OutboxParametersHash:
         except (DoesNotExist, AssertionError, AttributeError):
             raise ValueError(f"Can't get OutboxParametersHash from FAWithdrawal Event: {payload}") from None
 
-        return self._hash_from_dto(comparable_data)
-
-    @staticmethod
-    def _hash_from_dto(dto: WithdrawalParametersHashableDTO | FastWithdrawalParametersHashableDTO) -> str:
-        parameters_hash: str = uuid5(NAMESPACE_OID, json_dumps_fallback(dto.model_dump(), option=orjson.OPT_SORT_KEYS)).hex
-
-        return parameters_hash
+        return _comparable_parameters_hash(comparable_data)

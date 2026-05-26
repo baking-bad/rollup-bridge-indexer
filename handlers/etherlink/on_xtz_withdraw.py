@@ -5,7 +5,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
-from rollup_bridge_indexer.handlers.rollup_message import OutboxParametersHash
+from rollup_bridge_indexer.handlers.rollup_message import WithdrawalEventParametersHash
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
 from rollup_bridge_indexer.types.kernel_native.evm_events.fast_withdrawal import FastWithdrawalPayload
@@ -44,7 +44,7 @@ async def on_xtz_withdraw(
         l1_ticket_owner=etherlink_token.ticket.ticketer_address,
         amount=event.payload.amount,
         fast_payload=fast_payload,
-        parameters_hash=await OutboxParametersHash(event).from_event(),
+        parameters_hash=await WithdrawalEventParametersHash(event).from_event(),
         kernel_withdrawal_id=event.payload.withdrawal_id,
     )
 
