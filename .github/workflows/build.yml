@@ -46,6 +46,25 @@ jobs:
             type=ref,event=tag
             type=ref,event=pr
 
+      # Build into the local Docker engine first so we can prove the indexer actually
+      # starts before publishing. Populates the gha cache, so the push build below is a
+      # near-instant cache hit.
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v5
+        with:
+          file: Dockerfile
+          load: true
+          tags: rollup-bridge-indexer:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Hermetic (no chain/DB access): resolves the package, runs package.initialize() as
+      # the runtime user, imports all handlers/hooks/types, and validates base + overlay
+      # config. This is what the flatten regression broke. `--boot` (full DB boot) is left
+      # to local runs via `make docker-test BOOT=1` to keep the publish gate offline.
+      - name: Smoke test (indexer starts in the container)
+        run: tests/docker/smoke_test.sh rollup-bridge-indexer:smoke
+
       - name: Publish image
         uses: docker/build-push-action@v5
         with:

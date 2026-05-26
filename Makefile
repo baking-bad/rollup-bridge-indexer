@@ -49,6 +49,12 @@ up:
 down:
 	docker compose down --volumes
 
+# Build the image and verify the indexer can actually start inside it (catches the
+# flatten/packaging regression where DipDup resolved the package as `app`). Pass
+# BOOT=1 to also boot the indexer against a throwaway Postgres (needs TZKT access).
+docker-test:
+	tests/docker/smoke_test.sh $(if $(filter 1,$(BOOT)),--boot)
+
 update:         ## Update dependencies
 	dipdup self update -q
 	uv sync --all-extras --all-groups --link-mode symlink -U
