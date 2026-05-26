@@ -5,9 +5,7 @@ concurrency:
 on:
   push:
     branches:
-      - '**'
-    tags:
-      - '*.*.*'
+      - 'master'
   pull_request:
     branches:
       - 'master'
@@ -46,6 +44,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
+            type=ref,event=pr
 
       - name: Publish image
         uses: docker/build-push-action@v5
