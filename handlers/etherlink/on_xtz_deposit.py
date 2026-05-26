@@ -13,7 +13,8 @@ from rollup_bridge_indexer.models import TezosTicket
 async def _validate_xtz_transaction(transaction: EvmTransactionData):
     validators = [
         transaction.value is not None and transaction.value > 0,
-        transaction.from_ == '0x0000000000000000000000000000000000000000',
+        # The deposit-sender `from_` (0x…feed on the new kernel, 0x0 on the legacy one) is
+        # enforced per-network by the index `from_` filter, so we don't hardcode it here.
         transaction.to != transaction.from_,
         transaction.input == '0x',
         transaction.sighash == '0x',

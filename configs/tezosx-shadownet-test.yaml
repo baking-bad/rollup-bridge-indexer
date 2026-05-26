@@ -1,0 +1,219 @@
+# Stripped, block-bounded TEST config for tezosx-shadownet.
+#
+# Purpose: reproduce/verify Tezos->EVM deposit indexing on a tight block window
+# without touching prod. Self-contained (use a single -c), so it does NOT layer on
+# dipdup.yaml — that lets us drop hasura/sentry/tezos_head and switch to sqlite.
+#
+# Run (oneshot: syncs the window, then exits — see dipdup.py is_oneshot()):
+#   set -a; . /path/to/.env.tezosx-shadownet-test; set +a
+#   uv run dipdup -c rollup_bridge_indexer/configs/tezosx-shadownet-test.yaml run
+#
+# Oneshot requires: NO tezos.head index + last_level set on every index. Both hold here.
+# Note: the custom rollup_message index (on_restart backfill) is NOT a dipdup index and
+# syncs to the live rollup head regardless of the window; fine for a fresh shadownet rollup.
+
+spec_version: 3.0
+package: rollup_bridge_indexer
+
+
+database:
+  kind: sqlite
+  path: ${SQLITE_PATH:-/tmp/bridge_tezosx_test.sqlite}
+
+
+datasources:
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+  metadata:
+    kind: tzip_metadata
+    network: ${NETWORK}
+    url: ${METADATA_URL}
+
+  tezos_node:
+    kind: http
+    url: ${TEZOS_NODE_URL}
+
+  etherlink_node:
+    kind: evm.node
+    url: ${ETHERLINK_NODE_URL}
+    http:
+      batch_size: 100
+      ratelimit_rate: 900
+      ratelimit_period: 60
+      ratelimit_sleep: 10
+
+  rollup_node:
+    kind: http
+    url: ${ROLLUP_NODE_URL}
+    http:
+      retry_count: 2
+      retry_sleep: 1.0
+      retry_multiplier: 1.0
+      connection_timeout: 1
+      request_timeout: 4
+
+
+contracts:
+  tezos_smart_rollup:
+    kind: tezos
+    address: ${SMART_ROLLUP_ADDRESS}
+    typename: rollup
+
+  tezos_fast_withdrawal_native:
+    kind: tezos
+    address: ${FAST_WITHDRAWAL_NATIVE_ADDRESS}
+    typename: fast_withdrawal
+
+  etherlink_rollup_kernel:
+    kind: evm
+    address: '0x0000000000000000000000000000000000000000'
+    typename: kernel
+
+  etherlink_deposit_sender:
+    kind: evm
+    # FEED_DEPOSIT_ADDR — synthetic `from` of all deposit-injection txs in the new kernel
+    address: '0x000000000000000000000000000000000000feed'
+    typename: kernel
+
+  etherlink_rollup_kernel_native:
+    kind: evm
+    address: '0x0000000000000000000000000000000000000000'
+    typename: kernel_native
+
+  l2_withdrawal_precompile_fa:
+    kind: evm
+    address: '0xff00000000000000000000000000000000000002'
+    typename: kernel
+
+  l2_withdrawal_precompile_native:
+    kind: evm
+    address: '0xff00000000000000000000000000000000000001'
+    typename: kernel_native
+
+
+indexes:
+  tezos_rollup_cement:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    last_level: ${L1_LAST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - sr_cement
+    contracts:
+      - tezos_smart_rollup
+    handlers:
+      - callback: tezos.on_cement_commitment
+        pattern:
+          - type: sr_cement
+            destination: tezos_smart_rollup
+
+  tezos_deposit_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    last_level: ${L1_LAST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_smart_rollup
+    handlers:
+      - callback: tezos.on_rollup_call
+        pattern:
+          - type: transaction
+            destination: tezos_smart_rollup
+            entrypoint: default
+
+  tezos_claim_fast_withdrawal_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    last_level: ${L1_LAST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_fast_withdrawal_native
+    handlers:
+      - callback: tezos.on_claim_xtz_fast_withdrawal
+        pattern:
+          - type: transaction
+            destination: tezos_fast_withdrawal_native
+            entrypoint: payout_withdrawal
+
+  etherlink_deposit_events:
+    kind: evm.events
+    first_level: ${L2_FIRST_LEVEL}
+    last_level: ${L2_LAST_LEVEL}
+    datasources:
+      - etherlink_node
+    handlers:
+      # NOTE: here was etherlink_rollup_kernel which was a legacy 'precompile' for fa
+      - callback: etherlink.on_deposit
+        contract: l2_withdrawal_precompile_fa
+        name: Deposit
+
+  etherlink_xtz_deposit_transactions:
+    kind: evm.transactions
+    first_level: ${L2_FIRST_LEVEL}
+    last_level: ${L2_LAST_LEVEL}
+    datasources:
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_xtz_deposit
+        from_: etherlink_deposit_sender
+
+  etherlink_withdrawal_events:
+    kind: evm.events
+    first_level: ${L2_FIRST_LEVEL}
+    last_level: ${L2_LAST_LEVEL}
+    datasources:
+      - etherlink_node
+    handlers:
+      # NOTE: etherlink_rollup_kernel no longer in use for withdrawal, never was for tezosx rollup
+      - callback: etherlink.on_xtz_withdraw
+        contract: etherlink_rollup_kernel_native
+        name: Withdrawal
+      - callback: etherlink.on_withdraw
+        contract: l2_withdrawal_precompile_fa
+        name: Withdrawal
+      - callback: etherlink.on_xtz_withdraw
+        contract: l2_withdrawal_precompile_native
+        name: Withdrawal
+      - callback: etherlink.on_xtz_withdraw
+        contract: l2_withdrawal_precompile_native
+        name: FastWithdrawal
+
+  tezos_withdrawal_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    last_level: ${L1_LAST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - sr_execute
+    contracts:
+      - tezos_smart_rollup
+      - tezos_fast_withdrawal_native
+    handlers:
+      - callback: tezos.on_rollup_execute
+        pattern:
+          - type: sr_execute
+            destination: tezos_smart_rollup
+      - callback: tezos.on_rollup_execute
+        pattern:
+          - type: sr_execute
+            destination: tezos_fast_withdrawal_native
+
+
+advanced:
+  unsafe_sqlite: true
+  reindex:
+    config_modified: ignore
+    schema_modified: ignore
+    migration: ignore
+    rollback: ignore
+    manual: wipe

@@ -52,3 +52,23 @@ down:
 update:         ## Update dependencies
 	dipdup self update -q
 	uv sync --all-extras --all-groups --link-mode symlink -U
+
+# --- Stripped, block-bounded test indexer for tezosx-shadownet ---
+TEST_ENV ?= /home/ubuntu/deployments/stacks/etherlink-bridge-indexer/.env.tezosx-shadownet
+TEST_OVERRIDE ?= ./tezosx-shadownet-test.env
+TEST_CONFIG := configs/tezosx-shadownet-test.yaml
+
+check-test-config:
+	set -a; . $(TEST_ENV); . $(TEST_OVERRIDE); set +a
+	$(py) dipdup -c $(TEST_CONFIG) config export --unsafe > /dev/null
+	@echo "Test config OK"
+
+test-indexer:
+	@test -f $(TEST_OVERRIDE) || (echo "missing $(TEST_OVERRIDE) — cp tezosx-shadownet-test.env.default $(TEST_OVERRIDE) and set the block window"; exit 1)
+	set -a; . $(TEST_ENV); . $(TEST_OVERRIDE); set +a
+	rm -f "$${SQLITE_PATH:-/tmp/bridge_tezosx_test.sqlite}"
+	$(py) dipdup -c $(TEST_CONFIG) run
+
+inspect-test:
+	set -a; . $(TEST_OVERRIDE); set +a
+	$(py) python verify_test_indexer.py "$${SQLITE_PATH:-/tmp/bridge_tezosx_test.sqlite}"

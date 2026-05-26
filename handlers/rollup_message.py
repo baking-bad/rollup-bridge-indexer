@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -186,6 +187,13 @@ class RollupMessageIndex:
         self._realtime_head_level: int = 0
         self._origination_level: int | None = None
 
+        # Test-only inbox-backfill window (prod leaves these unset -> full backfill from origination).
+        # The full inbox is ~18M messages; bounding it makes the stripped test indexer finish in seconds.
+        _sync_first = os.environ.get('ROLLUP_SYNC_FIRST_LEVEL')
+        _sync_last = os.environ.get('ROLLUP_SYNC_LAST_LEVEL')
+        self._sync_first_level: int | None = int(_sync_first) if _sync_first else None
+        self._sync_last_level: int | None = int(_sync_last) if _sync_last else None
+
         self._outbox_level_queue: set = set()
         self._create_inbox_batch: list[RollupInboxMessage] = []
         self._create_outbox_batch: list[RollupOutboxMessage] = []
@@ -236,6 +244,10 @@ class RollupMessageIndex:
             self._logger.info('Found %d not indexed Inbox Messages.', len(inbox))
 
             for inbox_message in inbox:
+                # Test-only upper bound: stop once we pass the requested window.
+                if self._sync_last_level is not None and inbox_message['level'] > self._sync_last_level:
+                    self._status = IndexStatus.realtime
+                    break
                 match inbox_message['type']:
                     case RollupInboxMessageType.transfer.value:
                         # Validate that transfer messages always have a target field
@@ -362,7 +374,12 @@ class RollupMessageIndex:
             self._inbox_id_cursor = 1 + last_saved_inbox_message.id
             self._logger.info('Last previous saved Inbox Message found. Going to continue with next Inbox Message.')
         except AttributeError:
-            if self.first_ticket_level is not None:
+            if self._sync_first_level is not None:
+                self._logger.info(
+                    'No previous saved Inbox Message found. TEST bound: start indexing since level %d.', self._sync_first_level
+                )
+                first_level = self._sync_first_level
+            elif self.first_ticket_level is not None:
                 self._logger.info('No previous saved Inbox Message found. Going to start indexing since first Whitelisted Token activity.')
                 first_level = self.first_ticket_level
             else:
