@@ -141,8 +141,12 @@ indexes:
       - etherlink_subsquid
       - etherlink_node
     handlers:
+      # TODO: add FEed address (new precompile (xtz bridge) for both tezosx and etherlink)
       - callback: etherlink.on_deposit
         contract: etherlink_rollup_kernel
+        name: Deposit
+      - callback: etherlink.on_deposit
+        contract: l2_withdrawal_precompile_native
         name: Deposit
       - callback: etherlink.on_deposit
         contract: l2_withdrawal_precompile_fa
@@ -156,6 +160,9 @@ indexes:
       - etherlink_node
     handlers:
       - callback: etherlink.on_xtz_deposit
+        # TODO: on the new kernel deposits are sent from FEED_DEPOSIT_ADDR (0x…feed), not 0x0.
+        # When this network migrates, add an `etherlink_deposit_sender` (0x…feed) contract and
+        # switch `from_` to it (see tezosx-shadownet.yaml). Verify against the live deposit tx first.
         from_: etherlink_rollup_kernel
 
 

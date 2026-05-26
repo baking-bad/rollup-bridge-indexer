@@ -42,6 +42,12 @@ contracts:
     address: '0x0000000000000000000000000000000000000000'
     typename: kernel
 
+  etherlink_deposit_sender:
+    kind: evm
+    # FEED_DEPOSIT_ADDR — synthetic `from` of all deposit-injection txs in the new kernel
+    address: '0x000000000000000000000000000000000000feed'
+    typename: kernel
+
   etherlink_rollup_kernel_native:
     kind: evm
     address: '0x0000000000000000000000000000000000000000'
@@ -119,9 +125,7 @@ indexes:
     datasources:
       - etherlink_node
     handlers:
-      - callback: etherlink.on_deposit
-        contract: etherlink_rollup_kernel
-        name: Deposit
+      # NOTE: here was etherlink_rollup_kernel which was a legacy 'precompile' for fa
       - callback: etherlink.on_deposit
         contract: l2_withdrawal_precompile_fa
         name: Deposit
@@ -133,7 +137,7 @@ indexes:
       - etherlink_node
     handlers:
       - callback: etherlink.on_xtz_deposit
-        from_: etherlink_rollup_kernel
+        from_: etherlink_deposit_sender
 
 
   etherlink_withdrawal_events:
@@ -142,12 +146,7 @@ indexes:
     datasources:
       - etherlink_node
     handlers:
-      - callback: etherlink.on_withdraw
-        contract: etherlink_rollup_kernel
-        name: Withdrawal
-      - callback: etherlink.on_xtz_withdraw
-        contract: etherlink_rollup_kernel_native
-        name: Withdrawal
+      # NOTE: etherlink_rollup_kernel no longer in use for withdrawal, never was for tezosx rollup
       - callback: etherlink.on_withdraw
         contract: l2_withdrawal_precompile_fa
         name: Withdrawal
