@@ -35,3 +35,7 @@
 # Docker smoke-test env fixture: dummy/public values only, used by tests/e2e/smoke_test.sh.
 # Allowlisted explicitly so the blanket `.env` exclusion above still hides real secret envs.
 !tests/e2e/smoke.env
+
+# Per-developer local Claude Code settings — not shared. Must come AFTER the `!**/*.json`
+# allowlist above (last-match-wins) or `.claude/settings.local.json` leaks back in.
+/.claude/
