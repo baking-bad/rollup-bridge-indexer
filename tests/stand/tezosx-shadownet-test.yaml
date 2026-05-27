@@ -6,7 +6,8 @@
 #
 # Run (oneshot: syncs the window, then exits — see dipdup.py is_oneshot()):
 #   set -a; . /path/to/.env.tezosx-shadownet-test; set +a
-#   uv run dipdup -c rollup_bridge_indexer/configs/tezosx-shadownet-test.yaml run
+#   uv run dipdup -c tests/stand/tezosx-shadownet-test.yaml run
+# (or just `make test-indexer`, which sources the env + override for you)
 #
 # Oneshot requires: NO tezos.head index + last_level set on every index. Both hold here.
 # Note: the custom rollup_message index (on_restart backfill) is NOT a dipdup index and

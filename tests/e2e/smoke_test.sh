@@ -17,7 +17,7 @@
 # exercises exactly what is actually deployed.
 #
 # Usage:
-#   tests/docker/smoke_test.sh [IMAGE_TAG] [--boot]
+#   tests/e2e/smoke_test.sh [IMAGE_TAG] [--boot]
 #
 #   IMAGE_TAG   Test this existing image instead of building one (CI passes the tag it
 #               just built). When omitted, the script builds `rollup-bridge-indexer:smoke`.
@@ -33,7 +33,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ENV_FILE="${REPO_ROOT}/tests/docker/smoke.env"
+ENV_FILE="${REPO_ROOT}/tests/e2e/smoke.env"
 PKG="rollup_bridge_indexer"
 
 # Live deployment targets (mainnet-staging reuses the mainnet overlay via NETWORK=mainnet).
@@ -97,7 +97,22 @@ for net in $OVERLAYS; do
     green "OK: ${net} config valid"
 done
 
-# --- 4. Optional: boot the indexer against a throwaway Postgres ---------------
+# --- 4. Image hygiene: no test code or tool caches shipped in the prod image ---
+# `.dockerignore` excludes tests/** and **/.*_cache/** — this asserts it actually held
+# (a cache's *.json once leaked past the `!**/*.json` re-include). Scoped to /opt/app and
+# excluding the venv's site-packages (deps bundle their own tests/, e.g. psutil/tests).
+step "Image hygiene: no tests/ or caches under /opt/app"
+LEAKED="$(docker run --rm --entrypoint sh "$IMAGE" -c \
+    "find /opt/app -not -path '*/site-packages/*' \
+        \( -path '*/tests/*' -o -name tests -o -name '.mypy_cache' -o -name '.ruff_cache' \
+           -o -name '.pytest_cache' -o -name '__pycache__' \) 2>/dev/null")"
+if [[ -n "$LEAKED" ]]; then
+    echo "$LEAKED" | head -20
+    fail "test code / tool caches leaked into the image (see .dockerignore)"
+fi
+green "OK: image carries no test code or tool caches"
+
+# --- 5. Optional: boot the indexer against a throwaway Postgres ---------------
 if [[ "$BOOT" == "1" ]]; then
     step "Booting indexer against throwaway Postgres (overlay: ${BOOT_NETWORK})"
     NET="bridge_smoke_net_$$"

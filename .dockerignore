@@ -9,8 +9,6 @@
 
 # Add Python code
 !**/*.py
-**/.*_cache
-**/__pycache__
 
 # Add configs and scripts (but not env!)
 !**/*.graphql
@@ -22,6 +20,16 @@
 !**/.keep
 
 # Never copy local-only trees, even though *.py/*.yaml/*.json are re-included above.
+# These MUST stay last: .dockerignore is last-match-wins, so a cache's *.json (e.g.
+# .mypy_cache/**/*.json) would otherwise be dragged back in by the `!**/*.json` re-include.
 # (COPY . ./ now copies from the repo root since the package was flattened.)
 .venv/**
 .git/**
+**/.*_cache
+**/.*_cache/**
+**/__pycache__
+**/__pycache__/**
+# Tests never run inside the prod image — the smoke test drives the built image from the
+# host via `docker run`, and `package verify` only imports handlers/hooks/types. Keep all
+# test code (unit/, e2e/, stand/) out of the shipped image.
+tests/**
