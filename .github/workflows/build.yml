@@ -52,6 +52,9 @@ jobs:
       - name: Build image for smoke test
         uses: docker/build-push-action@v5
         with:
+          # Path context, not the default git context: the latter walks the
+          # rollup_bridge_indexer -> . self-symlink and leaks tests/** into the image.
+          context: .
           file: Dockerfile
           load: true
           tags: rollup-bridge-indexer:smoke
@@ -68,6 +71,7 @@ jobs:
       - name: Publish image
         uses: docker/build-push-action@v5
         with:
+          context: .  # path context — see the smoke build above
           file: Dockerfile
           push: true
           cache-from: type=gha
