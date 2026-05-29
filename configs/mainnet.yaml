@@ -19,6 +19,12 @@ contracts:
     address: '0x0000000000000000000000000000000000000000'
     typename: kernel_native
 
+  etherlink_deposit_sender:
+    kind: evm
+    # FEED_DEPOSIT_ADDR — synthetic `from` of all deposit-injection txs in the new kernel
+    address: '0x000000000000000000000000000000000000feed'
+    typename: kernel
+
   l2_withdrawal_precompile_fa:
     kind: evm
     address: '0xff00000000000000000000000000000000000002'
@@ -141,12 +147,9 @@ indexes:
       - etherlink_subsquid
       - etherlink_node
     handlers:
-      # TODO: add FEed address (new precompile (xtz bridge) for both tezosx and etherlink)
       - callback: etherlink.on_deposit
+        # NOTE: legacy event emit address
         contract: etherlink_rollup_kernel
-        name: Deposit
-      - callback: etherlink.on_deposit
-        contract: l2_withdrawal_precompile_native
         name: Deposit
       - callback: etherlink.on_deposit
         contract: l2_withdrawal_precompile_fa
@@ -159,11 +162,11 @@ indexes:
       - etherlink_subsquid
       - etherlink_node
     handlers:
+      # NOTE: legacy transaction sender address
       - callback: etherlink.on_xtz_deposit
-        # TODO: on the new kernel deposits are sent from FEED_DEPOSIT_ADDR (0x…feed), not 0x0.
-        # When this network migrates, add an `etherlink_deposit_sender` (0x…feed) contract and
-        # switch `from_` to it (see tezosx-shadownet.yaml). Verify against the live deposit tx first.
         from_: etherlink_rollup_kernel
+      - callback: etherlink.on_xtz_deposit
+        from_: etherlink_deposit_sender
 
 
   etherlink_withdrawal_events:
@@ -173,9 +176,11 @@ indexes:
       - etherlink_subsquid
       - etherlink_node
     handlers:
+      # NOTE: legacy, required for first etherlink levels
       - callback: etherlink.on_withdraw
         contract: etherlink_rollup_kernel
         name: Withdrawal
+      # NOTE: legacy, required for first etherlink levels
       - callback: etherlink.on_xtz_withdraw
         contract: etherlink_rollup_kernel_native
         name: Withdrawal
