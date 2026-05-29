@@ -12,6 +12,7 @@ import aiohttp
 import orjson
 from dipdup.models import IndexStatus
 from pydantic import BaseModel
+from pydantic import ValidationError
 from pytezos import MichelsonRuntimeError
 from pytezos import MichelsonType
 from pytezos import michelson_to_micheline
@@ -57,6 +58,10 @@ if TYPE_CHECKING:
     from rollup_bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
 
+_WITHDRAW_MICHELSON_TYPE = MichelsonType.match(michelson_to_micheline(WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE))
+_FAST_WITHDRAW_MICHELSON_TYPE = MichelsonType.match(michelson_to_micheline(FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE))
+
+
 class InboxMessageService:
     @classmethod
     async def _read_inbox_level(cls, inbox_level: int) -> AsyncGenerator[RollupInboxMessage, None]:
@@ -100,6 +105,26 @@ class OutboxMessageService:
     @classmethod
     async def find_by_index(cls, outbox_level: int, index: int):
         return await RollupOutboxMessage.get(level=outbox_level, index=index)
+
+    @staticmethod
+    def extract_l1_amount(message: dict) -> int:
+        try:
+            parameters_micheline = message['transactions'][0]['parameters']
+        except (KeyError, IndexError, TypeError) as e:
+            raise ValueError(f'Outbox message has no transaction parameters: {message}') from e
+
+        for michelson_type, parameter_cls in (
+            (_WITHDRAW_MICHELSON_TYPE, ExecuteOutboxMessageTicketerWithdrawParameter),
+            (_FAST_WITHDRAW_MICHELSON_TYPE, ExecuteOutboxMessageFastWithdrawalDefaultParameter),
+        ):
+            try:
+                parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
+                parameters = parameter_cls.model_validate(parameters_data)
+            except (ValueError, MichelsonRuntimeError, ValidationError):
+                continue
+            return parameters.ticket.amount
+
+        raise ValueError(f"Can't extract ticket.amount from outbox message: {message}")
 
     async def update_proof(self):
         head_data = await self._tzkt.get_head_block()
@@ -441,10 +466,7 @@ class OutboxMessageParametersHash:
             transaction = self._message['message']['transactions'][0]
             parameters_micheline = transaction['parameters']
 
-            micheline_expression = michelson_to_micheline(WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE)
-            michelson_type = MichelsonType.match(micheline_expression)
-
-            parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
+            parameters_data = _WITHDRAW_MICHELSON_TYPE.from_micheline_value(parameters_micheline).to_python_object()
             parameters: ExecuteOutboxMessageTicketerWithdrawParameter = ExecuteOutboxMessageTicketerWithdrawParameter.model_validate(
                 parameters_data
             )
@@ -480,10 +502,7 @@ class OutboxMessageParametersHash:
             transaction = self._message['message']['transactions'][0]
             parameters_micheline = transaction['parameters']
 
-            micheline_expression = michelson_to_micheline(FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE)
-            michelson_type = MichelsonType.match(micheline_expression)
-
-            parameters_data = michelson_type.from_micheline_value(parameters_micheline).to_python_object()
+            parameters_data = _FAST_WITHDRAW_MICHELSON_TYPE.from_micheline_value(parameters_micheline).to_python_object()
             parameters: ExecuteOutboxMessageFastWithdrawalDefaultParameter = (
                 ExecuteOutboxMessageFastWithdrawalDefaultParameter.model_validate(parameters_data)
             )
