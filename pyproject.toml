@@ -1,8 +1,10 @@
 [project]
-name = "bridge_indexer"
+name = "rollup-bridge-indexer"
 version = "1.0.0"
 description = "Tezos to Etherlink Bridge Indexer"
-authors = ["Igor Sereda <sereda.igor.s@gmail.com>"]
+authors = [
+    { name = "Igor Sereda", email = "sereda.igor.s@gmail.com" },
+]
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -24,6 +26,8 @@ dev = [
 line-length = 140
 indent-width = 4
 target-version = "py312"
+# Don't descend into the rollup_bridge_indexer -> . self-symlink (would re-scan the root).
+extend-exclude = ["rollup_bridge_indexer"]
 
 [tool.ruff.format]
 quote-style = "single"
@@ -40,8 +44,33 @@ force-single-line = true
 line-length = 140
 target-version = ["py312"]
 skip-string-normalization = true
+# Don't recurse the rollup_bridge_indexer -> . self-symlink (black follows symlinks).
+extend-exclude = "/rollup_bridge_indexer/"
 
 [tool.mypy]
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
 strict = false
+# The package lives at the repo root; rollup_bridge_indexer is a self-symlink (-> .).
+# explicit_package_bases lets `mypy .` map root files to the package namespace,
+# and excluding the symlink name stops mypy from following it into infinite recursion.
+explicit_package_bases = true
+exclude = "rollup_bridge_indexer"
+
+# asyncpg ships no py.typed marker; silence import-untyped from its pgproto helpers.
+[[tool.mypy.overrides]]
+module = "asyncpg.*"
+ignore_missing_imports = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["rollup_bridge_indexer"]
+
+[tool.pytest.ini_options]
+# Tests live under tests/; pin testpaths so a bare `pytest` (no path arg) does not
+# follow the rollup_bridge_indexer -> . self-symlink and collect the suite N times.
+testpaths = ["tests"]
+norecursedirs = ["rollup_bridge_indexer", ".venv", ".git", ".*_cache"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

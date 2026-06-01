@@ -3,7 +3,9 @@
 !*/
 
 # Add metadata and build files
-!evm_indexer
+# Package is the repo root itself; rollup_bridge_indexer is a self-symlink (-> .) that
+# makes `import rollup_bridge_indexer` resolve. Track it so checkouts/CI/Docker get it.
+!rollup_bridge_indexer
 !.gitignore
 !.dockerignore
 !py.typed
@@ -12,6 +14,8 @@
 !**/pyproject.toml
 !**/*.lock
 !**/README.md
+!**/TESTING.md
+!**/CLAUDE.md
 !**/.keep
 
 # Add Python code
@@ -27,3 +31,11 @@
 !**/*.yml
 !**/*.j2
 !**/*.env.default
+!**/*.sh
+# Docker smoke-test env fixture: dummy/public values only, used by tests/e2e/smoke_test.sh.
+# Allowlisted explicitly so the blanket `.env` exclusion above still hides real secret envs.
+!tests/e2e/smoke.env
+
+# Per-developer local Claude Code settings — not shared. Must come AFTER the `!**/*.json`
+# allowlist above (last-match-wins) or `.claude/settings.local.json` leaks back in.
+/.claude/
