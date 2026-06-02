@@ -19,6 +19,7 @@ datasources:
   etherlink_subsquid:
     kind: evm.subsquid
     url: ${ETHERLINK_SUBSQUID_URL:-~}
+    api_key: ${SUBSQUID_API_KEY:-}
 
   rollup_node:
     kind: http
