@@ -63,6 +63,21 @@ contracts:
     address: '0xff00000000000000000000000000000000000001'
     typename: kernel_native
 
+  l2_tzbtc_token:
+    kind: evm
+    address: '0x03e39ff2b379fbcd9284ab457113d82ff4dabbf4'
+    typename: l2_token
+
+  l2_sirius_token:
+    kind: evm
+    address: '0x22565c35ad439cbb8399bfc733c56c9f5a10e3a6'
+    typename: l2_token
+
+  l2_usdt_token:
+    kind: evm
+    address: '0x3dff505a2a69e6e0b05fdb71b5f6ddd514fdaf47'
+    typename: l2_token
+
 indexes:
   tezos_head:
     kind: tezos.head
@@ -176,3 +191,18 @@ indexes:
         pattern:
           - type: sr_execute
             destination: tezos_fast_withdrawal_native
+
+  etherlink_token_balance_update_events:
+    kind: evm.events
+    datasources:
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_transfer
+        contract: l2_tzbtc_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_sirius_token
+        name: Transfer
+      - callback: etherlink.on_transfer
+        contract: l2_usdt_token
+        name: Transfer
