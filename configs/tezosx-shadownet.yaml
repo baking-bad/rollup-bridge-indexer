@@ -5,7 +5,12 @@ datasources:
 
   metadata:
     kind: tzip_metadata
-    network: ${NETWORK}
+    # Hardcoded, NOT ${NETWORK} (= tezosx-shadownet, the docker-compose config selector).
+    # tzip_metadata looks up L1 Tezos contract addresses; this deployment's L1 is
+    # shadownet (TZKT_URL=api.shadownet.tzkt.io). The dipdup metadata service indexes
+    # that exact chain under the name `shadownet`. (Its `tezosx` network is a different
+    # chain — its contracts don't exist on this L1, so it would never resolve our tokens.)
+    network: shadownet
     url: ${METADATA_URL}
 
   tezos_node:
