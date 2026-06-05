@@ -20,6 +20,17 @@ datasources:
   etherlink_node:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
+    # This overlay redefines the whole `datasources` block (to hardcode metadata.network).
+    # DipDup merges -c files with a shallow top-level dict.update, so the base dipdup.yaml
+    # `etherlink_node.http` is dropped entirely here. Without it ratelimit_rate defaults to 0
+    # (no client-side throttling) → we hammer the flaky previewnet node and self-inflict 503
+    # storms. Mirror the base values to throttle. tezosx has no Subsquid, so the node carries
+    # the full L2 backfill — batch_size/ratelimit matter even more than on mainnet.
+    http:
+      batch_size: 100
+      ratelimit_rate: 900
+      ratelimit_period: 60
+      ratelimit_sleep: 10
 
   rollup_node:
     kind: http
