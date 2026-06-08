@@ -1,0 +1,100 @@
+# Standalone config for the L2 Michelson deposit feature (Block 1). See README.md.
+# sqlite + oneshot (no tezos.head, last_level on every index).
+
+spec_version: 3.0
+package: rollup_bridge_indexer
+
+
+database:
+  kind: sqlite
+  path: ${SQLITE_PATH:-/tmp/bridge_michelson-l2-deposit.sqlite}
+
+
+datasources:
+  # L1 = shadownet (hooks/ServiceContainer need tzkt/metadata/tezos_node/rollup_node).
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+  metadata:
+    kind: tzip_metadata
+    network: ${NETWORK}
+    url: ${METADATA_URL}
+
+  tezos_node:
+    kind: http
+    url: ${TEZOS_NODE_URL}
+
+  rollup_node:
+    kind: http
+    url: ${ROLLUP_NODE_URL}
+    http:
+      retry_count: 2
+      retry_sleep: 1.0
+      retry_multiplier: 1.0
+      connection_timeout: 1
+      request_timeout: 4
+
+  # L2 Michelson side of Tezos X previewnet — the new source.
+  tezos_x_michelson_tzkt:
+    kind: tezos.tzkt
+    url: ${TEZOSX_MICHELSON_TZKT_URL}
+
+
+contracts:
+  tezos_smart_rollup:
+    kind: tezos
+    address: ${SMART_ROLLUP_ADDRESS}
+    typename: rollup
+
+  # TEZLINK_DEPOSITOR — mint source of L1->L2 Michelson deposits (implicit tz1).
+  tezos_x_michelson_depositor:
+    kind: tezos
+    address: tz1Ke2h7sDdakHJQh8WX4Z372du1KChsksyU
+
+
+indexes:
+  # L1 side: the internal rollup `default` call within the deposit op.
+  tezos_deposit_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    last_level: ${L1_LAST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_smart_rollup
+    handlers:
+      - callback: tezos.on_rollup_call
+        pattern:
+          - type: transaction
+            destination: tezos_smart_rollup
+            entrypoint: default
+
+  # L2 Michelson side: pseudo-transaction from the depositor to the tz1 receiver.
+  tezos_x_michelson_deposits:
+    kind: tezos.operations
+    first_level: ${L2_MICHELSON_FIRST_LEVEL}
+    last_level: ${L2_MICHELSON_LAST_LEVEL}
+    datasources:
+      - tezos_x_michelson_tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_x_michelson_depositor
+    handlers:
+      - callback: tezos_x.on_michelson_deposit
+        pattern:
+          - type: transaction
+            source: tezos_x_michelson_depositor
+
+
+advanced:
+  unsafe_sqlite: true
+  reindex:
+    config_modified: ignore
+    schema_modified: ignore
+    migration: ignore
+    rollback: ignore
+    manual: wipe
