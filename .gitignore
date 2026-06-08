@@ -14,7 +14,6 @@
 !**/pyproject.toml
 !**/*.lock
 !**/README.md
-!**/TESTING.md
 !**/CLAUDE.md
 !**/.keep
 
@@ -30,7 +29,6 @@
 !**/*.yaml
 !**/*.yml
 !**/*.j2
-!**/*.env.default
 !**/*.sh
 # Docker smoke-test env fixture: dummy/public values only, used by tests/e2e/smoke_test.sh.
 # Allowlisted explicitly so the blanket `.env` exclusion above still hides real secret envs.

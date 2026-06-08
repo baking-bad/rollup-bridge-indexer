@@ -25,12 +25,18 @@ shape. The whole `tests/` tree is excluded from the prod image (`.dockerignore: 
 
 ## `tests/stand/` — manual bug-repro harness (NOT a gate)
 - **Purpose:** a block-bounded, throwaway-sqlite test indexer to reproduce/verify specific
-  bridge bugs against real testnet data, without touching prod.
-- **Belongs:** the standalone test config, the `*.env.default` template, the sqlite inspector,
-  `TESTING.md`.
+  bridge behaviours against real testnet data, without touching prod.
+- **Layout:** a **per-case** harness under `cases/<name>/` — each case is a directory holding
+  `config.yaml` (standalone DipDup config) + `window.env` (block window + `SQLITE_PATH`) +
+  `verify.py` (case verdict) + `README.md`. Shared, committed, **secret-free** pieces:
+  `tezosx.env` (public endpoints + addresses) and `verify_lib.py` (sqlite plumbing + `Verdict`).
+  See `tests/stand/README.md`.
 - **Does NOT belong:** anything expected to pass/fail automatically or run in CI.
-- **Constraints:** **requires real deploy secrets** (`TEST_ENV` →
-  `/home/ubuntu/deployments/.../.env.tezosx-shadownet`), a hand-picked block window, and
-  produces sqlite for human inspection. The local `*.env` is gitignored — copy it from
-  `*.env.default`.
-- **Run:** `make test-indexer` → `make inspect-test`; `make check-test-config` validates.
+- **Constraints:** **secret-free** — everything (sqlite, public testnet endpoints, addresses,
+  block windows) is committed, so any setup reproduces a case with no extra files. Each
+  `cases/*/config.yaml` is a **standalone copy, not an overlay** on `configs/`: a fix to a prod
+  config must be mirrored into every affected case config by hand. `<name>` must be a valid
+  Python identifier (underscores, no dashes) — `inspect-test` runs the verifier as a module.
+- **Run:** `make test-indexer CASE=<name>` → `make inspect-test CASE=<name>`;
+  `make check-test-config CASE=<name>` validates. These load `tezosx.env` + the case
+  `window.env` via `dipdup -e` (DipDup parses the env files itself — do not shell-source them).

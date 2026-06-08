@@ -47,3 +47,22 @@ files itself — do not shell-source them).
 3. Add `verify.py` that dumps the relevant tables and declares expectations with
    `verify_lib.Verdict` (import it as `from tests.stand import verify_lib as lib`).
 4. Add `README.md` describing the reproduced behaviour and the expected verdict.
+
+## Gotchas
+
+- **Configs are standalone copies, not overlays.** Each `cases/<name>/config.yaml` is a full,
+  self-contained DipDup config — it does NOT layer on top of `configs/`. A fix applied to a
+  prod config (e.g. a precompile address, an index filter) must be **mirrored by hand** into
+  every affected case config, or the case will go GREEN against stale config.
+- **Package path resolves via the editable install.** `package: rollup_bridge_indexer` finds
+  the package through the editable install, independent of the config file's location — so a
+  config under `tests/stand/cases/<name>/` works with no `DIPDUP_PACKAGE_PATH` export
+  (verify with `make check-test-config CASE=<name>`, i.e. `config export --unsafe`).
+- **Oneshot exit** requires every index to carry a `last_level` and NO `tezos.head` index —
+  then `dipdup run` syncs the window and exits on its own (no Ctrl+C).
+- **Rollup backfill must be bounded.** `on_restart` backfills the rollup inbox from
+  origination (millions of messages, hours) and is NOT bounded by index `last_level`. Bracket
+  it with `ROLLUP_SYNC_FIRST/LAST_LEVEL` in `window.env` (read in `handlers/rollup_message.py`).
+  Prod leaves these unset → unchanged behaviour.
+- **sqlite is fine** only because the seed SQL is one plain INSERT. If you add Postgres-only
+  raw SQL to a hook/seed, the sqlite stand will break — keep raw SQL portable.

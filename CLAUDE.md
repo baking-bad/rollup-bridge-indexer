@@ -52,7 +52,7 @@ The DipDup package **is the repo root** — `dipdup.yaml`, `handlers/`, `models/
 Tests are split by purpose and kept out of the prod image (`.dockerignore` excludes `tests/**`):
 - `tests/unit/` — pytest suite (decoder, rollup, types); `pyproject.toml` pins `testpaths=["tests/unit"]`. `make test`.
 - `tests/e2e/` — production-readiness gate. `make prod-check [BOOT=1]` runs `run_all.sh` = the full sequence (black/ruff/mypy check + unit + docker smoke). The docker smoke (`smoke_test.sh` + `smoke.env`) is also `make docker-test`; its hermetic form is the CI publish gate. It builds the image, runs `package verify`, validates every deployed overlay, and audits that no test code/caches ship in the image.
-- `tests/stand/` — block-bounded test-indexer stand: standalone `tezosx-shadownet-test.yaml` (resolves the package via the editable install, so it lives outside `configs/`), the `*.env.default` template, the local gitignored `.env`, `verify_test_indexer.py`, and `TESTING.md`. `make test-indexer` / `inspect-test` / `check-test-config`.
+- `tests/stand/` — block-bounded, secret-free **per-case** test-indexer stand: each case is `tests/stand/cases/<name>/` (`config.yaml` + `window.env` + `verify.py` + `README.md`); shared committed `tezosx.env` (public endpoints/addresses) + `verify_lib.py`. Each `config.yaml` is standalone (resolves the package via the editable install, so it lives outside `configs/`) and is a copy, not an overlay — mirror prod-config fixes into it. `make test-indexer CASE=<name>` / `inspect-test CASE=<name>` / `check-test-config CASE=<name>` (load envs via `dipdup -e`). See `tests/stand/README.md`.
 
 ### Dual-Chain Event Processing
 
