@@ -40,6 +40,11 @@ datasources:
     kind: tezos.tzkt
     url: ${TEZOSX_MICHELSON_TZKT_URL}
 
+  # Michelson node — the deposit event (inbox coords) lives only here, not in TzKT.
+  tezos_x_michelson_node:
+    kind: http
+    url: ${TEZOSX_MICHELSON_NODE_URL}
+
 
 contracts:
   tezos_smart_rollup:

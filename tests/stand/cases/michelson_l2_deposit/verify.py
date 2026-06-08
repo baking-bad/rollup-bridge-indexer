@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Verdict for the michelson-l2-deposit case.
+"""Verdict for the michelson-l2-deposit case: L2 deposit indexed + matched to its L1 op.
 
-RED until Block 1 lands: L1 side present, L2 Michelson deposit not indexed/matched.
-NOTE: the GREEN check assumes Milestone 2 stores the Michelson deposit in `l2_deposit`
-(EtherlinkDepositOperation). If M2 introduces a dedicated model, update the check below.
+The Michelson deposit is stored in `l2_deposit` (EtherlinkDepositOperation, reused) and
+matched to the L1 side by inbox coords.
 """
 
 from __future__ import annotations

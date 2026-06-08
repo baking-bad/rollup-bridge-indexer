@@ -1,8 +1,8 @@
 # Case: michelson-l2-deposit
 
-TDD harness for **Block 1 — L2 Michelson deposits** (tz1 receiver on Tezos X). Currently a
-**RED baseline**: the L1 side is indexed but the L2 Michelson side is not (the feature isn't
-built yet). It also serves as the risk-check that DipDup can subscribe by `source = tz1`.
+Regression for **Block 1 — L2 Michelson deposits** (tz1 receiver on Tezos X): the L2
+Michelson deposit is indexed (`source = tz1` depositor, amount>0; inbox coords from the
+node) and matched to its L1 deposit by inbox coords. Should stay GREEN.
 
 ## Verified on-chain pair
 
@@ -27,17 +27,14 @@ Context-only (NOT tested, just be aware):
   special contract (not a direct call from the depositor) → must NOT be indexed; excluded by
   the discriminator.
 
-## Expected
+## Expected (GREEN)
 
-- **RED (now)**: `l1_deposit ≥ 1` present, but no L2 Michelson deposit row → `bridge_operation`
-  has the L1 side only. (The handler is a stub that just logs the caught op — proving the
-  `source=tz1` subscription works.)
-- **GREEN (after the feature)**: the L2 Michelson deposit is indexed with inbox coords and
-  matched to the L1 deposit.
+`l1_deposit = 1`, `l2_deposit = 1`, and `bridge_operation` FINISHED with both sides
+(`l1=True l2=True`), matched by inbox coords `(3599297, 8)`.
 
 ## Run
 
 ```bash
-make test-indexer CASE=michelson_l2_deposit   # logs should show on_michelson_deposit caught opAhDW…
-make inspect-test CASE=michelson_l2_deposit   # RED until the feature lands
+make test-indexer CASE=michelson_l2_deposit   # logs: on_michelson_deposit registered opAhDW… inbox=(3599297,8)
+make inspect-test CASE=michelson_l2_deposit
 ```
