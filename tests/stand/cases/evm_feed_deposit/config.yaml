@@ -1,17 +1,7 @@
-# Stripped, block-bounded TEST config for tezosx-shadownet.
-#
-# Purpose: reproduce/verify Tezos->EVM deposit indexing on a tight block window
-# without touching prod. Self-contained (use a single -c), so it does NOT layer on
-# dipdup.yaml — that lets us drop hasura/sentry/tezos_head and switch to sqlite.
-#
-# Run (oneshot: syncs the window, then exits — see dipdup.py is_oneshot()):
-#   set -a; . /path/to/.env.tezosx-shadownet-test; set +a
-#   uv run dipdup -c tests/stand/tezosx-shadownet-test.yaml run
-# (or just `make test-indexer`, which sources the env + override for you)
-#
-# Oneshot requires: NO tezos.head index + last_level set on every index. Both hold here.
-# Note: the custom rollup_message index (on_restart backfill) is NOT a dipdup index and
-# syncs to the live rollup head regardless of the window; fine for a fresh shadownet rollup.
+# Standalone config for the evm-feed-deposit regression case. See README.md.
+# sqlite + oneshot (no tezos.head, last_level on every index).
+# Note: the custom rollup_message backfill (on_restart) is NOT a dipdup index and syncs to
+# the live rollup head regardless of the window — fine for the fresh shadownet rollup.
 
 spec_version: 3.0
 package: rollup_bridge_indexer
