@@ -42,6 +42,12 @@ datasources:
       connection_timeout: 1
       request_timeout: 4
 
+  # L2 Michelson side of Tezos X — a TzKT over the rollup's Michelson chain
+  # (previewnet: https://api.previewnet.tezosx.tzkt.io — base host, DipDup appends /v1).
+  tezos_x_michelson_tzkt:
+    kind: tezos.tzkt
+    url: ${TEZOSX_MICHELSON_TZKT_URL}
+
 contracts:
   tezos_smart_rollup:
     kind: tezos
@@ -52,6 +58,13 @@ contracts:
     kind: tezos
     address: ${FAST_WITHDRAWAL_NATIVE_ADDRESS}
     typename: fast_withdrawal
+
+  # TEZLINK_DEPOSITOR — synthetic source of L1->L2 Michelson XTZ deposits: the kernel
+  # const [0u8; 22] (all-zero serialized implicit contract) rendered in base58.
+  # See handlers/michelson_deposit.py for the kernel citations.
+  tezos_x_michelson_depositor:
+    kind: tezos
+    address: tz1Ke2h7sDdakHJQh8WX4Z372du1KChsksyU
 
   etherlink_rollup_kernel:
     kind: evm
@@ -170,6 +183,26 @@ indexes:
       - callback: etherlink.on_xtz_deposit
         from_: etherlink_deposit_sender
 
+
+  # L2 Michelson XTZ deposits (tz1 receiver): synthetic pseudo-transactions emitted by
+  # the kernel from TEZLINK_DEPOSITOR; matched to the L1 leg by reconstructed op-hash
+  # (handlers/michelson_matcher.py). Set L2_MICHELSON_FIRST_LEVEL to the first
+  # event-era kernel level — earlier synthetic ops use an unverified derivation and
+  # would sit unmatched forever.
+  tezos_x_michelson_deposits:
+    kind: tezos.operations
+    first_level: ${L2_MICHELSON_FIRST_LEVEL}
+    datasources:
+      - tezos_x_michelson_tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_x_michelson_depositor
+    handlers:
+      - callback: tezos.on_michelson_deposit
+        pattern:
+          - type: transaction
+            source: tezos_x_michelson_depositor
 
   etherlink_withdrawal_events:
     kind: evm.events
