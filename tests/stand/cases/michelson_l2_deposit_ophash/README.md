@@ -1,15 +1,26 @@
-# Case: michelson-l2-deposit (op-hash variant)
+# Case: michelson-l2-deposit (op-hash variant) — THE PRODUCTION PATH
 
-The **op-hash** variant of [`michelson_l2_deposit`](../michelson_l2_deposit/README.md):
-same on-chain pair, same expected link, but established **without reading the deposit
-event and without any Tezos node call**.
+Regression for the **production** L2 Michelson XTZ deposit pipeline: same on-chain
+pair as the sibling [`michelson_l2_deposit`](../michelson_l2_deposit/README.md), but
+matched **without reading the deposit event and without any Tezos node call** — the
+way the deployed indexer does it.
 
 On Tezos X an XTZ deposit to a Michelson `tz1` receiver lands on L2 as a *synthetic*
 pseudo-Michelson `transaction` from TEZLINK_DEPOSITOR. TzKT drops the kernel's deposit
-event (implicit tz1 source), so the sibling case reads the inbox coords from the
-**Michelson node** per op. This variant instead **reconstructs the L2 synthetic-tx
-op-hash from L1 inbox data alone** and matches by hash equality — deterministic, no
-event, no node round-trip (`handlers/michelson_deposit.py`).
+event (implicit tz1 source), so production **reconstructs the L2 synthetic-tx op-hash
+from L1 inbox data alone** and matches by hash equality — deterministic, no event, no
+node round-trip. Pipeline under test:
+
+- `tezos.on_michelson_deposit` — records the full consumer-visible L2 row
+  (xtz token + ticket, amount scaled mutez→wei to match the token's 18 decimals);
+- `handlers/michelson_matcher.py` — the separated matcher step: reconstructs the
+  expected op-hash per unmatched L1 leg (`expected_op_hash_from_inbox`), links the
+  legs, backfills inbox coords onto the L2 row, finishes the `bridge_operation`;
+- `tezos.on_rollup_call` — stores the real `tz1…` receiver as `l1_deposit.l2_account`
+  (v1-RLP routing decode, not the legacy 20-byte slice).
+
+Contrast `tezos_x.on_michelson_deposit` (sibling case): node-polling, ~715 ms/deposit,
+loses a deposit on a dropped node call. This variant: ~54 µs/deposit CPU, no I/O.
 
 ## Verified on-chain pair
 
@@ -21,28 +32,20 @@ event, no node round-trip (`handlers/michelson_deposit.py`).
 
 The op-hash reconstructed from inbox `(3599297, 8)` equals the L2 op-hash above.
 
-## What this proves (reconstruction-only scope)
-
-`verify.py` replays **every** indexed `rollup_inbox_message` through
-`expected_op_hash_from_inbox` (returns `None` for EVM-target / non-deposit rows) and
-checks that the op-hash of the L2 deposit recorded by `tezos.on_michelson_deposit`
-appears among them. The match lives in the verifier, **not** in the production
-bridge matcher — the L2 row is stored with no inbox coords and no `l2_token`, so the
-matcher leaves it untouched. This case demonstrates the op-hash link; wiring it into
-`bridge_matcher` is a separate step.
-
-Contrast `tezos_x.on_michelson_deposit` (sibling case): node-polling, ~715 ms/deposit,
-loses a deposit on a dropped node call. This variant: ~54 µs/deposit CPU, no I/O.
-
 ## Expected (GREEN)
 
-`rollup_inbox_message >= 1`, at least one inbox row reconstructs to a tz1-target
-op-hash, `l2_deposit >= 1`, and the L2 deposit op-hash matches its L1-reconstructed
-op-hash.
+Produced by the **real matcher**, asserted from the result DB:
+
+- `l1_deposit = 1` with `l2_account = tz1PSJR6…` (routing decode);
+- `l2_deposit = 1`: the synthetic op-hash, `token_id = xtz`,
+  `amount = 1000000000000000000` (wei), inbox coords `(3599297, 8)` backfilled;
+- `bridge_operation` **FINISHED**, both legs linked, `l2_account = tz1PSJR6…`;
+- secondary: the inbox row still reconstructs to the expected op-hash (separates a
+  matcher regression from a derivation regression).
 
 ## Run
 
 ```bash
-make test-indexer CASE=michelson_l2_deposit_ophash   # logs: L2 Michelson deposit recorded (op-hash variant) … opAhDW…
+make test-indexer CASE=michelson_l2_deposit_ophash   # logs: Matched 1 L2 Michelson deposit(s) by op-hash
 make inspect-test CASE=michelson_l2_deposit_ophash
 ```

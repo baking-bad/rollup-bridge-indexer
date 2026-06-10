@@ -1,8 +1,16 @@
-# Case: michelson-l2-deposit
+# Case: michelson-l2-deposit — EVENTS/NODE-POLLING VARIANT (future path, NOT prod)
 
-Regression for **Block 1 — L2 Michelson deposits** (tz1 receiver on Tezos X): the L2
-Michelson deposit is indexed (`source = tz1` depositor, amount>0; inbox coords from the
-node) and matched to its L1 deposit by inbox coords. Should stay GREEN.
+> **Production uses the op-hash variant** — see
+> [`michelson_l2_deposit_ophash`](../michelson_l2_deposit_ophash/README.md). This case
+> keeps the **future** events-based path alive: matching by inbox coords read from the
+> deposit event, which is what production should switch to once TzKT serves
+> implicit-source events. Pieces that exist ONLY for this variant: the
+> `tezos_x.on_michelson_deposit` handler and the `tezos_x_michelson_node` datasource
+> (this case's `config.yaml`).
+
+The L2 Michelson deposit is indexed (`source = tz1` depositor, amount>0; inbox coords
+from the node receipt's deposit event) and matched to its L1 deposit by inbox coords.
+Should stay GREEN.
 
 ## Verified on-chain pair
 
