@@ -294,6 +294,9 @@ class RollupMessageIndex:
                 self._logger.info('Successfully saved %d new Inbox Messages.', len(self._create_inbox_batch))
                 self._inbox_level_cursor = self._create_inbox_batch[-1].level
                 BridgeMatcherLocks.set_pending_inbox()
+                # A late-arriving inbox message may complete an already-recorded L2
+                # Michelson deposit — re-trigger the op-hash matcher step too.
+                BridgeMatcherLocks.set_pending_michelson_deposits()
 
                 del self._create_inbox_batch[:]
 

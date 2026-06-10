@@ -5,6 +5,8 @@ from dipdup.context import HandlerContext
 from dipdup.index import MatchedHandler
 
 from rollup_bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from rollup_bridge_indexer.handlers.michelson_matcher import check_pending_michelson_deposits
+from rollup_bridge_indexer.handlers.service_container import get_container
 
 logger = logging.getLogger('rollup_bridge_indexer.handlers.batch')
 
@@ -23,6 +25,8 @@ async def batch(
 
         await BridgeMatcher.check_pending_etherlink_deposits()
         await BridgeMatcher.check_pending_etherlink_xtz_deposits()
+        # Interim op-hash matching of L2 Michelson deposits — delete with handlers/michelson_matcher.py.
+        await check_pending_michelson_deposits(get_container(ctx).bridge.smart_rollup_address)
 
         await BridgeMatcher.check_pending_etherlink_withdrawals()
 

@@ -12,6 +12,7 @@ async def on_synchronized(
     BridgeMatcherLocks.set_pending_inbox()
     BridgeMatcherLocks.set_pending_etherlink_deposits()
     BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
+    BridgeMatcherLocks.set_pending_michelson_deposits()
     BridgeMatcherLocks.set_pending_etherlink_withdrawals()
     BridgeMatcherLocks.set_pending_outbox()
     BridgeMatcherLocks.set_pending_tezos_withdrawals()

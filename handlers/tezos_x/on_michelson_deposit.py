@@ -1,12 +1,29 @@
+"""L2 Michelson deposit — EVENT/NODE-POLLING variant. NOT wired into production.
+
+Production uses the op-hash variant (`handlers/tezos/on_michelson_deposit.py` +
+`handlers/michelson_matcher.py`). This handler is kept as the FUTURE path: it reads
+the kernel's `tag=deposit` event (inbox coords) so deposits flow through the regular
+coords-based matcher — exactly what production should do once TzKT serves
+implicit-source events (today it drops them, and the per-op node poll costs ~715 ms
+and loses a deposit on a dropped call).
+
+Used ONLY by the stand case `tests/stand/cases/michelson_l2_deposit/`, which also
+needs the `tezos_x_michelson_node` datasource below — both exist solely for this
+variant. When TzKT ships the events: point this at the TzKT payload instead of the
+node receipt, promote it to prod config, and delete the op-hash matcher.
+"""
+
 import aiohttp
 from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosOperationData
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from rollup_bridge_indexer.handlers.michelson_deposit import WEI_PER_MUTEZ
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import TezosTicket
 
+# Exists only for this variant's stand case — not in any prod config.
 _NODE_DATASOURCE = 'tezos_x_michelson_node'
 
 
@@ -72,7 +89,7 @@ async def on_michelson_deposit(
         l2_token=etherlink_token,
         ticket=tezos_ticket,
         ticket_owner=etherlink_token.id,
-        amount=str(op.amount),
+        amount=str(op.amount * WEI_PER_MUTEZ),  # mutez -> wei, like every other xtz l2_deposit row
         inbox_message_level=inbox_message_level,
         inbox_message_index=inbox_message_index,
     )

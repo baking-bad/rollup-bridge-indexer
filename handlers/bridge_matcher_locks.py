@@ -7,10 +7,17 @@ class BridgeMatcherLocks:
     pending_inbox: bool = False
     pending_outbox: bool = False
     pending_claimed_fast_withdrawals: bool = False
+    # Interim op-hash matching of L2 Michelson deposits (handlers/michelson_matcher.py);
+    # remove together with that module when TzKT serves implicit-source deposit events.
+    pending_michelson_deposits: bool = False
 
     @classmethod
     def set_pending_tezos_deposits(cls):
         BridgeMatcherLocks.pending_tezos_deposits = True
+
+    @classmethod
+    def set_pending_michelson_deposits(cls):
+        BridgeMatcherLocks.pending_michelson_deposits = True
 
     @classmethod
     def set_pending_etherlink_withdrawals(cls):
