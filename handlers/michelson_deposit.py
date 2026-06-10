@@ -23,8 +23,56 @@ data, ``inbox_level``/``inbox_msg_id`` = the inbox message's ``level``/``index``
 ``raw_rollup_address`` is the rollup's address, a per-rollup constant. So we
 compute the expected L2 op-hash on the L1 side and match the TzKT-observed L2
 synthetic transaction by hash equality — deterministic, no node round-trip, no
-dependence on the dropped event. Verified end-to-end against live previewnet
-deposits (see tests/unit/tezos/test_michelson_deposit.py).
+dependence on the dropped event.
+
+Kernel source — every step below was diffed against the Rust
+------------------------------------------------------------
+Etherlink / Tezos X smart-rollup kernel, ``etherlink/kernel_latest/`` in the Tezos
+monorepo (canonical: gitlab.com/tezos/tezos; permalinks below via the GitHub mirror
+``tezos/tezos-mirror`` pinned to commit ``1fa56773``). Cite the *symbol*, not the
+line — line numbers drift, but the symbol names below are greppable.
+
+  * Hashed struct + RLP field order: ``struct Deposit { amount: U256 /*wei*/,
+    receiver, inbox_level: u32, inbox_msg_id: u32 }`` with ``#[derive(RlpEncodable)]``,
+    and ``Deposit::hash(seed) = keccak256(rlp_bytes ‖ seed)`` (seed appended AFTER
+    the RLP). -> kernel/src/bridge.rs
+  * Seed = the 20-byte raw rollup address from reveal-metadata: ``handle_deposit``
+    does ``deposit.hash(&host.reveal_metadata().raw_rollup_address)``. -> kernel/src/inbox.rs
+  * ``amount`` is in WEI: ``eth_from_mutez(mutez) = mutez * 10**12`` is applied to the
+    ticket amount before it lands in ``Deposit.amount``. -> ethereum/src/wei.rs
+  * The 32-byte keccak digest is wrapped as ``OperationHash``; the ``o`` base58check
+    prefix is the standard ``tezos_crypto_rs`` serialization (not hand-rolled), and
+    the op is assembled carrying that ``tx_hash`` as its operation hash.
+    -> kernel/src/apply.rs, kernel/src/chains.rs
+  * Routing decode + receiver enum: ``Deposit::parse_deposit_info`` / ``DepositInfo::decode``
+    / ``DepositReceiver`` (see ``parse_routing_info`` below). -> kernel/src/bridge.rs
+  * The synthetic transfer's source ``TEZLINK_DEPOSITOR`` is the const ``[0u8; 22]``
+    (all-zero serialized implicit Contract); ``tz1Ke2h7sDdakHJQh8WX4Z372du1KChsksyU``
+    is just the base58 rendering of that all-zero tz1 pkh. -> kernel/src/bridge.rs
+
+    https://github.com/tezos/tezos-mirror/blob/1fa56773/etherlink/kernel_latest/kernel/src/bridge.rs
+    https://github.com/tezos/tezos-mirror/blob/1fa56773/etherlink/kernel_latest/kernel/src/inbox.rs
+    https://github.com/tezos/tezos-mirror/blob/1fa56773/etherlink/kernel_latest/ethereum/src/wei.rs
+
+What this depends on — READ before trusting it across a kernel upgrade
+----------------------------------------------------------------------
+The op-hash derivation has NO in-band version marker: nothing in the hash says which
+kernel produced it. It is versioned only by *kernel snapshot* — the monorepo carries
+frozen kernels (``kernel_bifrost``/``calypso``/``dionysus``/``ebisu``/``farfadet`` …)
+beside ``kernel_latest``, and the tezlink/Michelson path is recent and still churning
+(the pinned commit is itself a 2026-06 TezosX deposit fix). A future upgrade can
+change the RLP shape, the ``10**12`` scaling, the seed, or the primitive at some block
+height, and we would silently compute the wrong hash on one side of that boundary —
+fail-quiet, surfacing only as unmatched L2 deposits, NOT an exception. If you ever
+index across a kernel upgrade, treat these params as protocol-version-scoped (like
+``ProtocolConstantStorage``): pin them to the kernel active in the indexed window and
+add a golden vector per era. (Contrast ``parse_routing_info``, which IS version-gated
+in-band by a version byte and so fails closed on an unknown version.)
+
+Verified end-to-end against live previewnet deposits: two golden vectors from
+different epochs both reproduce the TzKT-served L2 op-hash under this single
+implementation (tests/unit/tezos/test_michelson_deposit.py), and the live stand case
+``tests/stand/cases/michelson_l2_deposit_ophash`` re-checks it against indexed data.
 """
 
 from __future__ import annotations
@@ -61,15 +109,24 @@ class DepositReceiver:
 
 
 def parse_routing_info(raw: bytes) -> DepositReceiver:
-    """Decode versioned routing data (``Deposit::parse_deposit_info``, bridge.rs).
+    """Decode versioned routing data — kernel ``Deposit::parse_deposit_info`` +
+    ``DepositInfo::decode`` (length dispatch then a version byte) and the
+    ``DepositReceiver`` enum's RLP decode, in ``kernel/src/bridge.rs``:
+    https://github.com/tezos/tezos-mirror/blob/1fa56773/etherlink/kernel_latest/kernel/src/bridge.rs
 
     - 20 bytes  -> legacy v0: bare EVM address.
-    - 52 bytes  -> legacy v1: EVM address + 32-byte chain_id (little-endian).
-    - else      -> versioned RLP, first byte = version. Only version 1 is known:
-      ``[version=1][rlp([receiver, option<chain_id>])]`` where ``receiver`` is
-      either a scalar H160 (EVM) or ``[tag=0x01, 22-byte serialized Contract]``
-      (Tezos; implicit ``tz1/tz2/tz3`` only — originated ``KT1`` is rejected by
-      the kernel).
+    - 52 bytes  -> legacy: EVM address + 32-byte chain_id (little-endian,
+      ``U256::from_little_endian``).
+    - else      -> versioned RLP, first byte = version. Only version 1 is accepted
+      (kernel rejects others); ``[version=1][rlp([receiver, option<chain_id>])]``
+      where ``receiver`` is either a scalar H160 (EVM) or ``[tag=0x01, 22-byte
+      serialized Contract]`` (Tezos; implicit ``tz1/tz2/tz3`` only — originated
+      ``KT1`` is rejected: "Deposit to smart contracts are disabled"). The RLP
+      ``chain_id`` is little-endian too (kernel ``decode_field_u256_le``).
+
+    NB the version byte gates ONLY the routing encoding, not the op-hash derivation
+    (which carries no version — see module docstring). ``chain_id`` is parsed for
+    completeness but is not part of the op-hash or the L1<->L2 match.
     """
     if len(raw) == 20:
         return DepositReceiver(kind='evm', address='0x' + raw.hex(), rlp_item=raw)
@@ -95,7 +152,8 @@ def parse_routing_info(raw: bytes) -> DepositReceiver:
         raise ValueError('malformed v1 routing data')
     receiver_item = decoded[0]
     chain_raw = decoded[1] if len(decoded) > 1 else b''
-    chain_id = int.from_bytes(chain_raw, 'big') if chain_raw else None
+    # little-endian: kernel reads this field with `decode_field_u256_le` (bridge.rs).
+    chain_id = int.from_bytes(chain_raw, 'little') if chain_raw else None
 
     if isinstance(receiver_item, list):
         # Tezos receiver: [tag, 22-byte serialized Contract]
@@ -154,10 +212,16 @@ def compute_deposit_op_hash(
 ) -> str:
     """Reconstruct the L2 synthetic-transaction op-hash from L1 deposit data.
 
-    ``amount_mutez`` is the ticket amount in mutez (scaled to wei internally).
-    ``rollup_address`` is the ``sr1…`` rollup the deposit went to.
+    Mirrors kernel ``Deposit::hash`` (``kernel/src/bridge.rs``); each line maps 1:1
+    to the Rust — see the module docstring for the pinned permalinks and the
+    versioning caveat. ``amount_mutez`` is the ticket amount in mutez (scaled to wei
+    internally). ``rollup_address`` is the ``sr1…`` rollup the deposit went to.
     """
+    # RLP field order == `struct Deposit { amount /*wei*/, receiver, inbox_level, inbox_msg_id }`
+    # (`#[derive(RlpEncodable)]`); amount is wei = mutez * 10**12 (`eth_from_mutez`, wei.rs).
     body = rlp.encode([amount_mutez * WEI_PER_MUTEZ, receiver.rlp_item, inbox_level, inbox_msg_id])
+    # seed = the raw 20-byte rollup address (`handle_deposit`, inbox.rs); appended AFTER the rlp.
     seed = base58_decode(rollup_address.encode())
     digest = keccak.new(digest_bits=256, data=body + seed).digest()
+    # 32-byte keccak digest -> `OperationHash` (`o` is the standard base58 prefix, not hand-rolled).
     return base58_encode(digest, b'o').decode()
