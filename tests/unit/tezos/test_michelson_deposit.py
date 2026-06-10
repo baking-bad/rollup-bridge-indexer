@@ -118,6 +118,19 @@ def test_op_hash_live_vector():
     assert op_hash == 'opAhDWYxwDWFnKXG892itvC1TmMtUbeuSThVopzVDGd41mRxomE'
 
 
+def test_parse_v1_tz3_receiver_and_op_hash_live_vector():
+    # Real previewnet tz3-receiver deposit (L2 op @ level 500705), live-verified
+    # 2026-06-10 against inbox (3540152, 10): the curve-tag table must route
+    # tz2/tz3 receivers, not just tz1.
+    raw = bytes.fromhex('01dad801960002c0d8a3435278b955bd81c66e96ee76a87a42e6cdc0')
+    recv = parse_routing_info(raw)
+    assert recv.kind == 'tezos'
+    assert recv.address == 'tz3duiskLgZdaEvkgEwWYF4mUnVXde7JTtef'
+    assert l2_account_from_routing_info(raw) == 'tz3duiskLgZdaEvkgEwWYF4mUnVXde7JTtef'
+    op_hash = compute_deposit_op_hash(10_000_000, recv, 3540152, 10, ROLLUP)
+    assert op_hash == 'opEeCWYHcYbQWWvfef2JBoGJBGTKougCGS3UrbgxN9YcsZbdzXt'
+
+
 def test_receiver_dataclass_is_hashable():
     recv = DepositReceiver(kind='evm', address='0x' + 'ab' * 20, rlp_item=bytes.fromhex('ab' * 20))
     assert recv.kind == 'evm'
