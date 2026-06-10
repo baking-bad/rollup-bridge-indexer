@@ -182,6 +182,30 @@ def _serialized_contract_to_str(contract_bin: bytes) -> str:
     raise ValueError(f'unknown contract tag: {contract_bin[0]}')
 
 
+def l2_account_from_routing_info(raw: bytes) -> str:
+    """The ``l2_account`` string ``on_rollup_call`` should store for this routing data.
+
+    Versioned routing (v1 RLP) resolves to the real receiver — ``tz1…`` base58 for a
+    Tezos target, bare 40-hex (no ``0x``, matching the historical column format) for an
+    EVM target. Legacy shapes keep the historical behavior byte-identical:
+
+    - 20B (bare EVM) / 52B (EVM + chain_id) — handled by ``parse_routing_info``;
+    - 40B FA routing (receiver ‖ proxy) is NOT versioned routing — ``parse_routing_info``
+      would misread byte 0 as a version tag, so it is sliced up front like before;
+    - anything unparseable falls back to the legacy ``raw[:20].hex()`` slice rather than
+      raising, so an exotic deposit is still indexed (it just can't be routed precisely).
+    """
+    if len(raw) == 40:
+        return raw[:20].hex()
+    try:
+        receiver = parse_routing_info(raw)
+    except ValueError:
+        return raw[:20].hex()
+    if receiver.kind == 'evm':
+        return receiver.address.removeprefix('0x')
+    return receiver.address
+
+
 def expected_op_hash_from_inbox(message: dict, level: int, index: int, rollup_address: str) -> str | None:
     """Expected L2 synthetic-tx op-hash for a stored rollup inbox `transfer` message.
 
