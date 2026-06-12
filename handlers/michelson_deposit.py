@@ -83,12 +83,10 @@ import rlp
 from Crypto.Hash import keccak
 from pytezos.crypto.encoding import base58_decode
 from pytezos.crypto.encoding import base58_encode
+from pytezos.michelson.forge import unforge_address
 
 # mutez (L1, 6 decimals) -> wei (L2 XTZ, 18 decimals)
 WEI_PER_MUTEZ = 10**12
-
-# Curve tag (2nd byte of a serialized implicit Contract) -> base58 prefix.
-_IMPLICIT_CURVE_PREFIX = {0: b'tz1', 1: b'tz2', 2: b'tz3'}
 
 
 @dataclass(frozen=True)
@@ -156,30 +154,13 @@ def parse_routing_info(raw: bytes) -> DepositReceiver:
     chain_id = int.from_bytes(chain_raw, 'little') if chain_raw else None
 
     if isinstance(receiver_item, list):
-        # Tezos receiver: [tag, 22-byte serialized Contract]
-        address = _serialized_contract_to_str(receiver_item[1])
+        # Tezos receiver: [tag, 22-byte serialized Contract]. unforge_address decodes
+        # both implicit (00 <curve> <pkh> -> tz1/2/3) and originated (01 <hash> 00 -> KT1)
+        # forms, raising ValueError on an unknown tag — the same exit the matcher expects.
+        address = unforge_address(receiver_item[1])
         return DepositReceiver(kind='tezos', address=address, rlp_item=receiver_item, chain_id=chain_id)
     # EVM receiver: scalar H160
     return DepositReceiver(kind='evm', address='0x' + receiver_item.hex(), rlp_item=receiver_item, chain_id=chain_id)
-
-
-def _serialized_contract_to_str(contract_bin: bytes) -> str:
-    """22-byte serialized Tezos Contract -> base58 address string.
-
-    Implicit: ``00 <curve> <20-byte pkh>`` -> ``tz1/tz2/tz3``.
-    Originated: ``01 <20-byte hash> 00`` -> ``KT1`` (rejected upstream by the
-    kernel, but decoded here for completeness / diagnostics).
-    """
-    if contract_bin[0] == 0:
-        curve = contract_bin[1]
-        try:
-            prefix = _IMPLICIT_CURVE_PREFIX[curve]
-        except KeyError:
-            raise ValueError(f'unknown implicit curve tag: {curve}') from None
-        return base58_encode(contract_bin[2:22], prefix).decode()
-    if contract_bin[0] == 1:
-        return base58_encode(contract_bin[1:21], b'KT1').decode()
-    raise ValueError(f'unknown contract tag: {contract_bin[0]}')
 
 
 def l2_account_from_routing_info(raw: bytes) -> str:
