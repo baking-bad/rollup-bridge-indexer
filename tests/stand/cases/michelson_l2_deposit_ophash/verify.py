@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verdict for the michelson-l2-deposit OP-HASH case — production matcher output.
 
-This is the regression for the PRODUCTION op-hash path: `tezos.on_michelson_deposit`
+This is the regression for the PRODUCTION op-hash path: `tezos_x.on_michelson_deposit_ophash`
 records the full L2 row (xtz token, wei amount) and the separated matcher step
 (`handlers/michelson_matcher.py`) links it to the L1 leg by op-hash equality,
 reconstructed from inbox data alone (no event, no node call). GREEN means the real

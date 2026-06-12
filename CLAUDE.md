@@ -56,14 +56,15 @@ Tests are split by purpose and kept out of the prod image (`.dockerignore` exclu
 
 ### Dual-Chain Event Processing
 
-- **Tezos (L1) handlers** in `./handlers/tezos/`: deposit calls (`on_rollup_call`), withdrawal executions (`on_rollup_execute`), commitment cementing (`on_cement_commitment`), fast withdrawal claims, head tracking. Also `on_michelson_deposit` — Tezos-shaped but records the **L2** leg of a Tezos X Michelson (tz1-receiver) XTZ deposit
+- **Tezos (L1) handlers** in `./handlers/tezos/`: deposit calls (`on_rollup_call`), withdrawal executions (`on_rollup_execute`), commitment cementing (`on_cement_commitment`), fast withdrawal claims, head tracking
+- **Tezos X (L2 Michelson) handlers** in `./handlers/tezos_x/`: Tezos-shaped handlers that record the **L2** leg of Tezos X Michelson (tz1-receiver) XTZ deposits — `on_michelson_deposit_ophash` (production, op-hash matched) and `on_michelson_deposit` (event/node-polling variant, stand-only). Convention: `tezos/` = L1, `etherlink/` = L2 EVM, `tezos_x/` = L2 Michelson
 - **Etherlink (L2) handlers** in `./handlers/etherlink/`: deposit events (`on_deposit`, `on_xtz_deposit`), withdrawal events (`on_withdraw`, `on_xtz_withdraw`), ERC-20 transfers (`on_transfer`)
 
 ### Bridge Matcher (core reconciliation)
 
 `./handlers/bridge_matcher.py` is the central matching engine. It correlates L1 and L2 operations into unified `BridgeOperation` records through 8 ordered matching steps. Uses a **lock-based batching system** (`bridge_matcher_locks.py`): handlers set boolean flags, and the batch handler (`batch.py`) checks and clears them after each handler batch.
 
-A ninth, deliberately **separated** step lives in `./handlers/michelson_matcher.py`: Tezos X L2 Michelson (tz1-receiver) XTZ deposits are matched by reconstructing the L2 synthetic-op hash from L1 inbox data (`./handlers/michelson_deposit.py`, kernel-verified derivation) because TzKT drops the kernel's implicit-source deposit event. It is an interim mechanism — when TzKT serves those events, delete the module + its lock and let these deposits flow through the regular inbox-coords step (the future path is kept alive in `./handlers/tezos_x/on_michelson_deposit.py` + the `michelson_l2_deposit` stand case).
+A ninth, deliberately **separated** step lives in `./handlers/michelson_matcher.py`: Tezos X L2 Michelson (tz1-receiver) XTZ deposits are matched by reconstructing the L2 synthetic-op hash from L1 inbox data (`./handlers/michelson_deposit.py`, kernel-verified derivation) because TzKT drops the kernel's implicit-source deposit event. This is the **production** mechanism with no planned removal; the separation only keeps an option open — IF TzKT ever serves those events (not committed anywhere), the module + its lock could be deleted and these deposits would flow through the regular inbox-coords step (the event-based alternative is kept alive in `./handlers/tezos_x/on_michelson_deposit.py` + the `michelson_l2_deposit` stand case).
 
 ### Parameter Hash Matching
 

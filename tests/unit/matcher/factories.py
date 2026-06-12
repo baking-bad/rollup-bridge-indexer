@@ -1,7 +1,7 @@
 """Rows as the indexer handlers would have written them, with one-deposit defaults.
 
 Field shapes mirror the producing handlers (``on_rollup_call``, ``on_deposit``,
-``tezos/on_michelson_deposit``, ``RollupMessageIndex``) so the matcher sees
+``tezos_x/on_michelson_deposit_ophash``, ``RollupMessageIndex``) so the matcher sees
 production-shaped data. Every factory takes overrides for what a test cares about.
 """
 
@@ -113,7 +113,7 @@ async def michelson_l2_deposit(
     l2_account: str = 'tz1receiverXXXXXXXXXXXXXXXXXXXXXXXXX',
     timestamp: datetime = TS,
 ) -> EtherlinkDepositOperation:
-    """The synthetic-op row tezos/on_michelson_deposit.py records: base58 hash, no coords."""
+    """The synthetic-op row tezos_x/on_michelson_deposit_ophash.py records: base58 hash, no coords."""
     return await EtherlinkDepositOperation.create(
         timestamp=timestamp,
         level=level,

@@ -11,7 +11,7 @@ event (implicit tz1 source), so production **reconstructs the L2 synthetic-tx op
 from L1 inbox data alone** and matches by hash equality — deterministic, no event, no
 node round-trip. Pipeline under test:
 
-- `tezos.on_michelson_deposit` — records the full consumer-visible L2 row
+- `tezos_x.on_michelson_deposit_ophash` — records the full consumer-visible L2 row
   (xtz token + ticket, amount scaled mutez→wei to match the token's 18 decimals);
 - `handlers/michelson_matcher.py` — the separated matcher step: reconstructs the
   expected op-hash per unmatched L1 leg (`expected_op_hash_from_inbox`), links the

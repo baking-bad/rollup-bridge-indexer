@@ -28,7 +28,7 @@ from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import TezosTicket
 
 
-async def on_michelson_deposit(
+async def on_michelson_deposit_ophash(
     ctx: HandlerContext,
     transaction_0: TezosOperationData,
 ) -> None:

@@ -1,16 +1,17 @@
 """L2 Michelson deposit — EVENT/NODE-POLLING variant. NOT wired into production.
 
-Production uses the op-hash variant (`handlers/tezos/on_michelson_deposit.py` +
-`handlers/michelson_matcher.py`). This handler is kept as the FUTURE path: it reads
-the kernel's `tag=deposit` event (inbox coords) so deposits flow through the regular
-coords-based matcher — exactly what production should do once TzKT serves
-implicit-source events (today it drops them, and the per-op node poll costs ~715 ms
-and loses a deposit on a dropped call).
+Production uses the op-hash variant (`handlers/tezos_x/on_michelson_deposit_ophash.py`
++ `handlers/michelson_matcher.py`). This handler is the event-based alternative: it
+reads the kernel's `tag=deposit` event (inbox coords) so deposits flow through the
+regular coords-based matcher. It could replace the op-hash path IF TzKT ever serves
+implicit-source events — that is not committed anywhere, so don't plan around it
+(today TzKT drops them, and the per-op node poll costs ~715 ms and loses a deposit
+on a dropped call).
 
 Used ONLY by the stand case `tests/stand/cases/michelson_l2_deposit/`, which also
 needs the `tezos_x_michelson_node` datasource below — both exist solely for this
-variant. When TzKT ships the events: point this at the TzKT payload instead of the
-node receipt, promote it to prod config, and delete the op-hash matcher.
+variant. IF TzKT ships the events: point this at the TzKT payload instead of the
+node receipt, promote it to prod config, and retire the op-hash matcher.
 """
 
 import aiohttp

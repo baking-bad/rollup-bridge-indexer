@@ -1,11 +1,14 @@
 """Op-hash matcher step for L2 Michelson (tz1-receiver) XTZ deposits.
 
-SEPARATED ON PURPOSE — this whole module is the interim workaround for TzKT dropping
-implicit-source events (the kernel's `tag=deposit` event that would carry the inbox
-coords). When TzKT/xTzKT serves those events, the L2 handler can store inbox coords
-directly and these deposits flow through the regular coords-based
-`BridgeMatcher.check_pending_etherlink_deposits` — then DELETE this module, its
-`pending_michelson_deposits` lock, and the `batch.py` call.
+SEPARATED ON PURPOSE — this module exists because TzKT drops implicit-source events
+(the kernel's `tag=deposit` event that would carry the inbox coords), so the L2 leg
+cannot be matched by coords like every other deposit. This is the PRODUCTION
+mechanism with no planned removal. The separation just keeps the option open: IF
+TzKT/xTzKT ever serves those events, the event-based L2 handler
+(`tezos_x/on_michelson_deposit.py`) can store inbox coords directly, these deposits
+flow through the regular coords-based `BridgeMatcher.check_pending_etherlink_deposits`,
+and this module + its `pending_michelson_deposits` lock + the `batch.py` call can be
+deleted — but don't count on that happening.
 
 How it matches: for every bridge deposit that has its L1 leg + inbox message but no
 L2 leg yet, the expected L2 synthetic-op hash is reconstructed from the stored inbox

@@ -77,8 +77,8 @@ indexes:
             entrypoint: default
 
   # L2 Michelson side: pseudo-transaction from the depositor to the tz1 receiver.
-  # Wired to the OP-HASH handler (tezos.on_michelson_deposit) — records the op only,
-  # no node call.
+  # Wired to the OP-HASH handler (tezos_x.on_michelson_deposit_ophash) — records the
+  # op only, no node call.
   tezos_x_michelson_deposits:
     kind: tezos.operations
     first_level: ${L2_MICHELSON_FIRST_LEVEL}
@@ -90,7 +90,7 @@ indexes:
     contracts:
       - tezos_x_michelson_depositor
     handlers:
-      - callback: tezos.on_michelson_deposit
+      - callback: tezos_x.on_michelson_deposit_ophash
         pattern:
           - type: transaction
             source: tezos_x_michelson_depositor
