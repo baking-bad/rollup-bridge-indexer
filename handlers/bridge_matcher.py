@@ -90,6 +90,11 @@ class BridgeMatcher:
         qs = (
             EtherlinkDepositOperation.filter(
                 bridge_deposits=None,
+                # Rows without coords (EVM XTZ, L2 Michelson) have nothing to compare here
+                # and belong to the xtz/michelson steps. Without this guard the None coords
+                # render as LEFT JOIN ... IS NULL and link any inbox-less bridge deposit.
+                inbox_message_level__isnull=False,
+                inbox_message_index__isnull=False,
             )
             .prefetch_related('l2_token')
             .order_by('level', 'transaction_index', 'log_index')
@@ -137,6 +142,10 @@ class BridgeMatcher:
                 bridge_deposits=None,
                 l2_token_id='xtz',
             )
+            # L2 Michelson rows (base58 `o…` hashes; EVM rows store bare hex) carry a
+            # deterministic op-hash key — they are matched by michelson_matcher, and this
+            # value-based zip step must not preempt it.
+            .exclude(transaction_hash__startswith='o')
             .order_by('level', 'transaction_index')
             .prefetch_related('l2_token', 'l2_token__ticket')
         )

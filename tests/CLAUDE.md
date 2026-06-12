@@ -5,10 +5,13 @@ shape. The whole `tests/` tree is excluded from the prod image (`.dockerignore: 
 
 ## `tests/unit/` — isolated unit tests
 - **Purpose:** fast, deterministic pytest over pure logic — decoders, commitment/rollup math,
-  type (de)serialization.
-- **Belongs:** anything testable with in-memory fixtures; group by area (`decoder/`,
-  `rollup/`, `types/`).
-- **Does NOT belong:** anything that boots the indexer, hits TzKT/RPC, or needs a DB.
+  type (de)serialization, and the bridge-matcher harness (`matcher/`: real models + real
+  matcher steps over in-memory sqlite; `conftest.py` registers DipDup's TransactionManager,
+  `factories.py` builds handler-shaped rows and runs one batch pass).
+- **Belongs:** anything testable with in-memory fixtures (in-memory sqlite included); group
+  by area (`decoder/`, `rollup/`, `types/`, `matcher/`).
+- **Does NOT belong:** anything that boots the indexer, hits TzKT/RPC, or needs external
+  infrastructure (real postgres, network).
 - **Run:** `make test` (pinned via `testpaths=["tests/unit"]`). Runs anywhere, no secrets;
   should run in CI.
 
