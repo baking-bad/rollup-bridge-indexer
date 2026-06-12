@@ -129,20 +129,25 @@ async def michelson_l2_deposit(
     )
 
 
-async def run_deposit_matching() -> None:
-    """One production batch pass over the deposit pipeline.
+async def run_matcher_pass() -> None:
+    """One batch() pass over the deposit pipeline — same step order as handlers/batch.py.
 
-    Same step order as handlers/batch.py, with every deposit lock set — exactly the
-    state on_restart/on_synchronized leave behind.
+    Locks are NOT touched: a step runs only if its flag is already up, exactly like
+    production. Set the flags the scenario's producing handlers would have set first.
     """
-    BridgeMatcherLocks.set_pending_tezos_deposits()
-    BridgeMatcherLocks.set_pending_inbox()
-    BridgeMatcherLocks.set_pending_etherlink_deposits()
-    BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
-    BridgeMatcherLocks.set_pending_michelson_deposits()
-
     await BridgeMatcher.check_pending_tezos_deposits()
     await BridgeMatcher.check_pending_inbox()
     await check_pending_michelson_deposits(ROLLUP)
     await BridgeMatcher.check_pending_etherlink_deposits()
     await BridgeMatcher.check_pending_etherlink_xtz_deposits()
+
+
+async def run_deposit_matching() -> None:
+    """One production batch pass with every deposit lock set — exactly the state
+    on_restart/on_synchronized leave behind."""
+    BridgeMatcherLocks.set_pending_tezos_deposits()
+    BridgeMatcherLocks.set_pending_inbox()
+    BridgeMatcherLocks.set_pending_etherlink_deposits()
+    BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
+    BridgeMatcherLocks.set_pending_michelson_deposits()
+    await run_matcher_pass()

@@ -6,6 +6,7 @@ matching pass, and asserts which bridge links exist afterwards.
 
 import pytest
 
+from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.models import BridgeDepositOperation
 from rollup_bridge_indexer.models import BridgeOperation
 from rollup_bridge_indexer.models import BridgeOperationStatus
@@ -14,9 +15,20 @@ from tests.unit.matcher.factories import inbox_message
 from tests.unit.matcher.factories import l1_deposit
 from tests.unit.matcher.factories import michelson_l2_deposit
 from tests.unit.matcher.factories import run_deposit_matching
+from tests.unit.matcher.factories import run_matcher_pass
 from tests.unit.matcher.factories import seed_xtz
 
 pytestmark = pytest.mark.anyio
+
+# Live golden vector: inbox (3599297, 8) -> opAhDW... (1 XTZ to tz1PSJ...).
+GOLDEN_INBOX_PAYLOAD = {
+    'LL': {
+        'bytes': '01dad80196000029a8a3205033f6d4f0fb7c218e4a7e8bc12a798cc0',
+        'ticket': {'amount': '1000000', 'address': 'KT1FcWeWiEC7Ve5JMdZpKyvaFdsJv7n4GFzi', 'content': {'nat': '0', 'bytes': None}},
+    }
+}
+GOLDEN_RECEIVER = 'tz1PSJR6wBtoiv56Uz1w1bBxeoBnWpDYMwV7'
+GOLDEN_OP_HASH = 'opAhDWYxwDWFnKXG892itvC1TmMtUbeuSThVopzVDGd41mRxomE'
 
 
 async def test_deposit_with_matching_inbox_coords_is_finished(db):
@@ -82,20 +94,10 @@ async def test_michelson_deposit_matches_by_op_hash_and_backfills_coords(db):
     # The intended Michelson path: once the deposit's inbox message is indexed, the
     # op-hash matcher reconstructs the L2 synthetic-op hash from the inbox data and
     # links deterministically, backfilling coords so the row looks event-matched.
-    # Live golden vector: inbox (3599297, 8) -> opAhDW... (1 XTZ to tz1PSJ...).
-    inbox_payload = {
-        'LL': {
-            'bytes': '01dad80196000029a8a3205033f6d4f0fb7c218e4a7e8bc12a798cc0',
-            'ticket': {'amount': '1000000', 'address': 'KT1FcWeWiEC7Ve5JMdZpKyvaFdsJv7n4GFzi', 'content': {'nat': '0', 'bytes': None}},
-        }
-    }
-    receiver = 'tz1PSJR6wBtoiv56Uz1w1bBxeoBnWpDYMwV7'
-    op_hash = 'opAhDWYxwDWFnKXG892itvC1TmMtUbeuSThVopzVDGd41mRxomE'
-
     xtz = await seed_xtz()
-    l1 = await l1_deposit(xtz.ticket, level=3599297, amount='1000000', l2_account=receiver, parameters_hash='a' * 32)
-    await inbox_message(level=3599297, index=8, message=inbox_payload, parameters_hash='a' * 32)
-    michelson = await michelson_l2_deposit(xtz, op_hash=op_hash, amount_mutez=1000000, l2_account=receiver)
+    l1 = await l1_deposit(xtz.ticket, level=3599297, amount='1000000', l2_account=GOLDEN_RECEIVER, parameters_hash='a' * 32)
+    await inbox_message(level=3599297, index=8, message=GOLDEN_INBOX_PAYLOAD, parameters_hash='a' * 32)
+    michelson = await michelson_l2_deposit(xtz, op_hash=GOLDEN_OP_HASH, amount_mutez=1000000, l2_account=GOLDEN_RECEIVER)
 
     await run_deposit_matching()
 
@@ -106,4 +108,29 @@ async def test_michelson_deposit_matches_by_op_hash_and_backfills_coords(db):
     operation = await BridgeOperation.get(id=bridge.id)
     assert operation.is_completed
     assert operation.is_successful
+    assert operation.status == BridgeOperationStatus.finished
+
+
+async def test_deposit_arriving_after_inbox_lock_was_consumed_still_matches(db):
+    # Fresh-DB bootstrap race (tezosx-shadownet 2026-06-12): on_restart writes the
+    # whole inbox backfill and raises every lock BEFORE the indexes spawn, so the
+    # first batch consumes pending_inbox over a deposit-less DB. Rows indexed later
+    # re-raise only their own handlers' locks — here the L1 deposit arrives LAST
+    # (the L2 Michelson index synced ahead), so on_rollup_call's lock alone must
+    # cascade through inbox attach and the op-hash match within one pass.
+    xtz = await seed_xtz()
+    await inbox_message(level=3599297, index=8, message=GOLDEN_INBOX_PAYLOAD, parameters_hash='a' * 32)
+    michelson = await michelson_l2_deposit(xtz, op_hash=GOLDEN_OP_HASH, amount_mutez=1000000, l2_account=GOLDEN_RECEIVER)
+    await run_deposit_matching()  # the lock-consuming early batch: nothing to link yet
+
+    l1 = await l1_deposit(xtz.ticket, level=3599297, amount='1000000', l2_account=GOLDEN_RECEIVER, parameters_hash='a' * 32)
+    BridgeMatcherLocks.set_pending_tezos_deposits()  # what on_rollup_call sets — and nothing else
+    await run_matcher_pass()
+
+    bridge = await BridgeDepositOperation.get(l1_transaction_id=l1.id)
+    assert bridge.l2_transaction_id == michelson.id
+    await michelson.refresh_from_db()
+    assert (michelson.inbox_message_level, michelson.inbox_message_index) == (3599297, 8)
+    operation = await BridgeOperation.get(id=bridge.id)
+    assert operation.is_completed
     assert operation.status == BridgeOperationStatus.finished

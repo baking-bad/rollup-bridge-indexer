@@ -32,6 +32,7 @@ class BridgeMatcher:
         BridgeMatcherLocks.pending_tezos_deposits = False
 
         qs = TezosDepositOperation.filter(bridge_deposits=None)
+        created = False
         async for l1_deposit in qs:
             l1_deposit: TezosDepositOperation
             bridge_deposit = await BridgeDepositOperation.create(l1_transaction=l1_deposit)
@@ -44,6 +45,15 @@ class BridgeMatcher:
                 updated_at=l1_deposit.timestamp,
                 status=BridgeOperationStatus.created,
             )
+            created = True
+
+        if created:
+            # A new bridge deposit may already have its inbox message in the DB (a
+            # fresh-DB bootstrap backfills the whole inbox in on_restart, before the
+            # deposit indexes sync) — without this re-arm nothing raises the inbox
+            # lock again and attaching stalls until restart/on_synchronized. The
+            # attach step runs after this one in the same batch pass.
+            BridgeMatcherLocks.set_pending_inbox()
 
     @classmethod
     async def check_pending_inbox(cls):
@@ -62,6 +72,7 @@ class BridgeMatcher:
             )
             .prefetch_related('l1_transaction')
         )
+        attached = False
         async for bridge_deposit in qs:
             bridge_deposit: BridgeDepositOperation
             inbox_message = (
@@ -80,6 +91,16 @@ class BridgeMatcher:
                 await bridge_deposit.l1_transaction.save()
                 inbox_message.parameters_hash = None
                 await inbox_message.save()
+                attached = True
+
+        if attached:
+            # Every L2 deposit step keys on an attached inbox message (op-hash
+            # reconstruction, coords join, the xtz zip's isnull guard) — re-arm them
+            # so an attach completes the match in this same pass even when their own
+            # producing handlers fired in earlier, fruitless passes.
+            BridgeMatcherLocks.set_pending_michelson_deposits()
+            BridgeMatcherLocks.set_pending_etherlink_deposits()
+            BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
 
     @classmethod
     async def check_pending_etherlink_deposits(cls):
