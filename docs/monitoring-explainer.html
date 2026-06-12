@@ -1,0 +1,318 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Etherlink Bridge Indexer — Monitoring Coverage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+ --bg:#0c0c0c; --ink:#f2f2ef; --dim:#8a8a86; --faint:#5c5c58;
+ --line:#262624; --line2:#1a1a18;
+ --accent:#ff6a00;
+ --t-h1:54px; --t-idx:96px; --t-h2:24px; --t-body:16px; --t-mono:12px;
+ --s1:8px; --s2:16px; --s3:24px; --s4:32px; --s5:48px; --s6:60px;
+ --mono:'IBM Plex Mono',monospace; --sans:'Archivo',sans-serif; --black:'Archivo Black',sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:var(--t-body);
+ background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);
+ background-size:34px 34px;background-position:-1px -1px}
+.wrap{max-width:1000px;margin:0 auto;padding:0 var(--s4);background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+header{padding:var(--s6) 0 var(--s4);border-bottom:2px solid var(--ink);display:grid;grid-template-columns:1fr auto;align-items:end;gap:var(--s3)}
+.kick{font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 20px}
+.kick::before{content:"// ";color:var(--faint)}
+h1{font-family:var(--black);font-size:var(--t-h1);line-height:.96;margin:0;letter-spacing:-.02em;text-transform:uppercase}
+.idx{font-family:var(--black);font-size:var(--t-idx);color:var(--accent);line-height:.74;letter-spacing:-.04em}
+.lede{grid-column:1/-1;color:var(--dim);max-width:680px;margin:var(--s2) 0 0;font-size:var(--t-body)}
+.lede b{color:var(--ink);font-weight:600}
+.legend{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.tag{padding:13px 0;font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.04em;display:flex;gap:11px;align-items:center;text-transform:uppercase}
+.tag:first-child{border-right:1px solid var(--line);padding-right:18px}.tag:last-child{padding-left:18px}
+.sq{width:13px;height:13px;flex:none}.sq.a{background:var(--accent)}.sq.b{background:var(--ink)}
+.tag .m{color:var(--dim);text-transform:none;letter-spacing:0;font-size:11.5px}
+section{padding:var(--s4) 0;border-bottom:1px solid var(--line)}
+.row{display:grid;grid-template-columns:150px 1fr;gap:28px}
+.sl{font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}.sl::before{content:"§ ";color:var(--accent)}
+h2{font-size:var(--t-h2);margin:0 0 4px;text-transform:uppercase;letter-spacing:-.01em;font-weight:700}
+.h2sub{font-family:var(--mono);font-size:var(--t-mono);color:var(--faint);margin:0 0 22px}
+.panel{border:1px solid var(--line);position:relative}
+.panel::after{content:"";position:absolute;top:11px;right:12px;width:30px;height:6px;background:repeating-linear-gradient(90deg,var(--line) 0 3px,transparent 3px 6px)}
+.pbar{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:11px 18px;border-bottom:1px solid var(--line)}.pbar b{color:var(--ink)}
+.step{display:grid;grid-template-columns:50px 1fr;gap:16px;padding:18px 18px 22px;border-top:1px solid var(--line2)}.step:first-of-type{border-top:none}
+.n{font-family:var(--black);font-size:26px;line-height:1}.n.a{color:var(--accent)}.n.w{color:var(--ink)}
+.sh{margin:0;font-weight:600;font-size:15.5px;display:flex;align-items:center;flex-wrap:wrap}
+.b{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-left:12px;padding:2px 8px}.b.a{background:var(--accent);color:#000;font-weight:600}.b.b{border:1px solid var(--ink)}
+.sd{color:var(--dim);margin:5px 0 0;font-size:14px}.sd b{color:var(--ink);font-weight:600}.sd code{font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--line2);padding:1px 5px}
+.mref{font-family:var(--mono);font-size:11px;color:var(--faint);margin:10px 0 0;letter-spacing:.04em}
+.mref b{color:var(--dim);font-weight:500}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);margin-top:0;border-top:2px solid var(--ink)}
+.f{padding:16px 18px;border-right:1px solid var(--line)}.f:last-child{border:none}
+.fk{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:0 0 8px}
+.fv{font-family:var(--black);font-size:21px;margin:0;line-height:1.05}.fv small{font-family:var(--sans);font-weight:400;font-size:12.5px;color:var(--dim);display:block;margin-top:5px;letter-spacing:0}
+/* monitor cards */
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.mcard{border:1px solid var(--line);padding:0;position:relative;transition:opacity .15s;background:var(--bg)}
+.mcard.off{opacity:.4}
+.mcard.off .mhead{text-decoration:line-through;text-decoration-color:var(--faint)}
+.mcard label{display:block;cursor:pointer;padding:13px 15px}
+.mcard input{position:absolute;opacity:0}
+.cb{width:15px;height:15px;border:1px solid var(--dim);display:inline-block;flex:none;position:relative;top:1px}
+.mcard input:checked ~ .mrow .cb{background:var(--accent);border-color:var(--accent)}
+.mcard input:checked ~ .mrow .cb::after{content:"";position:absolute;inset:3px;background:#000;clip-path:polygon(14% 44%,0 65%,50% 100%,100% 16%,80% 0,43% 62%)}
+.mcard.ext input:checked ~ .mrow .cb{background:var(--ink);border-color:var(--ink)}
+.mcard input:focus-visible ~ .mrow .cb{outline:2px solid var(--accent);outline-offset:2px}
+.mrow{display:flex;gap:12px;align-items:flex-start}
+.mtxt{display:block;min-width:0}
+.mid{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.06em}
+.mhead{display:block;font-weight:600;font-size:14.5px;line-height:1.25;margin:1px 0 3px}
+.net{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;padding:1.5px 6px;border:1px solid var(--line);color:var(--dim);margin-left:7px;position:relative;top:-1px;white-space:nowrap}
+.mcatch{display:block;font-size:13px;color:var(--dim);margin:0}
+.mcatch b{color:var(--ink);font-weight:600}
+.mnote{display:block;font-size:12px;color:var(--faint);margin:6px 0 0;border-left:2px solid var(--line);padding-left:8px}
+/* details */
+details{border:1px solid var(--line);margin-top:var(--s3)}
+summary{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:12px 18px;cursor:pointer;list-style:none}
+summary::before{content:"+ ";color:var(--accent)}
+details[open] summary{border-bottom:1px solid var(--line)}
+details[open] summary::before{content:"− "}
+.dbody{padding:16px 18px;font-size:13.5px;color:var(--dim)}
+.dbody h3{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);margin:18px 0 8px}.dbody h3:first-child{margin-top:0}
+.dbody code{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--line2);padding:1px 5px}
+.dbody ol{margin:0;padding-left:20px}.dbody li{margin:3px 0}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--ink)}
+th:not(:first-child),td:not(:first-child){border-left:1px solid var(--line2)}
+td{color:var(--dim)}td:first-child{color:var(--ink)}tr:last-child td{border-bottom:none}
+.mono{font-family:var(--mono)}
+/* sticky selection bar */
+#bar{position:sticky;bottom:0;background:var(--bg);border-top:2px solid var(--ink);padding:12px 0;display:flex;gap:18px;align-items:baseline;flex-wrap:wrap;z-index:5}
+#bar .cnt{font-family:var(--black);font-size:22px;color:var(--accent);line-height:1}
+#bar .lbl{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}
+#holes{display:flex;gap:6px;flex-wrap:wrap;flex:1}
+.hole{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;background:var(--accent);color:#000;font-weight:600;padding:2px 8px}
+.hole.ext{background:var(--ink)}
+.okmsg{font-family:var(--mono);font-size:11px;color:var(--dim)}
+#copy{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;background:none;border:1px solid var(--dim);color:var(--ink);padding:5px 12px;cursor:pointer}
+#copy:hover{border-color:var(--accent);color:var(--accent)}
+footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);font-size:11.5px;line-height:1.7}footer .s{color:var(--dim)}
+@media(max-width:680px){:root{--t-h1:36px}header{grid-template-columns:1fr}.idx{display:none}.row{grid-template-columns:1fr}.facts{grid-template-columns:1fr}.legend{grid-template-columns:1fr}.tag:first-child{border-right:none;border-bottom:1px solid var(--line);padding-right:0}.tag:last-child{padding-left:0}.cards{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+
+<header>
+ <div><p class="kick">uptime-kuma · 3 rollups · 4 stacks</p><h1>Bridge indexer<br>monitoring</h1></div>
+ <p class="lede">What Uptime Kuma watches across the Etherlink bridge-indexer stacks: which failure classes are covered and how fast each one alerts. Tick the monitors you want for yourself — <b>the bar below shows your blind spots</b>, the button copies Kuma links.</p>
+</header>
+
+<div class="legend">
+ <span class="tag"><span class="sq a"></span>We broke<span class="m">— alert = fix the indexer</span></span>
+ <span class="tag"><span class="sq b"></span>Upstream broke<span class="m">— wait or switch endpoint</span></span>
+</div>
+
+<section><div class="row">
+ <div class="sl">rollups × stacks</div>
+ <div>
+  <h2>what is being indexed</h2>
+  <p class="h2sub">a stack = one DipDup instance + its own DB and GraphQL · prod and staging index the same rollup independently</p>
+  <table>
+   <thead><tr><th>stack</th><th>indexes rollup</th><th>L1 chain</th></tr></thead>
+   <tbody>
+    <tr><td>prod</td><td>Etherlink Mainnet <span class="mono" style="font-size:11px;color:var(--faint)">sr1Ghq…</span></td><td>Tezos mainnet · 8s blocks</td></tr>
+    <tr><td>staging</td><td>Etherlink Mainnet <span class="mono" style="font-size:11px;color:var(--faint)">sr1Ghq…</span></td><td>Tezos mainnet</td></tr>
+    <tr><td>shadownet</td><td>Etherlink Shadownet <span class="mono" style="font-size:11px;color:var(--faint)">sr19fM…</span></td><td>Shadownet · ~3.4s blocks</td></tr>
+    <tr><td>tezosx</td><td>Tezos X <span class="mono" style="font-size:11px;color:var(--faint)">sr1TCY…</span></td><td>Shadownet</td></tr>
+   </tbody>
+  </table>
+ </div>
+</div></section>
+
+<section><div class="row">
+ <div class="sl">failure stories</div>
+ <div>
+  <h2>what breaks → who catches it → how fast</h2>
+  <p class="h2sub">tick = I want this monitor</p>
+  <div class="panel">
+   <div class="pbar">FLOW · <b>failure stories</b></div>
+
+   <div class="step"><div class="n a">1</div><div>
+     <p class="sh">Container died or websocket hung<span class="b a">alert in 3–30 min</span></p>
+     <p class="sd">Fresh blocks stop landing in the database; four monitors poll each stack's GraphQL every minute.</p>
+     <div class="cards">
+      <div class="mcard" data-blind="prod: pipeline"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#187</span><span class="net">prod</span>
+       <span class="mhead">Etherlink Mainnet API</span>
+       <span class="mcatch">Data older than <b>15 min</b> fires.</span>
+      </span></span></label></div>
+      <div class="mcard" data-blind="staging: pipeline"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#249</span><span class="net">staging</span>
+       <span class="mhead">Etherlink Mainnet Staging API</span>
+       <span class="mcatch">Threshold 30 min.</span>
+      </span></span></label></div>
+      <div class="mcard" data-blind="shadownet: pipeline"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#268</span><span class="net">shadownet</span>
+       <span class="mhead">Etherlink Shadownet API</span>
+       <span class="mcatch">Threshold 20 min.</span>
+      </span></span></label></div>
+      <div class="mcard" data-blind="tezosx: pipeline"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#304</span><span class="net">tezosx</span>
+       <span class="mhead">Etherlink TezosX Shadownet API</span>
+       <span class="mcatch">Tezos X rollup — threshold 30 min.</span>
+       <span class="mnote">red during a full reindex, until backfill completes</span>
+      </span></span></label></div>
+     </div>
+   </div></div>
+
+   <div class="step"><div class="n a">2</div><div>
+     <p class="sh">Indexer alive but falling behind the chain<span class="b a">~13–14 min</span></p>
+     <p class="sd">Same monitors compare our latest block with the chain head; a gap of 100–250 blocks fires.</p>
+     <p class="mref">caught by <b>#187 #249 #268 #304</b> — checkboxes in story 1</p>
+   </div></div>
+
+   <div class="step"><div class="n a">3</div><div>
+     <p class="sh">TzKT streams blocks but goes silent on operations<span class="b a">~1.3 h</span></p>
+     <p class="sd">Operation indexes only move when operations arrive — freshness checks can't see this. Separate check: operations no further than 600 blocks behind head.</p>
+     <p class="mref">same <b>#187 #249 #268 #304</b></p>
+   </div></div>
+
+   <div class="step"><div class="n a">4</div><div>
+     <p class="sh">Matching silently stalled<span class="b a">1 h – 24 h</span></p>
+     <p class="sd">Blocks keep coming, but operations stop finding their counterpart across the bridge. Three monitors ask the database: <b>has every operation older than an hour found its match?</b></p>
+     <div class="cards">
+      <div class="mcard" data-blind="prod: deposit matching"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#305</span><span class="net">prod</span>
+       <span class="mhead">Bridge Matcher Mainnet</span>
+       <span class="mcatch">An L1 deposit <b>an hour without its L2 match</b>.</span>
+      </span></span></label></div>
+      <div class="mcard" data-blind="prod: withdrawal matching"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#312</span><span class="net">prod</span>
+       <span class="mhead">Bridge Withdrawal Matcher Mainnet</span>
+       <span class="mcatch">An L2 withdrawal <b>an hour without the rollup's reply message</b>.</span>
+      </span></span></label></div>
+      <div class="mcard" data-blind="prod: rollup messages"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#313</span><span class="net">prod</span>
+       <span class="mhead">Rollup Inbox Mainnet</span>
+       <span class="mcatch">Collects rollup messages <b>deposits are matched against</b>; if it stalls, matching goes blind. Alert within 24 h.</span>
+      </span></span></label></div>
+     </div>
+     <p class="mref">prod stack only; no such checks on the other stacks</p>
+   </div></div>
+
+   <div class="step"><div class="n w">5</div><div>
+     <p class="sh">An upstream source went down<span class="b b">1–15 min</span></p>
+     <p class="sd">Six probes hit the sources directly. A red probe = the cause is outside; the indexer catches up on its own.</p>
+     <div class="cards">
+      <div class="mcard ext" data-blind="L2 node feeding prod+staging"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#306</span><span class="net">prod+staging</span>
+       <span class="mhead">Sonic Evm Node</span>
+       <span class="mcatch">The EVM node both mainnet stacks read Etherlink from.</span>
+      </span></span></label></div>
+      <div class="mcard ext" data-blind="archive feeding prod+staging"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#307</span><span class="net">prod+staging</span>
+       <span class="mhead">Subsquid Etherlink Mainnet</span>
+       <span class="mcatch">Backfill archive: down → catch-ups stall.</span>
+      </span></span></label></div>
+      <div class="mcard ext" data-blind="shadownet archive"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#308</span><span class="net">shadownet</span>
+       <span class="mhead">Subsquid Etherlink Shadownet</span>
+       <span class="mcatch">Availability only — lagging is normal here.</span>
+      </span></span></label></div>
+      <div class="mcard ext" data-blind="shadownet L1 (tzkt)"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#309</span><span class="net">shadownet+tezosx</span>
+       <span class="mhead">TzKT Shadownet API</span>
+       <span class="mcatch">One TzKT feeds L1 data to both shadownet stacks.</span>
+      </span></span></label></div>
+      <div class="mcard ext" data-blind="tezosx L2 node"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#310</span><span class="net">tezosx</span>
+       <span class="mhead">TezosX Previewnet Evm Node</span>
+       <span class="mcatch">Known to throw 503s — retries mute the noise.</span>
+      </span></span></label></div>
+      <div class="mcard ext" data-blind="shadownet L2 node"><label><input type="checkbox" checked><span class="mrow"><span class="cb"></span><span class="mtxt">
+       <span class="mid">#311</span><span class="net">shadownet</span>
+       <span class="mhead">Shadownet Evm Node (Zeeve)</span>
+       <span class="mcatch">Its URL embeds an api key — not published here.</span>
+      </span></span></label></div>
+     </div>
+   </div></div>
+
+   <div class="facts">
+    <div class="f"><p class="fk">detection</p><p class="fv">3 min – 24 h<small>from a dead container to the worst case</small></p></div>
+    <div class="f"><p class="fk">probes</p><p class="fv">7 + 6<small>seven watch our GraphQL, six watch the sources</small></p></div>
+    <div class="f"><p class="fk">secrets</p><p class="fv">0<small>everything is read anonymously</small></p></div>
+   </div>
+  </div>
+
+  <details>
+   <summary>the fine print — exact checks and thresholds</summary>
+   <div class="dbody">
+    <h3>Stack monitors (#187 #249 #268 #304)</h3>
+    <p style="margin:0 0 8px">One POST to Hasura (<code>dipdup_index</code> + <code>dipdup_head</code>), seven conditions inside the response; any false after 3 retries = Down:</p>
+    <ol>
+     <li><code>tezos_head.updated_at</code> fresh &lt; N — dead process / hung TzKT websocket;</li>
+     <li><code>etherlink_deposit_events</code> fresh &lt; N — stuck evm.events subscription;</li>
+     <li><code>etherlink_xtz_deposit_transactions</code> fresh &lt; N — evm.transactions, a separate subscription type that wedges independently;</li>
+     <li><code>dipdup_head.timestamp</code> fresh &lt; N — written straight from the realtime channel, bypassing the index queue;</li>
+     <li><code>tezos_head</code> behind the websocket head by &lt; G blocks — "running but not keeping up"; threshold 30 used to flap from the full re-match after <code>on_synchronized</code>;</li>
+     <li>all 4 operation indexes exist (<code>$count = 4</code>) — guards against a broken reindex;</li>
+     <li>operation indexes behind head by &lt; 600 blocks — normal is 20–148 (9 samples / 25 min across 4 stacks), 600 = 4× margin, detects in ~1.3 h.</li>
+    </ol>
+    <table>
+     <thead><tr><th>stack</th><th>N freshness</th><th>G gap</th><th>poll</th></tr></thead>
+     <tbody>
+      <tr><td>prod #187</td><td class="mono">15 min</td><td class="mono">100</td><td class="mono">60s × r3</td></tr>
+      <tr><td>staging #249</td><td class="mono">30 min</td><td class="mono">100</td><td class="mono">60s × r3</td></tr>
+      <tr><td>shadownet #268</td><td class="mono">20 min</td><td class="mono">250</td><td class="mono">60s × r3</td></tr>
+      <tr><td>tezosx #304</td><td class="mono">30 min</td><td class="mono">250</td><td class="mono">60s × r3</td></tr>
+     </tbody>
+    </table>
+    <p style="margin:8px 0 0">L1 block time: 8s on mainnet, ~3.4s on shadownet — hence the different G. 3 retries mute one-off failures: Down only after ~3 min of a persistent problem.</p>
+    <h3>Matching checks (#305 #312 #313)</h3>
+    <p style="margin:0">#305 and #312: the 100 freshest unmatched operations, window 1 h – 7 days <b>by block time</b> (<code>l1_transaction.timestamp</code>), not by <code>created_at</code> — indexing time makes all history look "fresh" after a backfill. One hour = matching grace; one week cuts off the permanent residue (~546 historical deposits; withdrawals 0 of 26 796). L1 execution of withdrawals is excluded — it legitimately waits ~2 weeks for cementation (703 pending is normal). Poll 300s × r2.</p>
+    <p style="margin:8px 0 0">#313: <code>head − max(inbox.level) &lt; 10 800</code> blocks (~24 h); messages on prod arrive every ~300 blocks, 28-day max — 8 538. Poll 600s × r3. Interim until a heartbeat key in <code>dipdup_meta</code> written by the loop itself — that will cover the quiet stacks too.</p>
+    <h3>Source probes (#306–#311)</h3>
+    <p style="margin:0">EVM nodes: <code>eth_getBlockByNumber(latest)</code>, block fresh ≤ 15 min (#306 60s × r2; #310 #311 120s × r3). Subsquid: <code>GET /height &gt; 0</code>, 300s × r3. TzKT: <code>GET /v1/head</code> ≤ 5 min, 60s × r2. Sonic is the node the indexer actually uses; the older #303 watches evm-mainnet, which the indexer does not read.</p>
+   </div>
+  </details>
+ </div>
+</div></section>
+
+<!-- selection bar -->
+<div id="bar">
+ <span class="cnt" id="cnt">13/13</span>
+ <span class="lbl">selected · blind spots:</span>
+ <span id="holes"><span class="okmsg">none — full coverage</span></span>
+ <button id="copy">copy Kuma links</button>
+</div>
+
+<footer>
+ <span class="s">RE-VERIFY:</span> on major matching changes (michelson on prod, heartbeat replacing #313)<br>
+ <span class="s">SRC:</span> uptime.piltover.baking-bad.org · monitors #187–#313 · stack/rollup map from deployment envs · verified 2026-06-11
+</footer>
+
+</div>
+<script>
+const KUMA='https://uptime.piltover.baking-bad.org/dashboard/';
+const cards=[...document.querySelectorAll('.mcard')];
+const cnt=document.getElementById('cnt'),holes=document.getElementById('holes');
+function upd(){
+ const off=cards.filter(c=>!c.querySelector('input').checked);
+ cards.forEach(c=>c.classList.toggle('off',!c.querySelector('input').checked));
+ cnt.textContent=(cards.length-off.length)+'/'+cards.length;
+ holes.innerHTML=off.length
+  ? off.map(c=>'<span class="hole'+(c.classList.contains('ext')?' ext':'')+'">'+c.dataset.blind+'</span>').join('')
+  : '<span class="okmsg">none — full coverage</span>';
+}
+cards.forEach(c=>c.querySelector('input').addEventListener('change',upd));
+upd();
+document.getElementById('copy').addEventListener('click',()=>{
+ const text=cards.filter(c=>c.querySelector('input').checked)
+  .map(c=>KUMA+c.querySelector('.mid').textContent.replace('#',''))
+  .join('\n');
+ const done=()=>{const b=document.getElementById('copy');b.textContent='copied ✓';setTimeout(()=>b.textContent='copy Kuma links',1500)};
+ if(navigator.clipboard&&navigator.clipboard.writeText){
+  navigator.clipboard.writeText(text).then(done).catch(()=>fallback());
+ }else fallback();
+ function fallback(){
+  const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);
+  ta.select();document.execCommand('copy');ta.remove();done();
+ }
+});
+</script>
+</body></html>

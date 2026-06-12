@@ -22,6 +22,9 @@
 **/.*_cache
 **/__pycache__
 
+# Add docs
+!docs/**/*.html
+
 # Add configs and scripts (but not env!)
 !**/*.graphql
 !**/*.json
