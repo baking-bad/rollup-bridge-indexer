@@ -14,6 +14,12 @@ class RollupOutboxMessageBuilder(Enum):
     service_provider = 'service_provider'
 
 
+class L2AccountKind(Enum):
+    evm = 'evm'
+    tz = 'tz'
+    evm_alias = 'evm_alias'
+
+
 class BridgeOperationType(Enum):
     deposit = 'deposit'
     withdrawal = 'withdrawal'

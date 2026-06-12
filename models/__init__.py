@@ -14,6 +14,7 @@ from tortoise.fields.data import JSONField
 from rollup_bridge_indexer.models.enum import BridgeOperationKind
 from rollup_bridge_indexer.models.enum import BridgeOperationStatus
 from rollup_bridge_indexer.models.enum import BridgeOperationType
+from rollup_bridge_indexer.models.enum import L2AccountKind
 from rollup_bridge_indexer.models.enum import RollupInboxMessageType
 from rollup_bridge_indexer.models.enum import RollupOutboxMessageBuilder
 
@@ -106,6 +107,27 @@ class EtherlinkToken(Model):
         source_field='ticket_hash',
         to_field='hash',
     )
+
+
+class L2Account(Model):
+    """L2 account registry (alias registry).
+
+    Standalone in PR-1: rows are created only by `etherlink.on_alias_initialized` (kind=evm_alias).
+    PR-2 converts l2_deposit/l2_withdrawal `l2_account` columns to FKs onto this table and
+    backfills kind=evm/tz rows for existing addresses.
+    """
+
+    class Meta:
+        table = 'l2_account'
+        model = 'models.L2Account'
+
+    # 40-hex EVM address (no 0x prefix) or base58 tz address.
+    address = fields.CharField(max_length=42, primary_key=True)
+    kind = fields.EnumField(enum_type=L2AccountKind, db_index=True)
+    # Filled for evm_alias rows: the Tezos-side source the alias forwards for (tz1/tz2/tz3 or KT1).
+    native_tz_address = fields.CharField(max_length=36, null=True)
+    initialized_at_level = fields.IntField(null=True)
+    initialized_at_tx = fields.CharField(max_length=64, null=True)
 
 
 class RollupCementedCommitment(DatetimeModelMixin, Model):
