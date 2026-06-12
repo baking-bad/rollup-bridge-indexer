@@ -82,6 +82,12 @@ contracts:
     address: '0x0000000000000000000000000000000000000000'
     typename: kernel_native
 
+  # TEZOSX_CALLER — kernel-only injector: synthetic `from` of all init_tezosx_alias txs
+  # (and other kernel-injected Tezos X calls, e.g. claim_xtz).
+  tezosx_caller:
+    kind: evm
+    address: '0x7e20580000000000000000000000000000000001'
+
   l2_withdrawal_precompile_fa:
     kind: evm
     address: '0xff00000000000000000000000000000000000002'
@@ -203,6 +209,18 @@ indexes:
         pattern:
           - type: transaction
             source: tezos_x_michelson_depositor
+
+  # Alias registry: every Tezos X alias emits Initialized(string,bytes,uint256) once, from its
+  # own address — not wildcard-subscribable, so we filter txs by the kernel injector `from_`
+  # and parse receipt logs in the handler (handlers/etherlink/on_alias_initialized.py).
+  etherlink_alias_initialized_transactions:
+    kind: evm.transactions
+    first_level: ${L2_FIRST_LEVEL}
+    datasources:
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_alias_initialized
+        from_: tezosx_caller
 
   etherlink_withdrawal_events:
     kind: evm.events
