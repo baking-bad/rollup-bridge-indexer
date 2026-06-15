@@ -141,6 +141,10 @@ class RollupInboxMessage(AbstractRollupMessage):
 
     id = fields.BigIntField(primary_key=True)
     type = fields.EnumField(RollupInboxMessageType)
+    # For tz1-target XTZ deposits: the L2 synthetic-op hash derived from this message
+    # (handlers/michelson_deposit.py); null for every other message. The op-hash matcher
+    # keys L2 Michelson deposits on it (BridgeMatcher.check_pending_michelson_deposits).
+    expected_l2_op_hash = fields.CharField(max_length=54, db_index=True, null=True)
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 

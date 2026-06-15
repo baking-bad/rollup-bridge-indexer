@@ -7,7 +7,7 @@ class BridgeMatcherLocks:
     pending_inbox: bool = False
     pending_outbox: bool = False
     pending_claimed_fast_withdrawals: bool = False
-    # Op-hash matching of L2 Michelson deposits (handlers/michelson_matcher.py).
+    # Op-hash matching of L2 Michelson deposits (BridgeMatcher.check_pending_michelson_deposits).
     pending_michelson_deposits: bool = False
 
     @classmethod

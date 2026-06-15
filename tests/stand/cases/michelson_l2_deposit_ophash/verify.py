@@ -2,11 +2,11 @@
 """Verdict for the michelson-l2-deposit OP-HASH case — production matcher output.
 
 This is the regression for the PRODUCTION op-hash path: `tezos_x.on_michelson_deposit_ophash`
-records the full L2 row (xtz token, wei amount) and the separated matcher step
-(`handlers/michelson_matcher.py`) links it to the L1 leg by op-hash equality,
-reconstructed from inbox data alone (no event, no node call). GREEN means the real
-`bridge_operation` is FINISHED with both legs and the inbox coords backfilled —
-not a verifier-side replay.
+records the full L2 row (xtz token, wei amount); the op-hash is precomputed onto each inbox
+message (`expected_l2_op_hash`) and `BridgeMatcher.check_pending_michelson_deposits` backfills
+the L2 row's coords from the matching message, after which `check_pending_etherlink_deposits`
+links the legs (no event, no node call). GREEN means the real `bridge_operation` is FINISHED
+with both legs and the inbox coords backfilled — not a verifier-side replay.
 
 A reconstruction spot-check (replaying `expected_op_hash_from_inbox` over the inbox
 rows) is kept as a secondary assert so a matcher bug and a derivation bug are

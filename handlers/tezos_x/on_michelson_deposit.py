@@ -6,9 +6,9 @@ stores them directly, so the deposit flows through the standard coords-based mat
 implicit (tz1) source, which TzKT does not index, so the coords come from the node.
 
 Production uses the op-hash variant (`on_michelson_deposit_ophash.py` +
-`michelson_matcher.py`), which needs no node call. This handler is exercised by the
-stand case `tests/stand/cases/michelson_l2_deposit/` and its `tezos_x_michelson_node`
-datasource.
+`BridgeMatcher.check_pending_michelson_deposits`), which needs no node call. This handler
+is exercised by the stand case `tests/stand/cases/michelson_l2_deposit/` and its
+`tezos_x_michelson_node` datasource.
 """
 
 import aiohttp

@@ -3,9 +3,9 @@
 Records the L2 *synthetic* pseudo-Michelson `transaction` the kernel emits from
 TEZLINK_DEPOSITOR for a tz1-target XTZ deposit. Reads NOTHING beyond the TzKT op:
 no deposit event (TzKT drops it for implicit-source ops) and no Tezos node call.
-The deterministic L1<->L2 link is the op-hash, reconstructed from L1 inbox data by
-the separated matcher step (`handlers/michelson_matcher.py`); inbox coords are
-backfilled onto this row at match time.
+The deterministic L1<->L2 link is the op-hash: it is precomputed from L1 inbox data
+onto `RollupInboxMessage.expected_l2_op_hash`, and `BridgeMatcher.check_pending_michelson_deposits`
+backfills this row's inbox coords from the matching message at match time.
 
 The row is stored fully consumer-visible, shaped like the EVM XTZ path
 (`etherlink/on_xtz_deposit.py`): xtz token + ticket, and the amount scaled

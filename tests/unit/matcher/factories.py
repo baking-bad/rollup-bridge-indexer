@@ -11,6 +11,7 @@ from datetime import datetime
 from rollup_bridge_indexer.handlers.batch import run_matcher_steps
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.michelson_deposit import WEI_PER_MUTEZ
+from rollup_bridge_indexer.handlers.michelson_deposit import expected_op_hash_from_inbox
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import RollupInboxMessage
@@ -65,13 +66,21 @@ async def inbox_message(
     message: dict | None = None,
     parameters_hash: str | None = 'a' * 32,
 ) -> RollupInboxMessage:
+    msg = message or {}
+    try:
+        # Mirrors rollup_message._handle_transfer_inbox_message: the op-hash is computed
+        # and stored at inbox-indexing time (None for non-Michelson / legacy shapes).
+        expected_l2_op_hash = expected_op_hash_from_inbox(msg, level, index, ROLLUP)
+    except ValueError:
+        expected_l2_op_hash = None
     return await RollupInboxMessage.create(
         id=id,
         level=level,
         index=index,
         type=RollupInboxMessageType.transfer,
-        message=message or {},
+        message=msg,
         parameters_hash=parameters_hash,
+        expected_l2_op_hash=expected_l2_op_hash,
     )
 
 
@@ -134,7 +143,7 @@ async def run_matcher_pass() -> None:
     Locks are NOT touched: a step runs only if its flag is already up, exactly like
     production. Set the flags the scenario's producing handlers would have set first.
     """
-    await run_matcher_steps(ROLLUP)
+    await run_matcher_steps()
 
 
 async def run_deposit_matching() -> None:

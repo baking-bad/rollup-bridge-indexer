@@ -5,13 +5,11 @@ from dipdup.context import HandlerContext
 from dipdup.index import MatchedHandler
 
 from rollup_bridge_indexer.handlers.bridge_matcher import BridgeMatcher
-from rollup_bridge_indexer.handlers.michelson_matcher import check_pending_michelson_deposits
-from rollup_bridge_indexer.handlers.service_container import get_container
 
 logger = logging.getLogger('rollup_bridge_indexer.handlers.batch')
 
 
-async def run_matcher_steps(rollup_address: str) -> None:
+async def run_matcher_steps() -> None:
     """The ordered matcher pass. ctx-free so tests run the exact production sequence.
 
     Each step is a no-op unless its pending flag is set. Deposit steps run
@@ -21,7 +19,7 @@ async def run_matcher_steps(rollup_address: str) -> None:
     """
     await BridgeMatcher.check_pending_tezos_deposits()
     await BridgeMatcher.check_pending_inbox()
-    await check_pending_michelson_deposits(rollup_address)
+    await BridgeMatcher.check_pending_michelson_deposits()
     await BridgeMatcher.check_pending_etherlink_deposits()
     await BridgeMatcher.check_pending_etherlink_xtz_deposits()
     await BridgeMatcher.check_pending_etherlink_withdrawals()
@@ -38,4 +36,4 @@ async def batch(
         await ctx.fire_matched_handler(handler)
 
     with BridgeMatcher.matcher_lock:
-        await run_matcher_steps(get_container(ctx).bridge.smart_rollup_address)
+        await run_matcher_steps()
