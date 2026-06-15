@@ -26,7 +26,6 @@ async def batch(
         # Deposit steps run deterministic-before-heuristic: op-hash (needs the inbox
         # attached above) and coords are exact keys, the xtz value-zip is a heuristic.
         # Their candidate pools are disjoint regardless (see the queryset filters).
-        # Interim op-hash matching of L2 Michelson deposits — delete with handlers/michelson_matcher.py.
         await check_pending_michelson_deposits(get_container(ctx).bridge.smart_rollup_address)
         await BridgeMatcher.check_pending_etherlink_deposits()
         await BridgeMatcher.check_pending_etherlink_xtz_deposits()

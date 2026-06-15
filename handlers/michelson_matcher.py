@@ -1,25 +1,15 @@
 """Op-hash matcher step for L2 Michelson (tz1-receiver) XTZ deposits.
 
-SEPARATED ON PURPOSE — this module exists because TzKT drops implicit-source events
-(the kernel's `tag=deposit` event that would carry the inbox coords), so the L2 leg
-cannot be matched by coords like every other deposit. This is the PRODUCTION
-mechanism with no planned removal. The separation just keeps the option open: IF
-TzKT/xTzKT ever serves those events, the event-based L2 handler
-(`tezos_x/on_michelson_deposit.py`) can store inbox coords directly, these deposits
-flow through the regular coords-based `BridgeMatcher.check_pending_etherlink_deposits`,
-and this module + its `pending_michelson_deposits` lock + the `batch.py` call can be
-deleted — but don't count on that happening.
+The L2 leg of these deposits is a synthetic Michelson op carrying no inbox-coords event
+observable via TzKT, so it is matched by op-hash instead of coords: for every bridge
+deposit with its L1 leg + inbox message but no L2 leg yet, the expected L2 op-hash is
+reconstructed from the stored inbox message (`expected_op_hash_from_inbox`, no I/O) and
+compared with the op-hash of recorded L2 Michelson deposits. Hash equality covers amount,
+receiver and inbox coords at once. On match the inbox coords are backfilled onto the L2
+row so it ends up shaped like any other deposit.
 
-How it matches: for every bridge deposit that has its L1 leg + inbox message but no
-L2 leg yet, the expected L2 synthetic-op hash is reconstructed from the stored inbox
-message alone (`expected_op_hash_from_inbox`, ~54µs CPU, no I/O) and compared with
-the op-hash of recorded L2 Michelson deposits. Hash equality covers amount, receiver
-and inbox coords at once — no further field checks are needed. On match the inbox
-coords are backfilled onto the L2 row, so the data ends up shaped exactly like an
-event-based match would leave it.
-
-Michelson L2 rows are recognized by their base58 `o…` transaction_hash; EVM rows
-store bare 64-hex, so the namespaces are disjoint.
+Michelson L2 rows are recognized by their base58 `o…` transaction_hash; EVM rows store
+bare 64-hex, so the namespaces are disjoint.
 """
 
 import logging
