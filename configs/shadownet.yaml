@@ -15,7 +15,7 @@ datasources:
   etherlink_node:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
-    ws_url: ${ETHERLINK_NODE_WS}
+    ws_url: ${ETHERLINK_NODE_WS:-~}
     http:
       batch_size: 100
       ratelimit_rate: 900
