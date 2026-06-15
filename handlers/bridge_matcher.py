@@ -1,3 +1,4 @@
+import logging
 import threading
 from datetime import datetime
 from datetime import timedelta
@@ -18,6 +19,8 @@ from rollup_bridge_indexer.models import RollupOutboxMessage
 from rollup_bridge_indexer.models import RollupOutboxMessageBuilder
 from rollup_bridge_indexer.models import TezosDepositOperation
 from rollup_bridge_indexer.models import TezosWithdrawOperation
+
+logger = logging.getLogger('rollup_bridge_indexer.handlers.bridge_matcher')
 
 LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=20 * 7)
 
@@ -122,20 +125,28 @@ class BridgeMatcher:
             transaction_hash__startswith='o',
         ).order_by('level', 'transaction_index')
 
-        backfilled = False
+        backfilled = 0
+        unmatched = 0
         async for l2_deposit in qs:
             l2_deposit: EtherlinkDepositOperation
             inbox_message = await RollupInboxMessage.filter(expected_l2_op_hash=l2_deposit.transaction_hash).first()
             if inbox_message is None:
+                unmatched += 1
                 continue
             l2_deposit.inbox_message_level = inbox_message.level
             l2_deposit.inbox_message_index = inbox_message.index
             await l2_deposit.save()
-            backfilled = True
+            backfilled += 1
 
         if backfilled:
             # The coords-based step (runs after this one) performs the link.
             BridgeMatcherLocks.set_pending_etherlink_deposits()
+        if unmatched:
+            # Transiently normal: the L2 row landed before its inbox message was indexed.
+            # PERSISTENT rows mean a pre-event-era deposit or a kernel upgrade that changed
+            # the op-hash derivation — the one tripwire for that silent failure (see
+            # handlers/michelson_deposit.py "Versioning").
+            logger.warning('%d L2 Michelson deposit(s) without a matching inbox op-hash', unmatched)
 
     @classmethod
     async def check_pending_etherlink_deposits(cls):
