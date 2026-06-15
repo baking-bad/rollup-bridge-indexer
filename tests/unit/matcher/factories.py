@@ -8,10 +8,9 @@ production-shaped data. Every factory takes overrides for what a test cares abou
 from datetime import UTC
 from datetime import datetime
 
-from rollup_bridge_indexer.handlers.bridge_matcher import BridgeMatcher
+from rollup_bridge_indexer.handlers.batch import run_matcher_steps
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.michelson_deposit import WEI_PER_MUTEZ
-from rollup_bridge_indexer.handlers.michelson_matcher import check_pending_michelson_deposits
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import RollupInboxMessage
@@ -130,16 +129,12 @@ async def michelson_l2_deposit(
 
 
 async def run_matcher_pass() -> None:
-    """One batch() pass over the deposit pipeline — same step order as handlers/batch.py.
+    """One production matcher pass — the exact `batch()` sequence via `run_matcher_steps`.
 
     Locks are NOT touched: a step runs only if its flag is already up, exactly like
     production. Set the flags the scenario's producing handlers would have set first.
     """
-    await BridgeMatcher.check_pending_tezos_deposits()
-    await BridgeMatcher.check_pending_inbox()
-    await check_pending_michelson_deposits(ROLLUP)
-    await BridgeMatcher.check_pending_etherlink_deposits()
-    await BridgeMatcher.check_pending_etherlink_xtz_deposits()
+    await run_matcher_steps(ROLLUP)
 
 
 async def run_deposit_matching() -> None:
