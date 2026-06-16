@@ -12,6 +12,9 @@ from rollup_bridge_indexer.handlers.batch import run_matcher_steps
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.michelson_deposit import WEI_PER_MUTEZ
 from rollup_bridge_indexer.handlers.michelson_deposit import expected_op_hash_from_inbox
+from rollup_bridge_indexer.models import BridgeDepositOperation
+from rollup_bridge_indexer.models import BridgeOperation
+from rollup_bridge_indexer.models import BridgeOperationStatus
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import RollupInboxMessage
@@ -155,3 +158,90 @@ async def run_deposit_matching() -> None:
     BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
     BridgeMatcherLocks.set_pending_michelson_deposits()
     await run_matcher_pass()
+
+
+# --- Deposit scenario builder (shared by the dispatch + fuzz tests) ----------------
+# Golden routing bytes -> tz1PSJ… receiver; reused so every op-hash op resolves to a real
+# kernel-derived hash (varying amount/level/index keeps each hash distinct).
+GOLDEN_RECEIVER = 'tz1PSJR6wBtoiv56Uz1w1bBxeoBnWpDYMwV7'
+GOLDEN_ROUTING = '01dad80196000029a8a3205033f6d4f0fb7c218e4a7e8bc12a798cc0'
+
+# The three L2-deposit row classes, each with one match key.
+DEPOSIT_CLASSES = ('coords', 'value', 'op_hash')
+
+
+def _michelson_payload(amount_mutez: int) -> dict:
+    return {
+        'LL': {
+            'bytes': GOLDEN_ROUTING,
+            'ticket': {'amount': str(amount_mutez), 'address': NATIVE_TICKETER, 'content': {'nat': '0', 'bytes': None}},
+        }
+    }
+
+
+def build_deposit_op(seq: int, kind: str, xtz):
+    """One deposit of class `kind`; `seq` (its index in the batch) seeds globally-distinct keys.
+
+    Returns (state, [reveal_l1, reveal_inbox, reveal_l2]); each reveal writes a leg row and
+    raises a lock.
+
+    !! DUPLICATION (by design): the `set_pending_*` calls below copy each producing handler's
+    lock-arming (`on_rollup_call`, `RollupMessageIndex`, `on_deposit`, `on_xtz_deposit`,
+    ophash). The lock-arming IS matcher logic and must be kept in sync with those handlers by
+    hand — we accept the copy rather than a shared abstraction layer.
+
+    NOT under test here (mirrored, not asserted — these belong to how rows are *read*, not to
+    matching): the L1↔L2 amount scaling (wei = mutez*10**12) and `parameters_hash` derivation.
+    TODO: class is discriminated by the `o…` tx-hash prefix; once L2 ops gain a `runtime`
+    column (backlog, needs a prod change) the matcher and this builder should key on it.
+    """
+    level, index, params_hash, inbox_id = 1000 + seq, seq, format(seq, '032d'), 100 + seq
+    amount = 1_000_000 + seq * 7  # distinct across all ops -> the value heuristic is unambiguous
+    receiver = GOLDEN_RECEIVER if kind == 'op_hash' else format(seq, '040x')
+    payload = _michelson_payload(amount) if kind == 'op_hash' else None
+    state: dict = {'kind': kind}
+
+    async def reveal_l1():
+        row = await l1_deposit(xtz.ticket, level=level, amount=str(amount), l2_account=receiver, parameters_hash=params_hash)
+        state['l1_id'] = row.id
+        BridgeMatcherLocks.set_pending_tezos_deposits()
+
+    async def reveal_inbox():
+        await inbox_message(id=inbox_id, level=level, index=index, parameters_hash=params_hash, message=payload)
+        BridgeMatcherLocks.set_pending_inbox()
+        BridgeMatcherLocks.set_pending_michelson_deposits()
+
+    async def reveal_l2():
+        if kind == 'op_hash':
+            op_hash = expected_op_hash_from_inbox(payload, level, index, ROLLUP)
+            row = await michelson_l2_deposit(xtz, level=level, op_hash=op_hash, amount_mutez=amount, l2_account=receiver)
+            BridgeMatcherLocks.set_pending_michelson_deposits()
+        elif kind == 'coords':
+            row = await evm_l2_deposit(
+                xtz,
+                level=level,
+                inbox_message_level=level,
+                inbox_message_index=index,
+                amount_wei=f'{amount}{"0" * 12}',
+                l2_account=receiver,
+            )
+            BridgeMatcherLocks.set_pending_etherlink_deposits()
+        else:
+            row = await evm_l2_deposit(
+                xtz, level=level, inbox_message_level=None, inbox_message_index=None, amount_wei=f'{amount}{"0" * 12}', l2_account=receiver
+            )
+            BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
+        state['l2_id'] = row.id
+
+    return state, [reveal_l1, reveal_inbox, reveal_l2]
+
+
+async def assert_all_deposits_finished(ops):
+    """Every op links to its OWN L2 leg, finishes, and no L2 row is left unmatched."""
+    for op in ops:
+        bridge = await BridgeDepositOperation.get(l1_transaction_id=op['l1_id'])
+        assert bridge.l2_transaction_id == op['l2_id'], f"{op['kind']} linked to the wrong L2 leg"
+        operation = await BridgeOperation.get(id=bridge.id)
+        assert operation.is_completed, op['kind']
+        assert operation.status == BridgeOperationStatus.finished, op['kind']
+    assert await EtherlinkDepositOperation.filter(bridge_deposits=None).count() == 0, 'an L2 row was left unmatched'
