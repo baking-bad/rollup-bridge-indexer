@@ -2,7 +2,7 @@
 """Verdict for the michelson-l2-deposit OP-HASH case — production matcher output.
 
 This is the regression for the PRODUCTION op-hash path: `tezos_x.on_michelson_deposit_ophash`
-records the full L2 row (xtz token, wei amount); the op-hash is precomputed onto each inbox
+records the full L2 row (xtz_michelson token, mutez amount); the op-hash is precomputed onto each inbox
 message (`expected_l2_op_hash`) and `BridgeMatcher.check_pending_michelson_deposits` backfills
 the L2 row's coords from the matching message, after which `check_pending_etherlink_deposits`
 links the legs (no event, no node call). GREEN means the real `bridge_operation` is FINISHED
@@ -28,7 +28,6 @@ L2_OP_HASH = 'opAhDWYxwDWFnKXG892itvC1TmMtUbeuSThVopzVDGd41mRxomE'
 RECEIVER = 'tz1PSJR6wBtoiv56Uz1w1bBxeoBnWpDYMwV7'
 INBOX_COORDS = (3599297, 8)
 AMOUNT_MUTEZ = 1_000_000
-AMOUNT_WEI = str(AMOUNT_MUTEZ * 10**12)
 
 
 def _reconstructed_op_hashes(cur) -> dict[str, tuple[int, int]]:
@@ -92,11 +91,11 @@ def main() -> int:
     # L1 leg: indexed and routed to the real tz1 receiver (l2_account fix).
     v.check(len(l1) == 1, 'exactly one L1 deposit indexed')
     v.check(bool(l1) and l1[0]['l2_account'] == RECEIVER, f'l1_deposit.l2_account is the tz1 receiver ({RECEIVER})')
-    # L2 leg: full consumer-visible row — xtz token, wei-scaled amount.
+    # L2 leg: full consumer-visible row — xtz_michelson token, mutez amount.
     v.check(len(l2) == 1, 'exactly one L2 Michelson deposit indexed')
     v.check(bool(l2) and l2[0]['transaction_hash'] == L2_OP_HASH, 'L2 row carries the synthetic op-hash')
-    v.check(bool(l2) and l2[0]['token_id'] == 'xtz', 'L2 row carries the xtz token')
-    v.check(bool(l2) and l2[0]['amount'] == AMOUNT_WEI, f'L2 amount is wei-scaled ({AMOUNT_WEI})')
+    v.check(bool(l2) and l2[0]['token_id'] == 'xtz_michelson', 'L2 row carries the xtz_michelson token')
+    v.check(bool(l2) and l2[0]['amount'] == str(AMOUNT_MUTEZ), f'L2 amount is mutez ({AMOUNT_MUTEZ})')
     v.check(
         bool(l2) and (l2[0]['inbox_message_level'], l2[0]['inbox_message_index']) == INBOX_COORDS,
         f'inbox coords backfilled onto the L2 row {INBOX_COORDS}',

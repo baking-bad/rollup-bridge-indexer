@@ -207,7 +207,7 @@ class BridgeMatcher:
         qs = (
             EtherlinkDepositOperation.filter(
                 bridge_deposits=None,
-                l2_token_id='xtz',
+                l2_token_id='xtz_evm',
             )
             # L2 Michelson rows (base58 `o…` hashes; EVM rows store bare hex) carry a
             # deterministic op-hash key — they get their coords via

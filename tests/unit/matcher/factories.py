@@ -10,7 +10,6 @@ from datetime import datetime
 
 from rollup_bridge_indexer.handlers.batch import run_matcher_steps
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
-from rollup_bridge_indexer.handlers.michelson_deposit import WEI_PER_MUTEZ
 from rollup_bridge_indexer.handlers.michelson_deposit import expected_op_hash_from_inbox
 from rollup_bridge_indexer.models import BridgeDepositOperation
 from rollup_bridge_indexer.models import BridgeOperation
@@ -29,10 +28,16 @@ TS = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
 async def seed_xtz() -> EtherlinkToken:
-    """The native token/ticket triple every network seeds on reindex."""
+    """The native token/ticket triple every network seeds on reindex.
+
+    XTZ surfaces as two L2 tokens on the same native ticket — `xtz_evm` (18 decimals) and
+    `xtz_michelson` (6 decimals). Returns the EVM token (its `.ticket` is loaded in-memory);
+    `michelson_l2_deposit` pulls `xtz_michelson` itself.
+    """
     token = await TezosToken.create(id='xtz', contract_address=NATIVE_TICKETER, name='Tezos', symbol='XTZ', decimals=6, type='native')
     ticket = await TezosTicket.create(hash='1', ticketer_address=NATIVE_TICKETER, token=token, whitelisted=True)
-    return await EtherlinkToken.create(id='xtz', name='Tezos', symbol='XTZ', decimals=18, ticket=ticket)
+    await EtherlinkToken.create(id='xtz_michelson', name='Tezos', symbol='XTZ', decimals=6, ticket=ticket)
+    return await EtherlinkToken.create(id='xtz_evm', name='Tezos', symbol='XTZ', decimals=18, ticket=ticket)
 
 
 async def l1_deposit(
@@ -125,6 +130,7 @@ async def michelson_l2_deposit(
     timestamp: datetime = TS,
 ) -> EtherlinkDepositOperation:
     """The synthetic-op row tezos_x/on_michelson_deposit_ophash.py records: base58 hash, no coords."""
+    token = await EtherlinkToken.get(id='xtz_michelson')
     return await EtherlinkDepositOperation.create(
         timestamp=timestamp,
         level=level,
@@ -133,10 +139,10 @@ async def michelson_l2_deposit(
         transaction_index=1,
         log_index=None,
         l2_account=l2_account,
-        l2_token=xtz,
-        ticket=xtz.ticket,
-        ticket_owner=xtz.id,
-        amount=str(amount_mutez * WEI_PER_MUTEZ),
+        l2_token=token,
+        ticket=xtz.ticket,  # same native ticket as the EVM handle, already loaded
+        ticket_owner=token.id,
+        amount=str(amount_mutez),  # mutez — matches xtz_michelson's 6 decimals
     )
 
 

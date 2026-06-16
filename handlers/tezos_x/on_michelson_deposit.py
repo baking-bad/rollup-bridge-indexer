@@ -16,7 +16,6 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosOperationData
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
-from rollup_bridge_indexer.handlers.michelson_deposit import WEI_PER_MUTEZ
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import TezosTicket
@@ -73,7 +72,7 @@ async def on_michelson_deposit(
         return
     inbox_message_level, inbox_message_index = coords
 
-    etherlink_token = await EtherlinkToken.get(id='xtz')
+    etherlink_token = await EtherlinkToken.get(id='xtz_michelson')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
 
     deposit = await EtherlinkDepositOperation.create(
@@ -87,7 +86,7 @@ async def on_michelson_deposit(
         l2_token=etherlink_token,
         ticket=tezos_ticket,
         ticket_owner=etherlink_token.id,
-        amount=str(op.amount * WEI_PER_MUTEZ),  # mutez -> wei, like every other xtz l2_deposit row
+        amount=str(op.amount),  # mutez — matches xtz_michelson's 6 decimals (and the L1 leg)
         inbox_message_level=inbox_message_level,
         inbox_message_index=inbox_message_index,
     )
