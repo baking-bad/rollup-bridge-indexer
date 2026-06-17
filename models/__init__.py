@@ -114,14 +114,9 @@ class L2Account(DatetimeModelMixin, Model):
         table = 'l2_account'
         model = 'models.L2Account'
 
-    # Canonical origin (PK): mirrors `address` until an alias is resolved, then the
-    # native origin (the tz1 behind an EVM alias). FKs target this column, so both the
-    # L1 and L2 legs of an aliased operation link to the same row and match by canon.
-    # Unique by construction (PK) — the alias↔origin mapping is 1:1.
+    # EVM or TezosX original address
     origin = fields.CharField(primary_key=True, max_length=40)
-    # Raw on-chain address as observed on the operation (the EVM address in our case);
-    # the natural key handlers `get_or_create` on. While alias checking is off it equals
-    # `origin`; once on-demand alias indexing lands, only `origin` diverges to the tz1.
+    # Alias if exists, else same as origin
     address = fields.CharField(max_length=40, db_index=True, unique=True)
     kind = fields.EnumField(enum_type=L2AccountKind, db_index=True, default=L2AccountKind.evm)
 
