@@ -360,7 +360,9 @@ class BridgeMatcher:
             l1_payout: TezosWithdrawOperation
 
             try:
-                l2_withdrawal = await EtherlinkWithdrawOperation.get(kernel_withdrawal_id=l1_payout.outbox_message.parameters_hash)
+                l2_withdrawal = await EtherlinkWithdrawOperation.get(
+                    kernel_withdrawal_id=l1_payout.outbox_message.parameters_hash
+                ).prefetch_related('l2_account')
             except DoesNotExist:
                 continue
 
@@ -377,10 +379,8 @@ class BridgeMatcher:
             if (
                 l1_payout_parameters['withdrawal']['ticketer'] == l2_withdrawal.l1_ticket_owner
                 and l1_payout_parameters['withdrawal']['payload'] == l2_withdrawal.fast_payload.hex()
-                # `l2_caller` is the raw EVM caller the kernel emits. l2_account_id == origin,
-                # which equals the raw address while alias checking is off. TODO(A4): once
-                # aliases resolve, compare against l2_withdrawal.l2_account.address instead.
-                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account_id
+                # `l2_caller` is the raw EVM caller the kernel emits
+                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account.address
                 and int(datetime.fromisoformat(l1_payout_parameters['withdrawal']['timestamp']).timestamp())
                 == int(l2_withdrawal.timestamp.timestamp())
                 and int(l1_payout_parameters['withdrawal']['full_amount']) * int(1e12) == int(l2_withdrawal.amount)

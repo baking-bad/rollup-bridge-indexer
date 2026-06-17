@@ -1,6 +1,7 @@
 from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosTransaction
 
+from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.michelson_deposit import l2_account_from_routing_info
 from rollup_bridge_indexer.handlers.rollup_message import TransactionParametersHash
@@ -23,10 +24,13 @@ async def on_rollup_call(
 
     routing_info = bytes.fromhex(parameter.routing_info)
     l2_account_address, receiver_kind = l2_account_from_routing_info(routing_info)
-    l2_account = await L2Account.get_or_create_for(
-        l2_account_address,
-        L2AccountKind.tz if receiver_kind == 'tezos' else L2AccountKind.evm,
-    )
+    # An EVM receiver may be an alias of a tz account; resolve it (and record the alias) the same
+    # way the L2 handlers do, so the shared L2Account row is correct whichever leg is indexed first.
+    # A tz receiver is an L2 Michelson account, never an alias — keep the non-resolving path.
+    if receiver_kind == 'tezos':
+        l2_account = await L2Account.get_or_create_for(l2_account_address, L2AccountKind.tz)
+    else:
+        l2_account = await resolve_l2_account(ctx, l2_account_address)
 
     try:
         ticket = await get_container(ctx).ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.content)

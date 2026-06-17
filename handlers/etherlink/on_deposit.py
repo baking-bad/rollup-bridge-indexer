@@ -4,12 +4,11 @@ from datetime import datetime
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
 
+from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
-from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import TezosTicket
-from rollup_bridge_indexer.models.enum import L2AccountKind
 from rollup_bridge_indexer.types.kernel.evm_events.deposit import DepositPayload
 
 
@@ -64,7 +63,7 @@ async def on_deposit(
                 )
                 etherlink_token = None
 
-    l2_account = await L2Account.get_or_create_for(event.payload.receiver[-40:], L2AccountKind.evm)
+    l2_account = await resolve_l2_account(ctx, event.payload.receiver[-40:])
 
     deposit = await EtherlinkDepositOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),

@@ -122,7 +122,9 @@ class L2Account(DatetimeModelMixin, Model):
 
     @classmethod
     async def get_or_create_for(cls, address: str, kind: L2AccountKind) -> 'L2Account':
-        # While alias checking is off, origin == address; A4 makes this resolve the alias.
+        # Non-resolving path (origin == address) for tz-side L2 receivers, which are never aliases.
+        # EVM addresses go through handlers/alias.py::resolve_l2_account, which resolves aliases
+        # against the originOf precompile before falling back to this shape.
         account, _ = await cls.get_or_create(address=address, defaults={'origin': address, 'kind': kind})
         return account
 

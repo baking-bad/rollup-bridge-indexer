@@ -4,12 +4,11 @@ from datetime import datetime
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
 
+from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.rollup_message import WithdrawalEventParametersHash
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
-from rollup_bridge_indexer.models import L2Account
-from rollup_bridge_indexer.models.enum import L2AccountKind
 from rollup_bridge_indexer.types.kernel_native.evm_events.fast_withdrawal import FastWithdrawalPayload
 from rollup_bridge_indexer.types.kernel_native.evm_events.withdrawal import WithdrawalPayload as LegacyWithdrawalPayload
 
@@ -32,7 +31,7 @@ async def on_xtz_withdraw(
         fast_payload = event.payload.payload
 
     assert l2_account_address is not None  # the payload is always one of the two variants above
-    l2_account = await L2Account.get_or_create_for(l2_account_address, L2AccountKind.evm)
+    l2_account = await resolve_l2_account(ctx, l2_account_address)
 
     withdrawal = await EtherlinkWithdrawOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
