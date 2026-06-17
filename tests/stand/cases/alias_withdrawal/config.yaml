@@ -1,0 +1,92 @@
+# Standalone config for the alias-withdrawal case. See README.md.
+# sqlite + oneshot. Runs only the EVM withdrawal index (native 0xff…01 + FA 0xff…02);
+# no L1 / deposit indexes — this case exercises the withdrawal handlers' alias resolution
+# (and the matcher's raw-address comparison), not full bridge matching.
+
+spec_version: 3.0
+package: rollup_bridge_indexer
+
+
+database:
+  kind: sqlite
+  path: ${SQLITE_PATH:-/tmp/bridge_alias_withdrawal.sqlite}
+
+
+datasources:
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+  metadata:
+    kind: tzip_metadata
+    network: ${NETWORK}
+    url: ${METADATA_URL}
+
+  tezos_node:
+    kind: http
+    url: ${TEZOS_NODE_URL}
+
+  etherlink_node:
+    kind: evm.node
+    url: ${ETHERLINK_NODE_URL}
+    http:
+      batch_size: 100
+      ratelimit_rate: 900
+      ratelimit_period: 60
+      ratelimit_sleep: 10
+
+  rollup_node:
+    kind: http
+    url: ${ROLLUP_NODE_URL}
+    http:
+      retry_count: 2
+      retry_sleep: 1.0
+      retry_multiplier: 1.0
+      connection_timeout: 1
+      request_timeout: 4
+
+
+contracts:
+  tezos_smart_rollup:
+    kind: tezos
+    address: ${SMART_ROLLUP_ADDRESS}
+    typename: rollup
+
+  l2_withdrawal_precompile_fa:
+    kind: evm
+    address: '0xff00000000000000000000000000000000000002'
+    typename: kernel
+
+  l2_withdrawal_precompile_native:
+    kind: evm
+    address: '0xff00000000000000000000000000000000000001'
+    typename: kernel_native
+
+
+indexes:
+  etherlink_withdrawal_events:
+    kind: evm.events
+    first_level: ${L2_FIRST_LEVEL}
+    last_level: ${L2_LAST_LEVEL}
+    datasources:
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_xtz_withdraw
+        contract: l2_withdrawal_precompile_native
+        name: Withdrawal
+      - callback: etherlink.on_xtz_withdraw
+        contract: l2_withdrawal_precompile_native
+        name: FastWithdrawal
+      - callback: etherlink.on_withdraw
+        contract: l2_withdrawal_precompile_fa
+        name: Withdrawal
+
+
+advanced:
+  unsafe_sqlite: true
+  reindex:
+    config_modified: ignore
+    schema_modified: ignore
+    migration: ignore
+    rollback: ignore
+    manual: wipe

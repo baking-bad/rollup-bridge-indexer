@@ -57,6 +57,30 @@ def section(title: str) -> None:
     print('-' * len(title))
 
 
+def counts(cur: sqlite3.Cursor, *tables: str) -> None:
+    """Print a `Row counts` section (`(missing)` if a table is absent)."""
+    section('Row counts')
+    for t in tables:
+        c = count(cur, t)
+        print(f'  {t:<22} {"(missing)" if c < 0 else c}')
+
+
+def dump(cur: sqlite3.Cursor, table: str, columns: str, order_by: str | None = None) -> list[sqlite3.Row]:
+    """Print `table` as `key=value` lines and return its rows. `columns` is a comma-list."""
+    cols = [c.strip() for c in columns.split(',')]
+    section(table)
+    sql = f'SELECT {columns} FROM {table}' + (f' ORDER BY {order_by}' if order_by else '')
+    result = rows(cur, sql)
+    for r in result:
+        print('  ' + '  '.join(f'{c}={r[c]}' for c in cols))
+    return result
+
+
+def dump_accounts(cur: sqlite3.Cursor) -> dict[str, sqlite3.Row]:
+    """Dump `l2_account`, return it keyed by `address` (feed to `Verdict.check_alias`)."""
+    return {r['address']: r for r in dump(cur, 'l2_account', 'origin, address, kind')}
+
+
 class Verdict:
     """Accumulates pass/fail checks and renders a final verdict + exit code.
 
@@ -72,6 +96,13 @@ class Verdict:
     def check(self, ok: bool, label: str) -> bool:
         self._results.append((bool(ok), label))
         return bool(ok)
+
+    def check_alias(self, accounts: dict[str, sqlite3.Row], alias: str, native: str) -> None:
+        """Assert the alias `l2_account` row exists and resolved to `native` (kind=evm_alias)."""
+        row = accounts.get(alias)
+        self.check(row is not None, f'l2_account row exists for alias {alias}')
+        self.check(row is not None and row['kind'] == 'evm_alias', 'alias resolved: kind == evm_alias')
+        self.check(row is not None and row['origin'] == native, f'alias resolved: origin == {native}')
 
     def report(self) -> int:
         section('Verdict')
