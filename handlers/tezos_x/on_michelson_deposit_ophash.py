@@ -3,13 +3,15 @@
 Records the L2 *synthetic* pseudo-Michelson `transaction` the kernel emits from
 TEZLINK_DEPOSITOR for a tz1-target XTZ deposit. Reads NOTHING beyond the TzKT op:
 no deposit event (TzKT drops it for implicit-source ops) and no Tezos node call.
-The deterministic L1<->L2 link is the op-hash, reconstructed from L1 inbox data by
-the separated matcher step (`handlers/michelson_matcher.py`); inbox coords are
-backfilled onto this row at match time.
+The deterministic L1<->L2 link is the op-hash: it is precomputed from L1 inbox data
+onto `RollupInboxMessage.expected_l2_op_hash`, and `BridgeMatcher.check_pending_michelson_deposits`
+backfills this row's inbox coords from the matching message at match time.
 
 The row is stored fully consumer-visible, shaped like the EVM XTZ path
-(`etherlink/on_xtz_deposit.py`): xtz token + ticket, and the amount scaled
-mutez -> wei so it agrees with the xtz EtherlinkToken's 18 decimals.
+(`etherlink/on_xtz_deposit.py`) but on the Michelson XTZ token: `xtz_michelson`
+(6 decimals, Tezlink mutez) + the native ticket, with the amount kept in mutez.
+The op-hash derivation still scales mutez -> wei (kernel invariant, see
+`michelson_deposit.compute_deposit_op_hash`); only the stored display amount is mutez.
 
 Discriminators (not expressible as index filters):
   * amount > 0       — a ticket can't carry a zero balance; also excludes NAC
@@ -22,7 +24,6 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosOperationData
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
-from rollup_bridge_indexer.handlers.michelson_deposit import WEI_PER_MUTEZ
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import TezosTicket
@@ -40,7 +41,7 @@ async def on_michelson_deposit_ophash(
 
     ctx.logger.info('L2 Michelson deposit found: %s (amount=%s -> %s)', op.hash, op.amount, op.target_address)
 
-    etherlink_token = await EtherlinkToken.get(id='xtz')
+    etherlink_token = await EtherlinkToken.get(id='xtz_michelson')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
 
     deposit = await EtherlinkDepositOperation.create(
@@ -54,7 +55,7 @@ async def on_michelson_deposit_ophash(
         l2_token=etherlink_token,
         ticket=tezos_ticket,
         ticket_owner=etherlink_token.id,
-        amount=str(op.amount * WEI_PER_MUTEZ),  # mutez -> wei, like every other xtz l2_deposit row
+        amount=str(op.amount),  # mutez — matches xtz_michelson's 6 decimals (and the L1 leg)
     )
 
     ctx.logger.info('L2 Michelson deposit registered: %s %s', deposit.id, op.hash)

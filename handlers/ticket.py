@@ -112,11 +112,19 @@ class TicketService:
                 metadata=ticket_content.metadata_hex,
                 whitelisted=True,
             )
+            # Two L2 tokens on one native ticket, differing only in decimals: EVM in wei (mutez+12), Michelson in mutez.
             await EtherlinkToken.create(
-                id=xtz.id,
+                id='xtz_evm',
                 name=xtz.name,
                 symbol=xtz.symbol,
                 decimals=xtz.decimals + 12,
+                ticket=ticket,
+            )
+            await EtherlinkToken.create(
+                id='xtz_michelson',
+                name=xtz.name,
+                symbol=xtz.symbol,
+                decimals=xtz.decimals,
                 ticket=ticket,
             )
             self._lower_first_ticket_level(ticket_data['firstLevel'])

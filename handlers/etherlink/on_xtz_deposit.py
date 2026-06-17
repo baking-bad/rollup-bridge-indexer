@@ -39,7 +39,7 @@ async def on_xtz_deposit(
         return
 
     assert transaction.to is not None  # validated above: a deposit always has a destination
-    etherlink_token = await EtherlinkToken.get(id='xtz')
+    etherlink_token = await EtherlinkToken.get(id='xtz_evm')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
 
     deposit = await EtherlinkDepositOperation.create(

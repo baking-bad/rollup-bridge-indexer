@@ -8,7 +8,6 @@ from asyncpg.pgproto import pgproto
 from dipdup import fields
 from dipdup.models import Model
 from tortoise import ForeignKeyFieldInstance
-from tortoise import OneToOneFieldInstance
 from tortoise.fields.data import JSONField
 
 from rollup_bridge_indexer.models.enum import BridgeOperationKind
@@ -101,7 +100,8 @@ class EtherlinkToken(Model):
     name = fields.TextField(null=True)
     symbol = fields.TextField(null=True)
     decimals = fields.IntField(default=0)
-    ticket: OneToOneFieldInstance[TezosTicket] = fields.OneToOneField(
+    # Not OneToOne: XTZ has two L2 tokens (xtz_evm, xtz_michelson) on one native ticket.
+    ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
         source_field='ticket_hash',
         to_field='hash',
@@ -141,6 +141,10 @@ class RollupInboxMessage(AbstractRollupMessage):
 
     id = fields.BigIntField(primary_key=True)
     type = fields.EnumField(RollupInboxMessageType)
+    # For tz1-target XTZ deposits: the L2 synthetic-op hash derived from this message
+    # (handlers/michelson_deposit.py); null for every other message. The op-hash matcher
+    # keys L2 Michelson deposits on it (BridgeMatcher.check_pending_michelson_deposits).
+    expected_l2_op_hash = fields.CharField(max_length=54, db_index=True, null=True)
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 

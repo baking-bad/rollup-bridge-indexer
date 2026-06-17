@@ -13,9 +13,10 @@ node round-trip. Pipeline under test:
 
 - `tezos_x.on_michelson_deposit_ophash` — records the full consumer-visible L2 row
   (xtz token + ticket, amount scaled mutez→wei to match the token's 18 decimals);
-- `handlers/michelson_matcher.py` — the separated matcher step: reconstructs the
-  expected op-hash per unmatched L1 leg (`expected_op_hash_from_inbox`), links the
-  legs, backfills inbox coords onto the L2 row, finishes the `bridge_operation`;
+- `rollup_message` precomputes each inbox message's `expected_l2_op_hash`;
+  `BridgeMatcher.check_pending_michelson_deposits` backfills inbox coords onto the L2 row
+  from the message whose hash matches, then `check_pending_etherlink_deposits` links the
+  legs and finishes the `bridge_operation`;
 - `tezos.on_rollup_call` — stores the real `tz1…` receiver as `l1_deposit.l2_account`
   (v1-RLP routing decode, not the legacy 20-byte slice).
 

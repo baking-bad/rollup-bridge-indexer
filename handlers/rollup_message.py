@@ -19,6 +19,7 @@ from pytezos import michelson_to_micheline
 from tortoise.exceptions import DoesNotExist
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from rollup_bridge_indexer.handlers.michelson_deposit import expected_op_hash_from_inbox
 from rollup_bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from rollup_bridge_indexer.handlers.ticket import WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from rollup_bridge_indexer.handlers.ticket import TicketService
@@ -332,6 +333,13 @@ class RollupMessageIndex:
             )
 
     async def _handle_transfer_inbox_message(self, message):
+        try:
+            expected_l2_op_hash = expected_op_hash_from_inbox(
+                message['parameter'], message['level'], message['index'], self._bridge.smart_rollup_address
+            )
+        except ValueError:
+            # Not Michelson-routed (legacy/FA routing shapes) — no synthetic L2 op to match.
+            expected_l2_op_hash = None
         self._create_inbox_batch.append(
             RollupInboxMessage(
                 id=message['id'],
@@ -340,6 +348,7 @@ class RollupMessageIndex:
                 type=RollupInboxMessageType.transfer,
                 message=message['parameter'],
                 parameters_hash=await InboxMessageParametersHash(message['parameter']).from_inbox_message_parameters(),
+                expected_l2_op_hash=expected_l2_op_hash,
             )
         )
 

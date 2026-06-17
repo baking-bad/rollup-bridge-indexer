@@ -1,17 +1,14 @@
-"""L2 Michelson deposit — EVENT/NODE-POLLING variant. NOT wired into production.
+"""L2 Michelson deposit — event-based variant.
 
-Production uses the op-hash variant (`handlers/tezos_x/on_michelson_deposit_ophash.py`
-+ `handlers/michelson_matcher.py`). This handler is the event-based alternative: it
-reads the kernel's `tag=deposit` event (inbox coords) so deposits flow through the
-regular coords-based matcher. It could replace the op-hash path IF TzKT ever serves
-implicit-source events — that is not committed anywhere, so don't plan around it
-(today TzKT drops them, and the per-op node poll costs ~715 ms and loses a deposit
-on a dropped call).
+Reads the kernel's `tag=deposit` event (inbox coords) from the node block receipt and
+stores them directly, so the deposit flows through the standard coords-based matcher
+(`BridgeMatcher.check_pending_etherlink_deposits`). The event is emitted from an
+implicit (tz1) source, which TzKT does not index, so the coords come from the node.
 
-Used ONLY by the stand case `tests/stand/cases/michelson_l2_deposit/`, which also
-needs the `tezos_x_michelson_node` datasource below — both exist solely for this
-variant. IF TzKT ships the events: point this at the TzKT payload instead of the
-node receipt, promote it to prod config, and retire the op-hash matcher.
+Production uses the op-hash variant (`on_michelson_deposit_ophash.py` +
+`BridgeMatcher.check_pending_michelson_deposits`), which needs no node call. This handler
+is exercised by the stand case `tests/stand/cases/michelson_l2_deposit/` and its
+`tezos_x_michelson_node` datasource.
 """
 
 import aiohttp
@@ -19,7 +16,6 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosOperationData
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
-from rollup_bridge_indexer.handlers.michelson_deposit import WEI_PER_MUTEZ
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import TezosTicket
@@ -76,7 +72,7 @@ async def on_michelson_deposit(
         return
     inbox_message_level, inbox_message_index = coords
 
-    etherlink_token = await EtherlinkToken.get(id='xtz')
+    etherlink_token = await EtherlinkToken.get(id='xtz_michelson')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
 
     deposit = await EtherlinkDepositOperation.create(
@@ -90,7 +86,7 @@ async def on_michelson_deposit(
         l2_token=etherlink_token,
         ticket=tezos_ticket,
         ticket_owner=etherlink_token.id,
-        amount=str(op.amount * WEI_PER_MUTEZ),  # mutez -> wei, like every other xtz l2_deposit row
+        amount=str(op.amount),  # mutez — matches xtz_michelson's 6 decimals (and the L1 leg)
         inbox_message_level=inbox_message_level,
         inbox_message_index=inbox_message_index,
     )
