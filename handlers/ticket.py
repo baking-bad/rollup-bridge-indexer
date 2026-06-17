@@ -20,6 +20,8 @@ from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models import TezosToken
 from rollup_bridge_indexer.types.rollup.tezos_parameters.default import TicketContent
 
+EVM_XTZ_DECIMALS = 18  # EVM XTZ handle is wei; mutez is 6
+
 WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE = 'pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))'
 FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE = 'pair (nat %withdrawal_id) (pair (pair %ticket (address %address) (pair (pair %content (nat %nat) (option %bytes bytes)) (nat %amount))) (pair (timestamp %timestamp) (pair (address %base_withdrawer) (pair (bytes %payload) (bytes %l2_caller)))))'
 
@@ -112,12 +114,12 @@ class TicketService:
                 metadata=ticket_content.metadata_hex,
                 whitelisted=True,
             )
-            # Two L2 tokens on one native ticket, differing only in decimals: EVM in wei (mutez+12), Michelson in mutez.
+            # Two L2 tokens on one native ticket: EVM handle in wei, Michelson in mutez.
             await EtherlinkToken.create(
                 id='xtz_evm',
                 name=xtz.name,
                 symbol=xtz.symbol,
-                decimals=xtz.decimals + 12,
+                decimals=EVM_XTZ_DECIMALS,
                 ticket=ticket,
             )
             await EtherlinkToken.create(
