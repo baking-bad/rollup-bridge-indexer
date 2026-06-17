@@ -125,7 +125,12 @@ class L2Account(DatetimeModelMixin, Model):
         # Non-resolving path (origin == address) for tz-side L2 receivers, which are never aliases.
         # EVM addresses go through handlers/alias.py::resolve_l2_account, which resolves aliases
         # against the originOf precompile before falling back to this shape.
-        account, _ = await cls.get_or_create(address=address, defaults={'origin': address, 'kind': kind})
+        #
+        # Key on `origin`, not `address`: the same native account may already have a row under a
+        # different `address` (its EVM alias, recorded by resolve_l2_account). Looking up by origin
+        # reuses that row instead of inserting a duplicate-`origin` PK, and create-only `defaults`
+        # leave an already-recorded alias form untouched (no downgrade back to the tz-side shape).
+        account, _ = await cls.get_or_create(origin=address, defaults={'address': address, 'kind': kind})
         return account
 
 

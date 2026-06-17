@@ -43,5 +43,15 @@ async def resolve_l2_account(ctx: HandlerContext, address: str) -> L2Account:
     else:
         origin, kind = address, L2AccountKind.evm
 
-    account, _ = await L2Account.get_or_create(address=address, defaults={'origin': origin, 'kind': kind})
+    # Key on `origin` (the canonical native identity), never on `address`: one native account is
+    # reachable by several addresses (its tz-side Michelson receiver AND its EVM alias), so a second
+    # sighting must reuse the existing row, not INSERT a duplicate-`origin` PK (which crash-looped the
+    # indexer). When an alias is found for an already-recorded native account, update its stored
+    # address+kind so the row converges on the alias form regardless of which leg was indexed first.
+    account = await L2Account.get_or_none(origin=origin)
+    if account is None:
+        return await L2Account.create(origin=origin, address=address, kind=kind)
+    account.address = address
+    account.kind = kind
+    await account.save()
     return account
