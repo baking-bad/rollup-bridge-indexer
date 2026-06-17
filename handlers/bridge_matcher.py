@@ -214,10 +214,14 @@ class BridgeMatcher:
             # check_pending_michelson_deposits, and this value-based zip must not preempt it.
             .exclude(transaction_hash__startswith='o')
             .order_by('level', 'transaction_index')
-            .prefetch_related('l2_token', 'l2_token__ticket')
+            .prefetch_related('l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
         )
         async for l2_deposit in qs:
             l2_deposit: EtherlinkDepositOperation
+            # L1 stores mutez, the L2 EVM handle stores wei; the scale is the decimal gap
+            # between the two token representations of the same native ticket (no magic 12).
+            scale = 10 ** (l2_deposit.l2_token.decimals - l2_deposit.l2_token.ticket.token.decimals)
+            l1_amount = str(int(l2_deposit.amount) // scale)
             bridge_deposit = (
                 await BridgeDepositOperation.filter(
                     l2_transaction=None,
@@ -226,7 +230,7 @@ class BridgeMatcher:
                     l1_transaction__timestamp__lte=l2_deposit.timestamp,
                     l1_transaction__timestamp__gte=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX,
                     l1_transaction__l2_account_id=l2_deposit.l2_account_id,
-                    l1_transaction__amount=l2_deposit.amount[:-12],
+                    l1_transaction__amount=l1_amount,
                 )
                 .order_by('l1_transaction__timestamp')
                 .prefetch_related('inbox_message', 'l1_transaction')
