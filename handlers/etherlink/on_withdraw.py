@@ -8,6 +8,8 @@ from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLoc
 from rollup_bridge_indexer.handlers.rollup_message import WithdrawalEventParametersHash
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
+from rollup_bridge_indexer.models import L2Account
+from rollup_bridge_indexer.models.enum import L2AccountKind
 from rollup_bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload
 
 
@@ -26,6 +28,8 @@ async def on_withdraw(
     if etherlink_token and event.payload.proxy != etherlink_token.ticket.ticketer_address:
         ctx.logger.warning('Uncommon Withdraw Routing Info: `proxy != ticketer_address`.')
 
+    l2_account = await L2Account.get_or_create_for(event.payload.sender[-40:], L2AccountKind.evm)
+
     withdrawal = await EtherlinkWithdrawOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
         level=event.data.level,
@@ -33,7 +37,7 @@ async def on_withdraw(
         log_index=event.data.log_index,
         transaction_hash=event.data.transaction_hash[-64:],
         transaction_index=event.data.transaction_index,
-        l2_account=event.payload.sender[-40:],
+        l2_account=l2_account,
         l1_account=event.payload.receiver,
         l2_token=etherlink_token,
         ticket_id=event.payload.ticket_hash,

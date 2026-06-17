@@ -18,7 +18,9 @@ from dipdup.models.tezos import TezosOperationData
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
+from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import TezosTicket
+from rollup_bridge_indexer.models.enum import L2AccountKind
 
 # Exists only for this variant's stand case — not in any prod config.
 _NODE_DATASOURCE = 'tezos_x_michelson_node'
@@ -74,6 +76,8 @@ async def on_michelson_deposit(
 
     etherlink_token = await EtherlinkToken.get(id='xtz_michelson')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
+    assert op.target_address is not None  # a deposit always carries its tz1 receiver
+    l2_account = await L2Account.get_or_create_for(op.target_address, L2AccountKind.tz)  # L2 receiver (tz1)
 
     deposit = await EtherlinkDepositOperation.create(
         timestamp=op.timestamp,
@@ -82,7 +86,7 @@ async def on_michelson_deposit(
         transaction_hash=op.hash,
         transaction_index=op.counter,  # ordering key only; the match is by inbox coords
         log_index=None,
-        l2_account=op.target_address,  # L2 receiver (tz1)
+        l2_account=l2_account,
         l2_token=etherlink_token,
         ticket=tezos_ticket,
         ticket_owner=etherlink_token.id,

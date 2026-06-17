@@ -13,6 +13,7 @@ from tortoise.fields.data import JSONField
 from rollup_bridge_indexer.models.enum import BridgeOperationKind
 from rollup_bridge_indexer.models.enum import BridgeOperationStatus
 from rollup_bridge_indexer.models.enum import BridgeOperationType
+from rollup_bridge_indexer.models.enum import L2AccountKind
 from rollup_bridge_indexer.models.enum import RollupInboxMessageType
 from rollup_bridge_indexer.models.enum import RollupOutboxMessageBuilder
 
@@ -108,6 +109,29 @@ class EtherlinkToken(Model):
     )
 
 
+class L2Account(DatetimeModelMixin, Model):
+    class Meta:
+        table = 'l2_account'
+        model = 'models.L2Account'
+
+    # Canonical origin (PK): mirrors `address` until an alias is resolved, then the
+    # native origin (the tz1 behind an EVM alias). FKs target this column, so both the
+    # L1 and L2 legs of an aliased operation link to the same row and match by canon.
+    # Unique by construction (PK) — the alias↔origin mapping is 1:1.
+    origin = fields.CharField(primary_key=True, max_length=40)
+    # Raw on-chain address as observed on the operation (the EVM address in our case);
+    # the natural key handlers `get_or_create` on. While alias checking is off it equals
+    # `origin`; once on-demand alias indexing lands, only `origin` diverges to the tz1.
+    address = fields.CharField(max_length=40, db_index=True, unique=True)
+    kind = fields.EnumField(enum_type=L2AccountKind, db_index=True, default=L2AccountKind.evm)
+
+    @classmethod
+    async def get_or_create_for(cls, address: str, kind: L2AccountKind) -> 'L2Account':
+        # While alias checking is off, origin == address; A4 makes this resolve the alias.
+        account, _ = await cls.get_or_create(address=address, defaults={'origin': address, 'kind': kind})
+        return account
+
+
 class RollupCementedCommitment(DatetimeModelMixin, Model):
     class Meta:
         table = 'rollup_commitment'
@@ -192,7 +216,11 @@ class TezosDepositOperation(AbstractTezosOperation):
         model = 'models.TezosDepositOperation'
 
     l1_account = fields.CharField(max_length=36)
-    l2_account = fields.CharField(max_length=40)
+    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+        model_name=L2Account.Meta.model,
+        to_field='origin',
+        related_name='l1_deposits',
+    )
     ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
         source_field='ticket_hash',
@@ -244,7 +272,11 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
             'inbox_message_index',
         )
 
-    l2_account = fields.CharField(max_length=40)
+    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+        model_name=L2Account.Meta.model,
+        to_field='origin',
+        related_name='l2_deposits',
+    )
     l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
         model_name=EtherlinkToken.Meta.model,
         source_field='token_id',
@@ -273,7 +305,11 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
 
         ordering = ('-level', '-transaction_index', '-log_index')
 
-    l2_account = fields.CharField(max_length=40)
+    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+        model_name=L2Account.Meta.model,
+        to_field='origin',
+        related_name='l2_withdrawals',
+    )
     l1_account = fields.CharField(max_length=36)
     l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
         model_name=EtherlinkToken.Meta.model,
@@ -311,7 +347,11 @@ class BridgeOperation(AbstractBridgeOperation):
         ordering = ('-created_at',)
 
     l1_account = fields.CharField(max_length=36, db_index=True)
-    l2_account = fields.CharField(max_length=40, db_index=True)
+    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+        model_name=L2Account.Meta.model,
+        to_field='origin',
+        related_name='bridge_operations',
+    )
     type = fields.EnumField(enum_type=BridgeOperationType, db_index=True)
     kind = fields.EnumField(enum_type=BridgeOperationKind, db_index=True, null=True)
     is_completed = fields.BooleanField(default=False, db_index=True)

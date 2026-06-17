@@ -5,7 +5,9 @@ from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLoc
 from rollup_bridge_indexer.handlers.michelson_deposit import l2_account_from_routing_info
 from rollup_bridge_indexer.handlers.rollup_message import TransactionParametersHash
 from rollup_bridge_indexer.handlers.service_container import get_container
+from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import TezosDepositOperation
+from rollup_bridge_indexer.models.enum import L2AccountKind
 from rollup_bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 from rollup_bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
@@ -20,7 +22,11 @@ async def on_rollup_call(
     parameter = default.parameter.root.LL
 
     routing_info = bytes.fromhex(parameter.routing_info)
-    l2_account = l2_account_from_routing_info(routing_info)
+    l2_account_address, receiver_kind = l2_account_from_routing_info(routing_info)
+    l2_account = await L2Account.get_or_create_for(
+        l2_account_address,
+        L2AccountKind.tz if receiver_kind == 'tezos' else L2AccountKind.evm,
+    )
 
     try:
         ticket = await get_container(ctx).ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.content)

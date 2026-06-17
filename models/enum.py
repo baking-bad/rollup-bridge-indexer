@@ -14,6 +14,17 @@ class RollupOutboxMessageBuilder(Enum):
     service_provider = 'service_provider'
 
 
+class L2AccountKind(Enum):
+    # A plain account whose canonical address equals the address itself.
+    evm = 'evm'
+    tz = 'tz'
+    # An alias: `address` holds the canonical origin, `alias` holds the alias form.
+    # evm_alias = an EVM address aliasing a tz1 origin (the only one we actually write).
+    # tz_alias = a tz address aliasing an EVM origin; kept for completeness, never written.
+    evm_alias = 'evm_alias'
+    tz_alias = 'tz_alias'
+
+
 class BridgeOperationType(Enum):
     deposit = 'deposit'
     withdrawal = 'withdrawal'
