@@ -20,6 +20,8 @@ from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models import TezosToken
 from rollup_bridge_indexer.types.rollup.tezos_parameters.default import TicketContent
 
+EVM_XTZ_DECIMALS = 18  # EVM XTZ handle is wei; mutez is 6
+
 WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE = 'pair (address %receiver) (pair %ticket (address %ticketer) (pair (pair %content (nat %ticket_id) (option %metadata bytes)) (nat %amount)))'
 FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE = 'pair (nat %withdrawal_id) (pair (pair %ticket (address %address) (pair (pair %content (nat %nat) (option %bytes bytes)) (nat %amount))) (pair (timestamp %timestamp) (pair (address %base_withdrawer) (pair (bytes %payload) (bytes %l2_caller)))))'
 
@@ -31,19 +33,30 @@ class TicketService:
         self._bridge: BridgeConstantStorage = bridge
 
     async def register_fa_tickets(self):
-        first_levels = []
         for ticketer_address in self._bridge.fa_ticketer_list:
             for ticket_data in await self._tzkt.request('GET', f'v1/tickets?ticketer.eq={ticketer_address}'):
                 await self.fetch_ticket(
                     ticket_data['ticketer']['address'],
                     TicketContent.model_validate(ticket_data['content']),
                 )
-                first_levels.append(ticket_data['firstLevel'])
+                self._lower_first_ticket_level(ticket_data['firstLevel'])
 
-        if first_levels:
-            from rollup_bridge_indexer.handlers.rollup_message import RollupMessageIndex
+    @staticmethod
+    def _lower_first_ticket_level(first_level: int) -> None:
+        """Keep RollupMessageIndex.first_ticket_level = min over EVERY whitelisted ticket.
 
-            RollupMessageIndex.first_ticket_level = min(first_levels)
+        The fresh-DB inbox backfill starts at this level; a deposit always carries a
+        whitelisted ticket, so the earliest ticket activity bounds the earliest inbox
+        message worth indexing. The native ticket MUST participate: on networks where
+        the FA ticketers were deployed late (tezosx-shadownet), an FA-only minimum
+        starts the backfill after months of XTZ deposits, silently dropping their
+        inbox messages — those deposits then can never be matched.
+        """
+        from rollup_bridge_indexer.handlers.rollup_message import RollupMessageIndex
+
+        current = RollupMessageIndex.first_ticket_level
+        if current is None or first_level < current:
+            RollupMessageIndex.first_ticket_level = first_level
 
     async def fetch_ticket(self, ticketer_address, ticket_content: TicketContent):
         ticket_hash = self.get_ticket_hash(ticketer_address, ticket_content)
@@ -101,13 +114,22 @@ class TicketService:
                 metadata=ticket_content.metadata_hex,
                 whitelisted=True,
             )
+            # Two L2 tokens on one native ticket: EVM handle in wei, Michelson in mutez.
             await EtherlinkToken.create(
-                id=xtz.id,
+                id='xtz_evm',
                 name=xtz.name,
                 symbol=xtz.symbol,
-                decimals=xtz.decimals + 12,
+                decimals=EVM_XTZ_DECIMALS,
                 ticket=ticket,
             )
+            await EtherlinkToken.create(
+                id='xtz_michelson',
+                name=xtz.name,
+                symbol=xtz.symbol,
+                decimals=xtz.decimals,
+                ticket=ticket,
+            )
+            self._lower_first_ticket_level(ticket_data['firstLevel'])
             return ticket
         raise ValueError('No Native Ticketer found')
 

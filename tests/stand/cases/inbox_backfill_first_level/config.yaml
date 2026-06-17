@@ -1,0 +1,79 @@
+# Standalone config for the inbox-backfill START-LEVEL case. See README.md.
+# sqlite + oneshot (no tezos.head, last_level on every index).
+#
+# Only the L1 deposit index runs — the case targets the FRESH-DB inbox backfill
+# start decision (RollupMessageIndex._prepare_new_index -> first_ticket_level).
+# window.env deliberately does NOT set ROLLUP_SYNC_FIRST_LEVEL: that test override
+# replaces the very logic under test (production picks the start level from the
+# registered tickets' firstLevel).
+
+spec_version: 3.0
+package: rollup_bridge_indexer
+
+
+database:
+  kind: sqlite
+  path: ${SQLITE_PATH:-/tmp/bridge_inbox_backfill_first_level.sqlite}
+
+
+datasources:
+  # L1 = shadownet (hooks/ServiceContainer need tzkt/metadata/tezos_node/rollup_node).
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+  metadata:
+    kind: tzip_metadata
+    network: ${NETWORK}
+    url: ${METADATA_URL}
+
+  tezos_node:
+    kind: http
+    url: ${TEZOS_NODE_URL}
+
+  rollup_node:
+    kind: http
+    url: ${ROLLUP_NODE_URL}
+    http:
+      retry_count: 2
+      retry_sleep: 1.0
+      retry_multiplier: 1.0
+      connection_timeout: 1
+      request_timeout: 4
+
+
+contracts:
+  tezos_smart_rollup:
+    kind: tezos
+    address: ${SMART_ROLLUP_ADDRESS}
+    typename: rollup
+
+
+indexes:
+  # L1 side: the internal rollup `default` call within the deposit op.
+  tezos_deposit_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    last_level: ${L1_LAST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_smart_rollup
+    handlers:
+      - callback: tezos.on_rollup_call
+        pattern:
+          - type: transaction
+            destination: tezos_smart_rollup
+            entrypoint: default
+
+
+advanced:
+  unsafe_sqlite: true
+  reindex:
+    config_modified: ignore
+    schema_modified: ignore
+    migration: ignore
+    rollback: ignore
+    manual: wipe

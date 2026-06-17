@@ -65,22 +65,24 @@ update:         ## Update dependencies
 	dipdup self update -q
 	uv sync --all-extras --all-groups --link-mode symlink -U
 
-# --- Stripped, block-bounded test indexer for tezosx-shadownet ---
-TEST_ENV ?= /home/ubuntu/deployments/stacks/etherlink-bridge-indexer/.env.tezosx-shadownet
-TEST_OVERRIDE ?= tests/stand/tezosx-shadownet-test.env
-TEST_CONFIG := tests/stand/tezosx-shadownet-test.yaml
+# --- Block-bounded test-indexer stand (tests/stand/). Pick a case: CASE=<name> ---
+STAND_ENV := tests/stand/tezosx.env
+CASE_DIR   = tests/stand/cases/$(CASE)
+STAND_ARGS = -e $(STAND_ENV) -e $(CASE_DIR)/window.env -c $(CASE_DIR)/config.yaml
 
-check-test-config:
-	set -a; . $(TEST_ENV); . $(TEST_OVERRIDE); set +a
-	$(py) dipdup -c $(TEST_CONFIG) config export --unsafe > /dev/null
-	@echo "Test config OK"
+_require-case:
+	@test -n "$(CASE)" || (echo "usage: make $(MAKECMDGOALS) CASE=<name>  (see tests/stand/cases/)"; exit 1)
+	@test -d "$(CASE_DIR)" || (echo "no such case: $(CASE_DIR)"; exit 1)
 
-test-indexer:
-	@test -f $(TEST_OVERRIDE) || (echo "missing $(TEST_OVERRIDE) — cp tests/stand/tezosx-shadownet-test.env.default $(TEST_OVERRIDE) and set the block window"; exit 1)
-	set -a; . $(TEST_ENV); . $(TEST_OVERRIDE); set +a
-	rm -f "$${SQLITE_PATH:-/tmp/bridge_tezosx_test.sqlite}"
-	$(py) dipdup -c $(TEST_CONFIG) run
+check-test-config: _require-case
+	$(py) dipdup $(STAND_ARGS) config export --unsafe > /dev/null
+	@echo "Test config OK: $(CASE)"
 
-inspect-test:
-	set -a; . $(TEST_OVERRIDE); set +a
-	$(py) python tests/stand/verify_test_indexer.py "$${SQLITE_PATH:-/tmp/bridge_tezosx_test.sqlite}"
+test-indexer: _require-case
+	set -a; . $(CASE_DIR)/window.env; set +a
+	rm -f "$${SQLITE_PATH:?set SQLITE_PATH in $(CASE_DIR)/window.env}"
+	$(py) dipdup $(STAND_ARGS) run
+
+inspect-test: _require-case
+	set -a; . $(CASE_DIR)/window.env; set +a
+	$(py) python -m tests.stand.cases.$(CASE).verify "$${SQLITE_PATH}"

@@ -2,6 +2,7 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosTransaction
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from rollup_bridge_indexer.handlers.michelson_deposit import l2_account_from_routing_info
 from rollup_bridge_indexer.handlers.rollup_message import TransactionParametersHash
 from rollup_bridge_indexer.handlers.service_container import get_container
 from rollup_bridge_indexer.models import TezosDepositOperation
@@ -19,7 +20,7 @@ async def on_rollup_call(
     parameter = default.parameter.root.LL
 
     routing_info = bytes.fromhex(parameter.routing_info)
-    l2_receiver = routing_info[:20]
+    l2_account = l2_account_from_routing_info(routing_info)
 
     try:
         ticket = await get_container(ctx).ticket_service.fetch_ticket(parameter.ticket.address, parameter.ticket.content)
@@ -36,7 +37,7 @@ async def on_rollup_call(
         sender=default.data.sender_address,
         target=default.data.target_address,
         l1_account=default.data.initiator_address,
-        l2_account=l2_receiver.hex(),
+        l2_account=l2_account,
         ticket=ticket,
         amount=parameter.ticket.amount,
         parameters_hash=await TransactionParametersHash(default).from_transaction(),

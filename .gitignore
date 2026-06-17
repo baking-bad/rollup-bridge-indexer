@@ -14,7 +14,6 @@
 !**/pyproject.toml
 !**/*.lock
 !**/README.md
-!**/TESTING.md
 !**/CLAUDE.md
 !**/.keep
 
@@ -23,6 +22,9 @@
 **/.*_cache
 **/__pycache__
 
+# Add docs
+!docs/**/*.html
+
 # Add configs and scripts (but not env!)
 !**/*.graphql
 !**/*.json
@@ -30,11 +32,14 @@
 !**/*.yaml
 !**/*.yml
 !**/*.j2
-!**/*.env.default
 !**/*.sh
 # Docker smoke-test env fixture: dummy/public values only, used by tests/e2e/smoke_test.sh.
 # Allowlisted explicitly so the blanket `.env` exclusion above still hides real secret envs.
 !tests/e2e/smoke.env
+# Test-stand case env: public endpoints/addresses + block windows, committed so any setup
+# can reproduce a case. Allowlisted past the blanket `*` ignore (real secret envs stay hidden).
+!tests/stand/tezosx.env
+!tests/stand/cases/*/window.env
 
 # Per-developer local Claude Code settings — not shared. Must come AFTER the `!**/*.json`
 # allowlist above (last-match-wins) or `.claude/settings.local.json` leaks back in.

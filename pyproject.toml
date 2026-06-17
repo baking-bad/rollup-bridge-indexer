@@ -65,6 +65,11 @@ exclude = "rollup_bridge_indexer"
 module = "asyncpg.*"
 ignore_missing_imports = true
 
+# rlp ships no py.typed marker; used by the Michelson-deposit op-hash helper.
+[[tool.mypy.overrides]]
+module = "rlp.*"
+ignore_missing_imports = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["rollup_bridge_indexer"]
 

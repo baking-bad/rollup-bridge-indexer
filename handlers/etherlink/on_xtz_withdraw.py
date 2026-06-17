@@ -19,7 +19,7 @@ async def on_xtz_withdraw(
     event: EvmEvent[WithdrawalPayload],
 ) -> None:
     ctx.logger.info('Etherlink Native Withdraw Event found: %s', event.data.transaction_hash)
-    etherlink_token = await EtherlinkToken.get(id='xtz').prefetch_related('ticket')
+    etherlink_token = await EtherlinkToken.get(id='xtz_evm').prefetch_related('ticket')
 
     l2_account = None
     fast_payload = None

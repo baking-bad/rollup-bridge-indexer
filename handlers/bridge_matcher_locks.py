@@ -7,10 +7,16 @@ class BridgeMatcherLocks:
     pending_inbox: bool = False
     pending_outbox: bool = False
     pending_claimed_fast_withdrawals: bool = False
+    # Op-hash matching of L2 Michelson deposits (BridgeMatcher.check_pending_michelson_deposits).
+    pending_michelson_deposits: bool = False
 
     @classmethod
     def set_pending_tezos_deposits(cls):
         BridgeMatcherLocks.pending_tezos_deposits = True
+
+    @classmethod
+    def set_pending_michelson_deposits(cls):
+        BridgeMatcherLocks.pending_michelson_deposits = True
 
     @classmethod
     def set_pending_etherlink_withdrawals(cls):

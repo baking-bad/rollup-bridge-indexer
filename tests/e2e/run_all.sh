@@ -12,8 +12,8 @@
 #   5. smoke_test.sh    image builds, package resolves + verifies, every deployed overlay's
 #                       config validates, no test code/caches shipped, (+ boot with --boot)
 #
-# NOT included (by design): tests/stand/ — a manual, secrets-bound bug-repro harness, not a
-# pass/fail readiness gate. See tests/stand/TESTING.md.
+# NOT included (by design): tests/stand/ — a manual, per-case bug-repro harness, not a
+# pass/fail readiness gate. See tests/stand/README.md.
 
 set -euo pipefail
 

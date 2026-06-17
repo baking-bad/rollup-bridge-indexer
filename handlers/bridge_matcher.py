@@ -1,3 +1,4 @@
+import logging
 import threading
 from datetime import datetime
 from datetime import timedelta
@@ -19,6 +20,8 @@ from rollup_bridge_indexer.models import RollupOutboxMessageBuilder
 from rollup_bridge_indexer.models import TezosDepositOperation
 from rollup_bridge_indexer.models import TezosWithdrawOperation
 
+logger = logging.getLogger('rollup_bridge_indexer.handlers.bridge_matcher')
+
 LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=20 * 7)
 
 
@@ -32,6 +35,7 @@ class BridgeMatcher:
         BridgeMatcherLocks.pending_tezos_deposits = False
 
         qs = TezosDepositOperation.filter(bridge_deposits=None)
+        created = False
         async for l1_deposit in qs:
             l1_deposit: TezosDepositOperation
             bridge_deposit = await BridgeDepositOperation.create(l1_transaction=l1_deposit)
@@ -44,6 +48,15 @@ class BridgeMatcher:
                 updated_at=l1_deposit.timestamp,
                 status=BridgeOperationStatus.created,
             )
+            created = True
+
+        if created:
+            # A new bridge deposit may already have its inbox message in the DB (a
+            # fresh-DB bootstrap backfills the whole inbox in on_restart, before the
+            # deposit indexes sync) — without this re-arm nothing raises the inbox
+            # lock again and attaching stalls until restart/on_synchronized. The
+            # attach step runs after this one in the same batch pass.
+            BridgeMatcherLocks.set_pending_inbox()
 
     @classmethod
     async def check_pending_inbox(cls):
@@ -62,6 +75,7 @@ class BridgeMatcher:
             )
             .prefetch_related('l1_transaction')
         )
+        attached = False
         async for bridge_deposit in qs:
             bridge_deposit: BridgeDepositOperation
             inbox_message = (
@@ -80,6 +94,59 @@ class BridgeMatcher:
                 await bridge_deposit.l1_transaction.save()
                 inbox_message.parameters_hash = None
                 await inbox_message.save()
+                attached = True
+
+        if attached:
+            # Every L2 deposit step keys on an attached inbox message (op-hash lookup,
+            # coords join, the xtz zip's isnull guard) — re-arm them so an attach
+            # completes the match in this same pass even when their own producing
+            # handlers fired in earlier, fruitless passes.
+            BridgeMatcherLocks.set_pending_michelson_deposits()
+            BridgeMatcherLocks.set_pending_etherlink_deposits()
+            BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
+
+    @classmethod
+    async def check_pending_michelson_deposits(cls):
+        """Backfill inbox coords onto L2 Michelson deposits via their precomputed op-hash.
+
+        These deposits land with no inbox coords (the kernel's coords event is not
+        observable). The op-hash is precomputed from L1 data on the inbox message
+        (`RollupInboxMessage.expected_l2_op_hash`); match the L2 row's op-hash to it and
+        copy the coords across. The link itself is left to `check_pending_etherlink_deposits`,
+        which then treats the row like any other coords-bearing deposit.
+        """
+        if not BridgeMatcherLocks.pending_michelson_deposits:
+            return
+        BridgeMatcherLocks.pending_michelson_deposits = False
+
+        qs = EtherlinkDepositOperation.filter(
+            bridge_deposits=None,
+            inbox_message_level__isnull=True,
+            transaction_hash__startswith='o',
+        ).order_by('level', 'transaction_index')
+
+        backfilled = 0
+        unmatched = 0
+        async for l2_deposit in qs:
+            l2_deposit: EtherlinkDepositOperation
+            inbox_message = await RollupInboxMessage.filter(expected_l2_op_hash=l2_deposit.transaction_hash).first()
+            if inbox_message is None:
+                unmatched += 1
+                continue
+            l2_deposit.inbox_message_level = inbox_message.level
+            l2_deposit.inbox_message_index = inbox_message.index
+            await l2_deposit.save()
+            backfilled += 1
+
+        if backfilled:
+            # The coords-based step (runs after this one) performs the link.
+            BridgeMatcherLocks.set_pending_etherlink_deposits()
+        if unmatched:
+            # Transiently normal: the L2 row landed before its inbox message was indexed.
+            # PERSISTENT rows mean a pre-event-era deposit or a kernel upgrade that changed
+            # the op-hash derivation — the one tripwire for that silent failure (see
+            # handlers/michelson_deposit.py "Versioning").
+            logger.warning('%d L2 Michelson deposit(s) without a matching inbox op-hash', unmatched)
 
     @classmethod
     async def check_pending_etherlink_deposits(cls):
@@ -90,6 +157,11 @@ class BridgeMatcher:
         qs = (
             EtherlinkDepositOperation.filter(
                 bridge_deposits=None,
+                # Rows without coords (EVM XTZ, L2 Michelson) have nothing to compare here
+                # and belong to the xtz/michelson steps. Without this guard the None coords
+                # render as LEFT JOIN ... IS NULL and link any inbox-less bridge deposit.
+                inbox_message_level__isnull=False,
+                inbox_message_index__isnull=False,
             )
             .prefetch_related('l2_token')
             .order_by('level', 'transaction_index', 'log_index')
@@ -135,13 +207,21 @@ class BridgeMatcher:
         qs = (
             EtherlinkDepositOperation.filter(
                 bridge_deposits=None,
-                l2_token_id='xtz',
+                l2_token_id='xtz_evm',
             )
+            # L2 Michelson rows (base58 `o…` hashes; EVM rows store bare hex) carry a
+            # deterministic op-hash key — they get their coords via
+            # check_pending_michelson_deposits, and this value-based zip must not preempt it.
+            .exclude(transaction_hash__startswith='o')
             .order_by('level', 'transaction_index')
-            .prefetch_related('l2_token', 'l2_token__ticket')
+            .prefetch_related('l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
         )
         async for l2_deposit in qs:
             l2_deposit: EtherlinkDepositOperation
+            # L1 stores mutez, the L2 EVM handle stores wei; the scale is the decimal gap
+            # between the two token representations of the same native ticket (no magic 12).
+            scale = 10 ** (l2_deposit.l2_token.decimals - l2_deposit.l2_token.ticket.token.decimals)
+            l1_amount = str(int(l2_deposit.amount) // scale)
             bridge_deposit = (
                 await BridgeDepositOperation.filter(
                     l2_transaction=None,
@@ -150,7 +230,7 @@ class BridgeMatcher:
                     l1_transaction__timestamp__lte=l2_deposit.timestamp,
                     l1_transaction__timestamp__gte=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX,
                     l1_transaction__l2_account=l2_deposit.l2_account,
-                    l1_transaction__amount=l2_deposit.amount[:-12],
+                    l1_transaction__amount=l1_amount,
                 )
                 .order_by('l1_transaction__timestamp')
                 .prefetch_related('inbox_message', 'l1_transaction')

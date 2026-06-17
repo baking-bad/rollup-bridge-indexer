@@ -1,0 +1,438 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Etherlink Bridge Indexer — Monitoring Coverage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+ --bg:#0c0c0c; --ink:#f2f2ef; --dim:#8a8a86; --faint:#5c5c58;
+ --line:#262624; --line2:#1a1a18;
+ --accent:#ff6a00;
+ --t-h1:54px; --t-idx:96px; --t-h2:24px; --t-body:16px; --t-mono:12px;
+ --s1:8px; --s2:16px; --s3:24px; --s4:32px; --s5:48px; --s6:60px;
+ --mono:'IBM Plex Mono',monospace; --sans:'Archivo',sans-serif; --black:'Archivo Black',sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:var(--t-body);
+ background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);
+ background-size:34px 34px;background-position:-1px -1px}
+.wrap{max-width:1000px;margin:0 auto;padding:0 var(--s4);background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+header{padding:var(--s6) 0 var(--s4);border-bottom:2px solid var(--ink);display:grid;grid-template-columns:1fr auto;align-items:end;gap:var(--s3)}
+.kick{font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 20px}
+.kick::before{content:"// ";color:var(--faint)}
+h1{font-family:var(--black);font-size:var(--t-h1);line-height:.96;margin:0;letter-spacing:-.02em;text-transform:uppercase}
+.idx{font-family:var(--black);font-size:var(--t-idx);color:var(--accent);line-height:.74;letter-spacing:-.04em}
+.lede{grid-column:1/-1;color:var(--dim);max-width:680px;margin:var(--s2) 0 0;font-size:var(--t-body)}
+.lede b{color:var(--ink);font-weight:600}
+/* tabs */
+#tabs{position:sticky;top:0;z-index:6;display:flex;flex-wrap:wrap;background:var(--bg);border-bottom:2px solid var(--ink)}
+.tab{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;padding:13px 18px;cursor:pointer;
+ background:none;border:none;color:var(--dim);border-right:1px solid var(--line)}
+.tab:hover{color:var(--ink)}
+.tab.on{background:var(--accent);color:#000;font-weight:600}
+.page{display:none}.page.on{display:block}
+.legend{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--line)}
+.tag{padding:14px 0;display:flex;gap:12px;align-items:flex-start;font-size:13.5px;line-height:1.45;color:var(--dim)}
+.tag:first-child{border-right:1px solid var(--line);padding-right:20px}.tag:last-child{padding-left:20px}
+.sq{width:13px;height:13px;flex:none;margin-top:3px}.sq.a{background:var(--accent)}.sq.b{background:var(--ink)}
+.tag b{color:var(--ink);font-weight:600}
+section{padding:var(--s4) 0;border-bottom:1px solid var(--line)}
+.row{display:grid;grid-template-columns:150px 1fr;gap:28px}
+.sl{font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}.sl::before{content:"§ ";color:var(--accent)}
+h2{font-size:var(--t-h2);margin:0 0 4px;text-transform:uppercase;letter-spacing:-.01em;font-weight:700}
+.h2sub{font-family:var(--mono);font-size:var(--t-mono);color:var(--faint);margin:0 0 22px}
+.panel{border:1px solid var(--line);position:relative}
+.panel::after{content:"";position:absolute;top:11px;right:12px;width:30px;height:6px;background:repeating-linear-gradient(90deg,var(--line) 0 3px,transparent 3px 6px)}
+.panel + .panel{margin-top:var(--s3)}
+.pbar{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:11px 18px;border-bottom:1px solid var(--line)}.pbar b{color:var(--ink)}
+.step{display:grid;grid-template-columns:50px 1fr;gap:16px;padding:18px 18px 22px;border-top:1px solid var(--line2)}.step:first-of-type{border-top:none}
+.n{font-family:var(--black);font-size:26px;line-height:1}.n.a{color:var(--accent)}.n.w{color:var(--ink)}
+.sh{margin:0;font-weight:600;font-size:15.5px;display:flex;align-items:center;flex-wrap:wrap}
+.b{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-left:12px;padding:2px 8px}.b.a{background:var(--accent);color:#000;font-weight:600}.b.b{border:1px solid var(--ink)}
+.sd{color:var(--dim);margin:5px 0 0;font-size:14px}.sd b{color:var(--ink);font-weight:600}.sd code{font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--line2);padding:1px 5px}
+.mref{font-family:var(--mono);font-size:11px;color:var(--faint);margin:10px 0 0;letter-spacing:.04em}
+.mref b{color:var(--dim);font-weight:500}
+.mref.who::before{content:"caught by → ";color:var(--accent)}
+a.mn{color:inherit;text-decoration:underline;text-decoration-color:var(--faint);text-decoration-thickness:1px;text-underline-offset:3px}
+a.mn:hover{color:var(--accent);text-decoration-color:var(--accent)}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);margin-top:0;border-top:2px solid var(--ink)}
+.f{padding:16px 18px;border-right:1px solid var(--line)}.f:last-child{border:none}
+.fk{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:0 0 8px}
+.fv{font-family:var(--black);font-size:21px;margin:0;line-height:1.05}.fv small{font-family:var(--sans);font-weight:400;font-size:12.5px;color:var(--dim);display:block;margin-top:5px;letter-spacing:0}
+/* monitor cards — each card is a link into Kuma */
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.mcard{display:block;border:1px solid var(--line);padding:13px 15px;background:var(--bg);position:relative;
+ text-decoration:none;color:inherit;transition:border-color .15s}
+.mcard::after{content:"↗";position:absolute;top:9px;right:13px;font-family:var(--mono);font-size:13px;color:var(--faint);transition:color .15s}
+.mcard:hover{border-color:var(--accent)}.mcard:hover::after{color:var(--accent)}
+.mcard.ext:hover{border-color:var(--ink)}.mcard.ext:hover::after{color:var(--ink)}
+.mcard:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mid{font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:.06em}
+.mhead{display:block;font-weight:600;font-size:14.5px;line-height:1.25;margin:1px 0 3px}
+.net{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;padding:1.5px 6px;border:1px solid var(--line);color:var(--dim);margin-left:7px;position:relative;top:-1px;white-space:nowrap}
+.mcatch{display:block;font-size:13px;color:var(--dim);margin:0}
+.mcatch b{color:var(--ink);font-weight:600}
+.mnote{display:block;font-size:12px;color:var(--faint);margin:6px 0 0;border-left:2px solid var(--line);padding-left:8px}
+/* details */
+details{border:1px solid var(--line);margin-top:var(--s3)}
+summary{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:12px 18px;cursor:pointer;list-style:none}
+summary::before{content:"+ ";color:var(--accent)}
+details[open] summary{border-bottom:1px solid var(--line)}
+details[open] summary::before{content:"− "}
+.dbody{padding:16px 18px;font-size:13.5px;color:var(--dim)}
+.dbody h3{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink);margin:18px 0 8px}.dbody h3:first-child{margin-top:0}
+.dbody code{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--line2);padding:1px 5px}
+.dbody ol{margin:0;padding-left:20px}.dbody li{margin:3px 0}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--ink)}
+th:not(:first-child),td:not(:first-child){border-left:1px solid var(--line2)}
+td{color:var(--dim)}td:first-child{color:var(--ink)}tr:last-child td{border-bottom:none}
+td a{color:var(--ink);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px}
+td a:hover{color:var(--accent)}
+.mono{font-family:var(--mono)}
+footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);font-size:11.5px;line-height:1.7}footer .s{color:var(--dim)}
+@media(max-width:680px){:root{--t-h1:36px}header{grid-template-columns:1fr}.idx{display:none}.row{grid-template-columns:1fr}.facts{grid-template-columns:1fr}.legend{grid-template-columns:1fr}.tag:first-child{border-right:none;border-bottom:1px solid var(--line);padding-right:0}.tag:last-child{padding-left:0}.cards{grid-template-columns:1fr}.tab{padding:11px 12px}}
+</style></head><body><div class="wrap">
+
+<header>
+ <div><p class="kick">uptime-kuma · 3 rollups · 4 stacks · 13 monitors</p><h1>Bridge indexer<br>monitoring</h1></div>
+ <p class="lede">What Uptime Kuma watches across the Etherlink bridge-indexer stacks: which failure classes are covered and how fast each one alerts. One page per rollup — <b>every card opens its monitor in Kuma</b>.</p>
+</header>
+
+<nav id="tabs">
+ <button class="tab" data-page="overview">Rollups &amp; model</button>
+ <button class="tab" data-page="mainnet">Etherlink Mainnet</button>
+ <button class="tab" data-page="shadownet">Etherlink Shadownet</button>
+ <button class="tab" data-page="tezosx">Tezos X</button>
+</nav>
+
+<div class="legend">
+ <span class="tag"><span class="sq a"></span><span><b>Orange — we broke.</b> These monitors watch our own pipeline; when one goes red, the indexer is at fault — go fix it.</span></span>
+ <span class="tag"><span class="sq b"></span><span><b>White — upstream broke.</b> These probe external data sources; red means the cause is outside — wait it out or switch the endpoint.</span></span>
+</div>
+
+<!-- ============ PAGE: OVERVIEW ============ -->
+<div class="page" id="pg-overview">
+
+<section><div class="row">
+ <div class="sl">rollups × stacks</div>
+ <div>
+  <h2>what is being indexed</h2>
+  <p class="h2sub">a stack = one DipDup instance + its own DB and GraphQL · prod and staging index the same rollup independently</p>
+  <table>
+   <thead><tr><th>rollup</th><th>L1 chain</th><th>stacks</th><th>monitors</th></tr></thead>
+   <tbody>
+    <tr><td><a href="#mainnet" data-goto="mainnet">Etherlink Mainnet</a> <span class="mono" style="font-size:11px;color:var(--faint)">sr1Ghq…</span></td><td>Tezos mainnet · 8s blocks</td><td>prod + staging</td><td class="mono">7</td></tr>
+    <tr><td><a href="#shadownet" data-goto="shadownet">Etherlink Shadownet</a> <span class="mono" style="font-size:11px;color:var(--faint)">sr19fM…</span></td><td>Shadownet · ~3.4s blocks</td><td>shadownet</td><td class="mono">4</td></tr>
+    <tr><td><a href="#tezosx" data-goto="tezosx">Tezos X</a> <span class="mono" style="font-size:11px;color:var(--faint)">sr1TCY…</span></td><td>Shadownet</td><td>tezosx</td><td class="mono">3</td></tr>
+   </tbody>
+  </table>
+  <p class="mref">13 unique monitors — <b>#309</b> (TzKT Shadownet) feeds both shadownet rollups and is listed on both pages</p>
+ </div>
+</div></section>
+
+<section><div class="row">
+ <div class="sl">failure stories</div>
+ <div>
+  <h2>what breaks → who catches it → how fast</h2>
+  <p class="h2sub">five independent failure classes (not a sequence) · in each card: title = what breaks · orange tag = how fast it alerts · "caught by" = which monitors</p>
+  <div class="panel">
+   <div class="pbar">COVERAGE · <b>five failure stories</b></div>
+
+   <div class="step"><div class="n a">1</div><div>
+     <p class="sh">Container died or websocket hung<span class="b a">alert in 3–30 min</span></p>
+     <p class="sd">Fresh blocks stop landing in the database; one monitor per stack polls its GraphQL every minute.</p>
+     <p class="mref who">Mainnet <b>#187 #249</b> · Shadownet <b>#268</b> · Tezos X <b>#304</b></p>
+   </div></div>
+
+   <div class="step"><div class="n a">2</div><div>
+     <p class="sh">Indexer alive but falling behind the chain<span class="b a">alert in ~13–14 min</span></p>
+     <p class="sd">Same monitors compare our latest block with the chain head; a gap of 100–250 blocks fires.</p>
+     <p class="mref who">the same four stack monitors <b>#187 #249 #268 #304</b></p>
+   </div></div>
+
+   <div class="step"><div class="n a">3</div><div>
+     <p class="sh">TzKT streams blocks but goes silent on operations<span class="b a">alert in ~1.3 h</span></p>
+     <p class="sd">Operation indexes only move when operations arrive — freshness checks can't see this. Separate check: operations no further than 600 blocks behind head.</p>
+     <p class="mref who">the same four stack monitors <b>#187 #249 #268 #304</b></p>
+   </div></div>
+
+   <div class="step"><div class="n a">4</div><div>
+     <p class="sh">Matching silently stalled<span class="b a">alert in 1 h – 24 h</span></p>
+     <p class="sd">Blocks keep coming, but operations stop finding their counterpart across the bridge. Three monitors ask the database: <b>has every operation older than an hour found its match?</b></p>
+     <p class="mref who">Mainnet prod only <b>#305 #312 #313</b> — no such checks on the other stacks</p>
+   </div></div>
+
+   <div class="step"><div class="n w">5</div><div>
+     <p class="sh">An upstream source went down<span class="b b">alert in 1–15 min</span></p>
+     <p class="sd">Six probes hit the sources directly. A red probe = the cause is outside; the indexer catches up on its own.</p>
+     <p class="mref who">Mainnet <b>#306 #307</b> · Shadownet <b>#308 #309 #311</b> · Tezos X <b>#309 #310</b></p>
+   </div></div>
+
+   <div class="facts">
+    <div class="f"><p class="fk">detection</p><p class="fv">3 min – 24 h<small>from a dead container to the worst case</small></p></div>
+    <div class="f"><p class="fk">probes</p><p class="fv">7 + 6<small>seven watch our GraphQL, six watch the sources</small></p></div>
+    <div class="f"><p class="fk">secrets</p><p class="fv">0<small>everything is read anonymously</small></p></div>
+   </div>
+  </div>
+
+  <details>
+   <summary>the fine print — exact checks and thresholds</summary>
+   <div class="dbody">
+    <h3>Stack monitors (#187 #249 #268 #304)</h3>
+    <p style="margin:0 0 8px">One POST to Hasura (<code>dipdup_index</code> + <code>dipdup_head</code>), seven conditions inside the response; any false after 3 retries = Down:</p>
+    <ol>
+     <li><code>tezos_head.updated_at</code> fresh &lt; N — dead process / hung TzKT websocket;</li>
+     <li><code>etherlink_deposit_events</code> fresh &lt; N — stuck evm.events subscription;</li>
+     <li><code>etherlink_xtz_deposit_transactions</code> fresh &lt; N — evm.transactions, a separate subscription type that wedges independently;</li>
+     <li><code>dipdup_head.timestamp</code> fresh &lt; N — written straight from the realtime channel, bypassing the index queue;</li>
+     <li><code>tezos_head</code> behind the websocket head by &lt; G blocks — "running but not keeping up"; threshold 30 used to flap from the full re-match after <code>on_synchronized</code>;</li>
+     <li>all 4 operation indexes exist (<code>$count = 4</code>) — guards against a broken reindex;</li>
+     <li>operation indexes behind head by &lt; 600 blocks — normal is 20–148 (9 samples / 25 min across 4 stacks), 600 = 4× margin, detects in ~1.3 h.</li>
+    </ol>
+    <table>
+     <thead><tr><th>stack</th><th>N freshness</th><th>G gap</th><th>poll</th></tr></thead>
+     <tbody>
+      <tr><td>prod #187</td><td class="mono">15 min</td><td class="mono">100</td><td class="mono">60s × r3</td></tr>
+      <tr><td>staging #249</td><td class="mono">30 min</td><td class="mono">100</td><td class="mono">60s × r3</td></tr>
+      <tr><td>shadownet #268</td><td class="mono">20 min</td><td class="mono">250</td><td class="mono">60s × r3</td></tr>
+      <tr><td>tezosx #304</td><td class="mono">30 min</td><td class="mono">250</td><td class="mono">60s × r3</td></tr>
+     </tbody>
+    </table>
+    <p style="margin:8px 0 0">L1 block time: 8s on mainnet, ~3.4s on shadownet — hence the different G. 3 retries mute one-off failures: Down only after ~3 min of a persistent problem.</p>
+    <h3>Matching checks (#305 #312 #313)</h3>
+    <p style="margin:0">#305 and #312: the 100 freshest unmatched operations, window 1 h – 7 days <b>by block time</b> (<code>l1_transaction.timestamp</code>), not by <code>created_at</code> — indexing time makes all history look "fresh" after a backfill. One hour = matching grace; one week cuts off the permanent residue (~546 historical deposits; withdrawals 0 of 26 796). L1 execution of withdrawals is excluded — it legitimately waits ~2 weeks for cementation (703 pending is normal). Poll 300s × r2.</p>
+    <p style="margin:8px 0 0">#313: <code>head − max(inbox.level) &lt; 10 800</code> blocks (~24 h); messages on prod arrive every ~300 blocks, 28-day max — 8 538. Poll 600s × r3. Interim until a heartbeat key in <code>dipdup_meta</code> written by the loop itself — that will cover the quiet stacks too.</p>
+    <h3>Source probes (#306–#311)</h3>
+    <p style="margin:0">EVM nodes: <code>eth_getBlockByNumber(latest)</code>, block fresh ≤ 15 min (#306 60s × r2; #310 #311 120s × r3). Subsquid: <code>GET /height &gt; 0</code>, 300s × r3. TzKT: <code>GET /v1/head</code> ≤ 5 min, 60s × r2. Sonic is the node the indexer actually uses; the older #303 watches evm-mainnet, which the indexer does not read.</p>
+   </div>
+  </details>
+ </div>
+</div></section>
+
+</div><!-- /pg-overview -->
+
+<!-- ============ PAGE: ETHERLINK MAINNET ============ -->
+<div class="page" id="pg-mainnet">
+
+<section><div class="row">
+ <div class="sl">etherlink mainnet</div>
+ <div>
+  <h2>Etherlink Mainnet</h2>
+  <p class="h2sub">rollup sr1Ghq… on Tezos mainnet (8s blocks) · stacks: <b style="color:var(--ink)">prod</b> + <b style="color:var(--ink)">staging</b> · 7 monitors</p>
+
+  <div class="panel">
+   <div class="pbar">STACK PROBES · <b>blocks &amp; operations freshness</b> — stories 1–3</div>
+   <div class="step"><div class="n a">●</div><div>
+     <p class="sh">One monitor per stack, three failure classes<span class="b a">alert in 3 min – 1.3 h</span></p>
+     <p class="sd">Polls the stack's GraphQL every minute: blocks fresh, head gap &lt; 100, all four operation indexes alive and &lt; 600 blocks behind.</p>
+     <div class="cards">
+      <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/187" target="_blank" rel="noopener">
+       <span class="mid">#187</span><span class="net">prod</span>
+       <span class="mhead">Etherlink Mainnet API</span>
+       <span class="mcatch">Data older than <b>15 min</b> fires · head gap 100 · op-lag 600 blocks.</span>
+      </a>
+      <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/249" target="_blank" rel="noopener">
+       <span class="mid">#249</span><span class="net">staging</span>
+       <span class="mhead">Etherlink Mainnet Staging API</span>
+       <span class="mcatch">Same checks, relaxed: <b>30 min</b> freshness.</span>
+      </a>
+     </div>
+   </div></div>
+  </div>
+
+  <div class="panel">
+   <div class="pbar">MATCHING · <b>cross-chain reconciliation</b> — story 4 · prod stack only</div>
+   <div class="step"><div class="n a">●</div><div>
+     <p class="sh">Matching silently stalled<span class="b a">alert in 1 h – 24 h</span></p>
+     <p class="sd">Blocks keep coming, but operations stop finding their counterpart across the bridge. Three monitors ask the database: <b>has every operation older than an hour found its match?</b></p>
+     <div class="cards">
+      <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/305" target="_blank" rel="noopener">
+       <span class="mid">#305</span><span class="net">prod</span>
+       <span class="mhead">Bridge Matcher Mainnet</span>
+       <span class="mcatch">An L1 deposit <b>an hour without its L2 match</b>.</span>
+      </a>
+      <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/312" target="_blank" rel="noopener">
+       <span class="mid">#312</span><span class="net">prod</span>
+       <span class="mhead">Bridge Withdrawal Matcher Mainnet</span>
+       <span class="mcatch">An L2 withdrawal <b>an hour without the rollup's reply message</b>.</span>
+      </a>
+      <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/313" target="_blank" rel="noopener">
+       <span class="mid">#313</span><span class="net">prod</span>
+       <span class="mhead">Rollup Inbox Mainnet</span>
+       <span class="mcatch">Collects rollup messages <b>deposits are matched against</b>; if it stalls, matching goes blind. Alert within 24 h.</span>
+      </a>
+     </div>
+     <p class="mref">staging shares the rollup but has no matching checks of its own</p>
+   </div></div>
+  </div>
+
+  <div class="panel">
+   <div class="pbar">SOURCES · <b>upstream probes</b> — story 5</div>
+   <div class="step"><div class="n w">●</div><div>
+     <p class="sh">An upstream source went down<span class="b b">alert in 1–15 min</span></p>
+     <p class="sd">Probes hit the sources directly. A red probe = the cause is outside; the indexer catches up on its own.</p>
+     <div class="cards">
+      <a class="mcard ext" href="https://uptime.piltover.baking-bad.org/dashboard/306" target="_blank" rel="noopener">
+       <span class="mid">#306</span><span class="net">prod+staging</span>
+       <span class="mhead">Sonic Evm Node</span>
+       <span class="mcatch">The EVM node both mainnet stacks read Etherlink from.</span>
+      </a>
+      <a class="mcard ext" href="https://uptime.piltover.baking-bad.org/dashboard/307" target="_blank" rel="noopener">
+       <span class="mid">#307</span><span class="net">prod+staging</span>
+       <span class="mhead">Subsquid Etherlink Mainnet</span>
+       <span class="mcatch">Backfill archive: down → catch-ups stall.</span>
+      </a>
+     </div>
+   </div></div>
+  </div>
+ </div>
+</div></section>
+
+</div><!-- /pg-mainnet -->
+
+<!-- ============ PAGE: ETHERLINK SHADOWNET ============ -->
+<div class="page" id="pg-shadownet">
+
+<section><div class="row">
+ <div class="sl">etherlink shadownet</div>
+ <div>
+  <h2>Etherlink Shadownet</h2>
+  <p class="h2sub">rollup sr19fM… on Shadownet (~3.4s blocks) · stack: <b style="color:var(--ink)">shadownet</b> · 4 monitors</p>
+
+  <div class="panel">
+   <div class="pbar">STACK PROBES · <b>blocks &amp; operations freshness</b> — stories 1–3</div>
+   <div class="step"><div class="n a">●</div><div>
+     <p class="sh">One monitor, three failure classes<span class="b a">alert in 3 min – 1.3 h</span></p>
+     <p class="sd">Polls the stack's GraphQL every minute: blocks fresh, head gap &lt; 250 (faster L1 blocks), all four operation indexes alive and &lt; 600 blocks behind.</p>
+     <div class="cards">
+      <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/268" target="_blank" rel="noopener">
+       <span class="mid">#268</span><span class="net">shadownet</span>
+       <span class="mhead">Etherlink Shadownet API</span>
+       <span class="mcatch">Data older than <b>20 min</b> fires · head gap 250 · op-lag 600 blocks.</span>
+      </a>
+     </div>
+     <p class="mref">no matching checks on this stack — the database-level matchers (story 4) exist on mainnet prod only</p>
+   </div></div>
+  </div>
+
+  <div class="panel">
+   <div class="pbar">SOURCES · <b>upstream probes</b> — story 5</div>
+   <div class="step"><div class="n w">●</div><div>
+     <p class="sh">An upstream source went down<span class="b b">alert in 1–15 min</span></p>
+     <p class="sd">Probes hit the sources directly. A red probe = the cause is outside; the indexer catches up on its own.</p>
+     <div class="cards">
+      <a class="mcard ext" href="https://uptime.piltover.baking-bad.org/dashboard/311" target="_blank" rel="noopener">
+       <span class="mid">#311</span><span class="net">shadownet</span>
+       <span class="mhead">Shadownet Evm Node (Zeeve)</span>
+       <span class="mcatch">Its URL embeds an api key — not published here.</span>
+      </a>
+      <a class="mcard ext" href="https://uptime.piltover.baking-bad.org/dashboard/308" target="_blank" rel="noopener">
+       <span class="mid">#308</span><span class="net">shadownet</span>
+       <span class="mhead">Subsquid Etherlink Shadownet</span>
+       <span class="mcatch">Availability only — lagging is normal here.</span>
+      </a>
+      <a class="mcard ext" href="https://uptime.piltover.baking-bad.org/dashboard/309" target="_blank" rel="noopener">
+       <span class="mid">#309</span><span class="net">shadownet+tezosx</span>
+       <span class="mhead">TzKT Shadownet API</span>
+       <span class="mcatch">One TzKT feeds L1 data to both shadownet stacks.</span>
+       <span class="mnote">shared with the Tezos X page</span>
+      </a>
+     </div>
+   </div></div>
+  </div>
+ </div>
+</div></section>
+
+</div><!-- /pg-shadownet -->
+
+<!-- ============ PAGE: TEZOS X ============ -->
+<div class="page" id="pg-tezosx">
+
+<section><div class="row">
+ <div class="sl">tezos x</div>
+ <div>
+  <h2>Tezos X</h2>
+  <p class="h2sub">rollup sr1TCY… on Shadownet · stack: <b style="color:var(--ink)">tezosx</b> · 3 monitors</p>
+
+  <div class="panel">
+   <div class="pbar">STACK PROBES · <b>blocks &amp; operations freshness</b> — stories 1–3</div>
+   <div class="step"><div class="n a">●</div><div>
+     <p class="sh">One monitor, three failure classes<span class="b a">alert in 3 min – 1.3 h</span></p>
+     <p class="sd">Polls the stack's GraphQL every minute: blocks fresh, head gap &lt; 250, all four operation indexes alive and &lt; 600 blocks behind.</p>
+     <div class="cards">
+      <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/304" target="_blank" rel="noopener">
+       <span class="mid">#304</span><span class="net">tezosx</span>
+       <span class="mhead">Etherlink TezosX Shadownet API</span>
+       <span class="mcatch">Data older than <b>30 min</b> fires · head gap 250 · op-lag 600 blocks.</span>
+       <span class="mnote">red during a full reindex, until backfill completes</span>
+      </a>
+     </div>
+     <p class="mref">no matching checks on this stack — the database-level matchers (story 4) exist on mainnet prod only</p>
+   </div></div>
+  </div>
+
+  <div class="panel">
+   <div class="pbar">SOURCES · <b>upstream probes</b> — story 5</div>
+   <div class="step"><div class="n w">●</div><div>
+     <p class="sh">An upstream source went down<span class="b b">alert in 1–15 min</span></p>
+     <p class="sd">Probes hit the sources directly. A red probe = the cause is outside; the indexer catches up on its own.</p>
+     <div class="cards">
+      <a class="mcard ext" href="https://uptime.piltover.baking-bad.org/dashboard/310" target="_blank" rel="noopener">
+       <span class="mid">#310</span><span class="net">tezosx</span>
+       <span class="mhead">TezosX Previewnet Evm Node</span>
+       <span class="mcatch">Known to throw 503s — retries mute the noise.</span>
+      </a>
+      <a class="mcard ext" href="https://uptime.piltover.baking-bad.org/dashboard/309" target="_blank" rel="noopener">
+       <span class="mid">#309</span><span class="net">shadownet+tezosx</span>
+       <span class="mhead">TzKT Shadownet API</span>
+       <span class="mcatch">One TzKT feeds L1 data to both shadownet stacks.</span>
+       <span class="mnote">shared with the Etherlink Shadownet page</span>
+      </a>
+     </div>
+   </div></div>
+  </div>
+ </div>
+</div></section>
+
+</div><!-- /pg-tezosx -->
+
+<footer>
+ <span class="s">RE-VERIFY:</span> on major matching changes (michelson on prod, heartbeat replacing #313)<br>
+ <span class="s">SRC:</span> uptime.piltover.baking-bad.org · monitors #187–#313 · stack/rollup map from deployment envs · verified 2026-06-11
+</footer>
+
+</div>
+<script>
+const PAGES=['overview','mainnet','shadownet','tezosx'];
+const tabs=[...document.querySelectorAll('.tab')];
+function go(id){
+ if(!PAGES.includes(id))id='overview';
+ tabs.forEach(t=>t.classList.toggle('on',t.dataset.page===id));
+ PAGES.forEach(p=>document.getElementById('pg-'+p).classList.toggle('on',p===id));
+ history.replaceState(null,'','#'+id);
+}
+tabs.forEach(t=>t.addEventListener('click',()=>{go(t.dataset.page);window.scrollTo({top:0})}));
+document.querySelectorAll('[data-goto]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();go(a.dataset.goto);window.scrollTo({top:0})}));
+window.addEventListener('hashchange',()=>go(location.hash.slice(1)));
+go(location.hash.slice(1)||'overview');
+// every #NNN in prose becomes a quiet link into Kuma
+const MON=/#(\d{3})/g,KUMA='https://uptime.piltover.baking-bad.org/dashboard/';
+document.querySelectorAll('.mref,.dbody,footer').forEach(scope=>{
+ const walker=document.createTreeWalker(scope,NodeFilter.SHOW_TEXT);
+ const nodes=[];let n;
+ while((n=walker.nextNode())){if(MON.test(n.nodeValue)&&!n.parentElement.closest('a'))nodes.push(n);MON.lastIndex=0}
+ nodes.forEach(node=>{
+  const s=node.nodeValue,frag=document.createDocumentFragment();let last=0,m;
+  while((m=MON.exec(s))){
+   frag.appendChild(document.createTextNode(s.slice(last,m.index)));
+   const a=document.createElement('a');
+   a.className='mn';a.target='_blank';a.rel='noopener';a.href=KUMA+m[1];a.textContent=m[0];
+   frag.appendChild(a);last=m.index+m[0].length;
+  }
+  frag.appendChild(document.createTextNode(s.slice(last)));
+  node.parentNode.replaceChild(frag,node);
+ });
+});
+</script>
+</body></html>

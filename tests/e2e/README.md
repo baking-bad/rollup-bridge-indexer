@@ -27,10 +27,9 @@ Step 5 alone is also available as `make docker-test` (the CI publish gate in
 
 ## What is NOT here
 
-`tests/stand/` — the block-bounded test-indexer harness — is **not** a readiness gate. It
-requires real deployment secrets (`TEST_ENV`), a hand-picked block window, and produces a
-sqlite for human inspection rather than a pass/fail result. It's a manual bug-repro tool;
-see `tests/stand/TESTING.md`.
+`tests/stand/` — the block-bounded, per-case test-indexer harness — is **not** a readiness
+gate. Each case picks a hand-picked block window and produces a sqlite for human inspection
+rather than a pass/fail result. It's a manual bug-repro tool; see `tests/stand/README.md`.
 
 ## Adding a check
 

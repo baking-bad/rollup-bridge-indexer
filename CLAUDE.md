@@ -52,16 +52,19 @@ The DipDup package **is the repo root** — `dipdup.yaml`, `handlers/`, `models/
 Tests are split by purpose and kept out of the prod image (`.dockerignore` excludes `tests/**`):
 - `tests/unit/` — pytest suite (decoder, rollup, types); `pyproject.toml` pins `testpaths=["tests/unit"]`. `make test`.
 - `tests/e2e/` — production-readiness gate. `make prod-check [BOOT=1]` runs `run_all.sh` = the full sequence (black/ruff/mypy check + unit + docker smoke). The docker smoke (`smoke_test.sh` + `smoke.env`) is also `make docker-test`; its hermetic form is the CI publish gate. It builds the image, runs `package verify`, validates every deployed overlay, and audits that no test code/caches ship in the image.
-- `tests/stand/` — block-bounded test-indexer stand: standalone `tezosx-shadownet-test.yaml` (resolves the package via the editable install, so it lives outside `configs/`), the `*.env.default` template, the local gitignored `.env`, `verify_test_indexer.py`, and `TESTING.md`. `make test-indexer` / `inspect-test` / `check-test-config`.
+- `tests/stand/` — block-bounded, secret-free **per-case** test-indexer stand: each case is `tests/stand/cases/<name>/` (`config.yaml` + `window.env` + `verify.py` + `README.md`); shared committed `tezosx.env` (public endpoints/addresses) + `verify_lib.py`. Each `config.yaml` is standalone (resolves the package via the editable install, so it lives outside `configs/`) and is a copy, not an overlay — mirror prod-config fixes into it. `make test-indexer CASE=<name>` / `inspect-test CASE=<name>` / `check-test-config CASE=<name>` (load envs via `dipdup -e`). See `tests/stand/README.md`.
 
 ### Dual-Chain Event Processing
 
 - **Tezos (L1) handlers** in `./handlers/tezos/`: deposit calls (`on_rollup_call`), withdrawal executions (`on_rollup_execute`), commitment cementing (`on_cement_commitment`), fast withdrawal claims, head tracking
+- **Tezos X (L2 Michelson) handlers** in `./handlers/tezos_x/`: Tezos-shaped handlers that record the **L2** leg of Tezos X Michelson (tz1-receiver) XTZ deposits — `on_michelson_deposit_ophash` (production, op-hash matched) and `on_michelson_deposit` (event/node-polling variant, stand-only). Convention: `tezos/` = L1, `etherlink/` = L2 EVM, `tezos_x/` = L2 Michelson
 - **Etherlink (L2) handlers** in `./handlers/etherlink/`: deposit events (`on_deposit`, `on_xtz_deposit`), withdrawal events (`on_withdraw`, `on_xtz_withdraw`), ERC-20 transfers (`on_transfer`)
 
 ### Bridge Matcher (core reconciliation)
 
 `./handlers/bridge_matcher.py` is the central matching engine. It correlates L1 and L2 operations into unified `BridgeOperation` records through 8 ordered matching steps. Uses a **lock-based batching system** (`bridge_matcher_locks.py`): handlers set boolean flags, and the batch handler (`batch.py`) checks and clears them after each handler batch.
+
+A ninth, deliberately **separated** step lives in `./handlers/michelson_matcher.py`: Tezos X L2 Michelson (tz1-receiver) XTZ deposits are matched by reconstructing the L2 synthetic-op hash from L1 inbox data (`./handlers/michelson_deposit.py`, kernel-verified derivation) because TzKT drops the kernel's implicit-source deposit event. This is the **production** mechanism with no planned removal; the separation only keeps an option open — IF TzKT ever serves those events (not committed anywhere), the module + its lock could be deleted and these deposits would flow through the regular inbox-coords step (the event-based alternative is kept alive in `./handlers/tezos_x/on_michelson_deposit.py` + the `michelson_l2_deposit` stand case).
 
 ### Parameter Hash Matching
 
