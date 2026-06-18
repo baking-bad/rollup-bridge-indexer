@@ -30,7 +30,7 @@ def main() -> int:
     v = lib.Verdict()
     v.check(len(deposits) >= 3, 'three deposits (2 XTZ + 1 FA) indexed')
     v.check_alias(accounts, ALIAS, NATIVE)
-    v.check(bool(deposits) and all(r['l2_account_id'] == NATIVE for r in deposits), 'every deposit attributed to tz origin')
+    v.check(bool(deposits) and all(r['l2_account_id'] == ALIAS for r in deposits), 'every deposit keyed on the alias runtime address')
     for amount, token, label in EXPECTED:
         v.check((amount, token) in seen, f'deposit present: {label}')
     return v.report()

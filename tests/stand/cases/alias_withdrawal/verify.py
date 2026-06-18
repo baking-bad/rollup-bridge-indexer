@@ -28,7 +28,7 @@ def main() -> int:
     v = lib.Verdict()
     v.check(len(withdrawals) >= 2, 'XTZ + FA withdrawals indexed')
     v.check_alias(accounts, ALIAS, NATIVE)
-    v.check(bool(withdrawals) and all(r['l2_account_id'] == NATIVE for r in withdrawals), 'every withdrawal attributed to tz origin')
+    v.check(bool(withdrawals) and all(r['l2_account_id'] == ALIAS for r in withdrawals), 'every withdrawal keyed on the alias runtime address')
     for amount, label in EXPECTED:
         v.check(amount in amounts, f'withdrawal present: {label}')
     return v.report()

@@ -383,8 +383,9 @@ class BridgeMatcher:
             if (
                 l1_payout_parameters['withdrawal']['ticketer'] == l2_withdrawal.l1_ticket_owner
                 and l1_payout_parameters['withdrawal']['payload'] == l2_withdrawal.fast_payload.hex()
-                # `l2_caller` is the raw EVM caller the kernel emits
-                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account.address
+                # `l2_caller` is the raw EVM caller the kernel emits — compare to the runtime address,
+                # not the resolved origin (which is a tz1 once the alias resolves)
+                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account.runtime_address
                 and int(datetime.fromisoformat(l1_payout_parameters['withdrawal']['timestamp']).timestamp())
                 == int(l2_withdrawal.timestamp.timestamp())
                 and int(l1_payout_parameters['withdrawal']['full_amount']) * int(1e12) == int(l2_withdrawal.amount)

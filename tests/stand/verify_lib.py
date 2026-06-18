@@ -77,8 +77,8 @@ def dump(cur: sqlite3.Cursor, table: str, columns: str, order_by: str | None = N
 
 
 def dump_accounts(cur: sqlite3.Cursor) -> dict[str, sqlite3.Row]:
-    """Dump `l2_account`, return it keyed by `address` (feed to `Verdict.check_alias`)."""
-    return {r['address']: r for r in dump(cur, 'l2_account', 'origin, address, kind')}
+    """Dump `l2_account`, return it keyed by `runtime_address` (feed to `Verdict.check_alias`)."""
+    return {r['runtime_address']: r for r in dump(cur, 'l2_account', 'origin, runtime_address, kind')}
 
 
 class Verdict:

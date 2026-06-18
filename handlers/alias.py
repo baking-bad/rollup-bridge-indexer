@@ -22,15 +22,18 @@ ORIGIN_KIND_ALIAS = 2
 
 
 async def resolve_l2_account(ctx: HandlerContext, address: str) -> L2Account:
-    """Return the `L2Account` for an EVM `address` (40-hex, no `0x`), resolving aliases on first sight.
+    """Return the `L2Account` for an EVM `address` (40-hex, no `0x`), resolving its alias on first sight.
 
-    If a row keyed by this address already exists it is returned as-is (no node call). Otherwise the
-    `originOf` precompile is asked whether the address aliases a Tezos-native account: if so the row
-    stores `origin` = that native tz/KT1 address with `kind=evm_alias`, else `origin` = the address
-    itself with `kind=evm`. Either way the alias relation is recorded once and reused.
+    A row keyed by this runtime address is returned as-is, no node call (query-once). Otherwise the
+    `originOf` precompile is asked whether the address aliases a Tezos-native account: if so `origin`
+    is that native tz/KT1 address and `kind=evm_alias`, else `origin` is the address itself (its own
+    canonical identity) and `kind=evm`.
     """
-    account = await L2Account.get_or_none(address=address)
+    account = await L2Account.get_or_none(runtime_address=address)
     if account is not None:
+        # TODO: an alias used before its native account is initialized resolves to origin=self here
+        # and is never re-checked. To recover it, re-resolve rows where kind != evm_alias on a
+        # cooldown (the mixin's `updated_at` is the clock) — keying on runtime_address makes it an UPDATE.
         return account
 
     datasource = ctx.get_evm_node_datasource('etherlink_node')
@@ -43,15 +46,4 @@ async def resolve_l2_account(ctx: HandlerContext, address: str) -> L2Account:
     else:
         origin, kind = address, L2AccountKind.evm
 
-    # Key on `origin` (the canonical native identity), never on `address`: one native account is
-    # reachable by several addresses (its tz-side Michelson receiver AND its EVM alias), so a second
-    # sighting must reuse the existing row, not INSERT a duplicate-`origin` PK (which crash-looped the
-    # indexer). When an alias is found for an already-recorded native account, update its stored
-    # address+kind so the row converges on the alias form regardless of which leg was indexed first.
-    account = await L2Account.get_or_none(origin=origin)
-    if account is None:
-        return await L2Account.create(origin=origin, address=address, kind=kind)
-    account.address = address
-    account.kind = kind
-    await account.save()
-    return account
+    return await L2Account.create(runtime_address=address, origin=origin, kind=kind)
