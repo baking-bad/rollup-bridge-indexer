@@ -32,6 +32,15 @@ datasources:
       ratelimit_period: 60
       ratelimit_sleep: 10
 
+  # Etherlink L2 archive for fast historical backfill (node-only sync is slow). Declared here, not
+  # just in the base config: this overlay redefines `datasources`, and DipDup's shallow -c merge
+  # would otherwise drop it. No public SQD archive exists for TezosX previewnet, so
+  # ETHERLINK_SUBSQUID_URL must point at a private gateway — and it's required (the EVM indexes use it).
+  etherlink_subsquid:
+    kind: evm.subsquid
+    url: ${ETHERLINK_SUBSQUID_URL:-~}
+    api_key: ${SUBSQUID_API_KEY:-}
+
   rollup_node:
     kind: http
     url: ${ROLLUP_NODE_URL}
@@ -167,6 +176,7 @@ indexes:
     kind: evm.events
     first_level: ${L2_FIRST_LEVEL}
     datasources:
+      - etherlink_subsquid
       - etherlink_node
     handlers:
       # NOTE: here was etherlink_rollup_kernel which was a legacy 'precompile' for fa
@@ -178,6 +188,7 @@ indexes:
     kind: evm.transactions
     first_level: ${L2_FIRST_LEVEL}
     datasources:
+      - etherlink_subsquid
       - etherlink_node
     handlers:
       - callback: etherlink.on_xtz_deposit
@@ -208,6 +219,7 @@ indexes:
     kind: evm.events
     first_level: ${L2_FIRST_LEVEL}
     datasources:
+      - etherlink_subsquid
       - etherlink_node
     handlers:
       # NOTE: etherlink_rollup_kernel no longer in use for withdrawal, never was for tezosx rollup
@@ -244,6 +256,7 @@ indexes:
   etherlink_token_balance_update_events:
     kind: evm.events
     datasources:
+      - etherlink_subsquid
       - etherlink_node
     handlers:
       - callback: etherlink.on_transfer
