@@ -12,8 +12,9 @@ from rollup_bridge_indexer.models import BridgeOperationKind
 from rollup_bridge_indexer.models import BridgeOperationStatus
 from rollup_bridge_indexer.models import BridgeOperationType
 from rollup_bridge_indexer.models import BridgeWithdrawOperation
-from rollup_bridge_indexer.models import EtherlinkDepositOperation
-from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
+from rollup_bridge_indexer.models import L2DepositOperation
+from rollup_bridge_indexer.models import L2Kind
+from rollup_bridge_indexer.models import L2WithdrawOperation
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupOutboxMessage
 from rollup_bridge_indexer.models import RollupOutboxMessageBuilder
@@ -102,8 +103,8 @@ class BridgeMatcher:
             # completes the match in this same pass even when their own producing
             # handlers fired in earlier, fruitless passes.
             BridgeMatcherLocks.set_pending_michelson_deposits()
-            BridgeMatcherLocks.set_pending_etherlink_deposits()
-            BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
+            BridgeMatcherLocks.set_pending_l2_deposits()
+            BridgeMatcherLocks.set_pending_l2_xtz_deposits()
 
     @classmethod
     async def check_pending_michelson_deposits(cls):
@@ -112,23 +113,23 @@ class BridgeMatcher:
         These deposits land with no inbox coords (the kernel's coords event is not
         observable). The op-hash is precomputed from L1 data on the inbox message
         (`RollupInboxMessage.expected_l2_op_hash`); match the L2 row's op-hash to it and
-        copy the coords across. The link itself is left to `check_pending_etherlink_deposits`,
+        copy the coords across. The link itself is left to `check_pending_l2_deposits`,
         which then treats the row like any other coords-bearing deposit.
         """
         if not BridgeMatcherLocks.pending_michelson_deposits:
             return
         BridgeMatcherLocks.pending_michelson_deposits = False
 
-        qs = EtherlinkDepositOperation.filter(
+        qs = L2DepositOperation.filter(
             bridge_deposits=None,
             inbox_message_level__isnull=True,
-            transaction_hash__startswith='o',
+            l2_kind=L2Kind.michelson,
         ).order_by('level', 'transaction_index')
 
         backfilled = 0
         unmatched = 0
         async for l2_deposit in qs:
-            l2_deposit: EtherlinkDepositOperation
+            l2_deposit: L2DepositOperation
             inbox_message = await RollupInboxMessage.filter(expected_l2_op_hash=l2_deposit.transaction_hash).first()
             if inbox_message is None:
                 unmatched += 1
@@ -140,7 +141,7 @@ class BridgeMatcher:
 
         if backfilled:
             # The coords-based step (runs after this one) performs the link.
-            BridgeMatcherLocks.set_pending_etherlink_deposits()
+            BridgeMatcherLocks.set_pending_l2_deposits()
         if unmatched:
             # Transiently normal: the L2 row landed before its inbox message was indexed.
             # PERSISTENT rows mean a pre-event-era deposit or a kernel upgrade that changed
@@ -149,13 +150,16 @@ class BridgeMatcher:
             logger.warning('%d L2 Michelson deposit(s) without a matching inbox op-hash', unmatched)
 
     @classmethod
-    async def check_pending_etherlink_deposits(cls):
-        if not BridgeMatcherLocks.pending_etherlink_deposits:
+    async def check_pending_l2_deposits(cls):
+        if not BridgeMatcherLocks.pending_l2_deposits:
             return
-        BridgeMatcherLocks.pending_etherlink_deposits = False
+        BridgeMatcherLocks.pending_l2_deposits = False
 
+        # Runtime-agnostic by design: the unique inbox coords are the key, so both EVM
+        # deposits (born with coords) and Michelson deposits (coords backfilled by the
+        # step above) link here. No `l2_kind` filter — the coords themselves are disjoint.
         qs = (
-            EtherlinkDepositOperation.filter(
+            L2DepositOperation.filter(
                 bridge_deposits=None,
                 # Rows without coords (EVM XTZ, L2 Michelson) have nothing to compare here
                 # and belong to the xtz/michelson steps. Without this guard the None coords
@@ -168,7 +172,7 @@ class BridgeMatcher:
         )
 
         async for l2_deposit in qs:
-            l2_deposit: EtherlinkDepositOperation
+            l2_deposit: L2DepositOperation
             bridge_deposit = await BridgeDepositOperation.filter(
                 inbox_message__level=l2_deposit.inbox_message_level,
                 inbox_message__index=l2_deposit.inbox_message_index,
@@ -183,6 +187,7 @@ class BridgeMatcher:
             bridge_operation = await BridgeOperation.get(id=bridge_deposit.pk)
             bridge_operation.is_completed = True
             bridge_operation.is_successful = l2_deposit.l2_token is not None
+            bridge_operation.l2_kind = l2_deposit.l2_kind
             bridge_operation.updated_at = l2_deposit.timestamp
             match (l2_deposit.l2_token_id, l2_deposit.ticket_id, l2_deposit.ticket_owner):
                 case str(), str(), str():
@@ -199,25 +204,25 @@ class BridgeMatcher:
             await bridge_operation.save()
 
     @classmethod
-    async def check_pending_etherlink_xtz_deposits(cls):
-        if not BridgeMatcherLocks.pending_etherlink_xtz_deposits:
+    async def check_pending_l2_xtz_deposits(cls):
+        if not BridgeMatcherLocks.pending_l2_xtz_deposits:
             return
-        BridgeMatcherLocks.pending_etherlink_xtz_deposits = False
+        BridgeMatcherLocks.pending_l2_xtz_deposits = False
 
         qs = (
-            EtherlinkDepositOperation.filter(
+            L2DepositOperation.filter(
                 bridge_deposits=None,
                 l2_token_id='xtz_evm',
-            )
-            # L2 Michelson rows (base58 `o…` hashes; EVM rows store bare hex) carry a
-            # deterministic op-hash key — they get their coords via
-            # check_pending_michelson_deposits, and this value-based zip must not preempt it.
-            .exclude(transaction_hash__startswith='o')
-            .order_by('level', 'transaction_index')
+                # EVM-runtime rows only. Michelson rows carry a deterministic op-hash key
+                # (coords via check_pending_michelson_deposits) and this value-based zip must
+                # not preempt it — the `l2_kind` discriminator replaced the old `o…`-prefix exclude.
+                l2_kind=L2Kind.evm,
+            ).order_by('level', 'transaction_index')
+            # `l2_token__ticket__token` is needed to derive the L1↔L2 scale from decimals below.
             .prefetch_related('l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
         )
         async for l2_deposit in qs:
-            l2_deposit: EtherlinkDepositOperation
+            l2_deposit: L2DepositOperation
             # L1 stores mutez, the L2 EVM handle stores wei; the scale is the decimal gap
             # between the two token representations of the same native ticket (no magic 12).
             scale = 10 ** (l2_deposit.l2_token.decimals - l2_deposit.l2_token.ticket.token.decimals)
@@ -250,17 +255,18 @@ class BridgeMatcher:
             bridge_operation = await BridgeOperation.get(id=bridge_deposit.id)
             bridge_operation.is_completed = True
             bridge_operation.is_successful = l2_deposit.l2_token is not None
+            bridge_operation.l2_kind = l2_deposit.l2_kind
             bridge_operation.updated_at = l2_deposit.timestamp
             bridge_operation.status = BridgeOperationStatus.finished
             await bridge_operation.save()
 
     @classmethod
-    async def check_pending_etherlink_withdrawals(cls):
-        if not BridgeMatcherLocks.pending_etherlink_withdrawals:
+    async def check_pending_l2_withdrawals(cls):
+        if not BridgeMatcherLocks.pending_l2_withdrawals:
             return
-        BridgeMatcherLocks.pending_etherlink_withdrawals = False
+        BridgeMatcherLocks.pending_l2_withdrawals = False
 
-        qs = EtherlinkWithdrawOperation.filter(bridge_withdrawals=None)
+        qs = L2WithdrawOperation.filter(bridge_withdrawals=None)
         async for l2_withdrawal in qs:
             bridge_withdrawal = await BridgeWithdrawOperation.create(created_at=l2_withdrawal.timestamp, l2_transaction=l2_withdrawal)
             await BridgeOperation.create(
@@ -268,6 +274,7 @@ class BridgeMatcher:
                 type=BridgeOperationType.withdrawal,
                 l1_account=l2_withdrawal.l1_account,
                 l2_account_id=l2_withdrawal.l2_account_id,
+                l2_kind=l2_withdrawal.l2_kind,
                 created_at=l2_withdrawal.timestamp,
                 updated_at=l2_withdrawal.timestamp,
                 status=BridgeOperationStatus.created,
@@ -364,9 +371,9 @@ class BridgeMatcher:
             l1_payout: TezosWithdrawOperation
 
             try:
-                l2_withdrawal = await EtherlinkWithdrawOperation.get(
+                l2_withdrawal = await L2WithdrawOperation.get(
                     kernel_withdrawal_id=l1_payout.outbox_message.parameters_hash
-                ).prefetch_related('l2_account')
+                ).prefetch_related('l2_account', 'l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
             except DoesNotExist:
                 continue
 
@@ -380,6 +387,9 @@ class BridgeMatcher:
                 continue
 
             l1_payout_parameters = l1_payout.outbox_message.message
+            # L1 full_amount is in the L1 token's units; L2 amount in the L2 token's. Scale by
+            # the decimals gap (xtz_evm 18 - xtz 6 = 12) instead of a bare `* 1e12`.
+            scale = 10 ** (l2_withdrawal.l2_token.decimals - l2_withdrawal.l2_token.ticket.token.decimals)
             if (
                 l1_payout_parameters['withdrawal']['ticketer'] == l2_withdrawal.l1_ticket_owner
                 and l1_payout_parameters['withdrawal']['payload'] == l2_withdrawal.fast_payload.hex()
@@ -387,7 +397,7 @@ class BridgeMatcher:
                 and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account.address
                 and int(datetime.fromisoformat(l1_payout_parameters['withdrawal']['timestamp']).timestamp())
                 == int(l2_withdrawal.timestamp.timestamp())
-                and int(l1_payout_parameters['withdrawal']['full_amount']) * int(1e12) == int(l2_withdrawal.amount)
+                and int(l1_payout_parameters['withdrawal']['full_amount']) * scale == int(l2_withdrawal.amount)
                 and l1_payout_parameters['withdrawal']['base_withdrawer'] == l2_withdrawal.l1_account
             ):
 
@@ -425,6 +435,7 @@ class BridgeMatcher:
                     kind=BridgeOperationKind.fast_withdrawal_service_provider,
                     l1_account=l1_payout_parameters['service_provider'],
                     l2_account_id=l2_withdrawal.l2_account_id,
+                    l2_kind=l2_withdrawal.l2_kind,
                     created_at=l2_withdrawal.timestamp,
                     updated_at=l1_payout.timestamp,
                     status=BridgeOperationStatus.created,

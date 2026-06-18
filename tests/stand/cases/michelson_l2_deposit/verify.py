@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verdict for the michelson-l2-deposit case: L2 deposit indexed + matched to its L1 op.
 
-The Michelson deposit is stored in `l2_deposit` (EtherlinkDepositOperation, reused) and
+The Michelson deposit is stored in `l2_deposit` (L2DepositOperation, reused) and
 matched to the L1 side by inbox coords.
 """
 
@@ -20,8 +20,8 @@ def main() -> int:
         print(f'  {t:<22} {"(missing)" if c < 0 else c}')
 
     lib.section('L1 deposits (l1_deposit)')
-    for r in lib.rows(cur, 'SELECT level, l1_account, l2_account, amount FROM l1_deposit ORDER BY level LIMIT 20'):
-        print(f'  lvl={r["level"]} l1={r["l1_account"]} l2={r["l2_account"]} amount={r["amount"]}')
+    for r in lib.rows(cur, 'SELECT level, l1_account, l2_account_id, amount FROM l1_deposit ORDER BY level LIMIT 20'):
+        print(f'  lvl={r["level"]} l1={r["l1_account"]} l2={r["l2_account_id"]} amount={r["amount"]}')
 
     lib.section('bridge_operation (deposit side)')
     matched = lib.rows(

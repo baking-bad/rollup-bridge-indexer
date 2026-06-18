@@ -2,7 +2,7 @@
 
 Reads the kernel's `tag=deposit` event (inbox coords) from the node block receipt and
 stores them directly, so the deposit flows through the standard coords-based matcher
-(`BridgeMatcher.check_pending_etherlink_deposits`). The event is emitted from an
+(`BridgeMatcher.check_pending_l2_deposits`). The event is emitted from an
 implicit (tz1) source, which TzKT does not index, so the coords come from the node.
 
 Production uses the op-hash variant (`on_michelson_deposit_ophash.py` +
@@ -16,11 +16,12 @@ from dipdup.context import HandlerContext
 from dipdup.models.tezos import TezosOperationData
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
-from rollup_bridge_indexer.models import EtherlinkDepositOperation
-from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import L2Account
+from rollup_bridge_indexer.models import L2DepositOperation
+from rollup_bridge_indexer.models import L2Token
 from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models.enum import L2AccountKind
+from rollup_bridge_indexer.models.enum import L2Kind
 
 # Exists only for this variant's stand case — not in any prod config.
 _NODE_DATASOURCE = 'tezos_x_michelson_node'
@@ -74,18 +75,19 @@ async def on_michelson_deposit(
         return
     inbox_message_level, inbox_message_index = coords
 
-    etherlink_token = await EtherlinkToken.get(id='xtz_michelson')
+    etherlink_token = await L2Token.get(id='xtz_michelson')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
     assert op.target_address is not None  # a deposit always carries its tz1 receiver
     l2_account = await L2Account.get_or_create_for(op.target_address, L2AccountKind.tz)  # L2 receiver (tz1)
 
-    deposit = await EtherlinkDepositOperation.create(
+    deposit = await L2DepositOperation.create(
         timestamp=op.timestamp,
         level=op.level,
         address=op.sender_address,  # L2 sender = the depositor (tz1)
         transaction_hash=op.hash,
         transaction_index=op.counter,  # ordering key only; the match is by inbox coords
         log_index=None,
+        l2_kind=L2Kind.michelson,
         l2_account=l2_account,
         l2_token=etherlink_token,
         ticket=tezos_ticket,
@@ -96,7 +98,6 @@ async def on_michelson_deposit(
     )
     ctx.logger.info('L2 Michelson deposit registered: %s inbox=(%s,%s)', deposit.id, inbox_message_level, inbox_message_index)
 
-    # TODO(rename): EtherlinkDepositOperation now also holds Michelson deposits — rename to
-    # L2DepositOperation / TezosxDepositOperation; likewise set_pending_etherlink_deposits ->
-    # set_pending_l2_deposits (and check_pending_etherlink_deposits + the lock field).
-    BridgeMatcherLocks.set_pending_etherlink_deposits()
+    # This event-variant carries inbox coords, so it links via the coords step
+    # (check_pending_l2_deposits), not the op-hash michelson step.
+    BridgeMatcherLocks.set_pending_l2_deposits()

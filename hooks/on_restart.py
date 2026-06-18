@@ -18,10 +18,10 @@ async def on_restart(
 
     BridgeMatcherLocks.set_pending_tezos_deposits()
     BridgeMatcherLocks.set_pending_inbox()
-    BridgeMatcherLocks.set_pending_etherlink_deposits()
-    BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
+    BridgeMatcherLocks.set_pending_l2_deposits()
+    BridgeMatcherLocks.set_pending_l2_xtz_deposits()
     BridgeMatcherLocks.set_pending_michelson_deposits()
-    BridgeMatcherLocks.set_pending_etherlink_withdrawals()
+    BridgeMatcherLocks.set_pending_l2_withdrawals()
     BridgeMatcherLocks.set_pending_outbox()
     BridgeMatcherLocks.set_pending_tezos_withdrawals()
     BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()

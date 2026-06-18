@@ -87,7 +87,7 @@ L1 operations and L2 events are correlated via deterministic parameter hashes: `
 
 ### Models
 
-All models in `./models/__init__.py`, enums in `./models/enum.py`. Key tables: `tezos_token`, `tezos_ticket`, `etherlink_token`, `l1_deposit`, `l2_deposit`, `l1_withdrawal`, `l2_withdrawal`, `bridge_operation`, `bridge_deposit`, `bridge_withdrawal`, `rollup_inbox_message`, `rollup_outbox_message`.
+All models in `./models/__init__.py`, enums in `./models/enum.py`. Key tables: `tezos_token`, `tezos_ticket`, `l2_token`, `l2_account`, `l1_deposit`, `l2_deposit`, `l1_withdrawal`, `l2_withdrawal`, `bridge_operation`, `bridge_deposit`, `bridge_withdrawal`, `rollup_inbox_message`, `rollup_outbox_message`.
 
 ### Output Proof Decoder
 

@@ -6,8 +6,8 @@ from dipdup.models.evm import EvmEvent
 
 from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
-from rollup_bridge_indexer.models import EtherlinkDepositOperation
-from rollup_bridge_indexer.models import EtherlinkToken
+from rollup_bridge_indexer.models import L2DepositOperation
+from rollup_bridge_indexer.models import L2Token
 from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.types.kernel.evm_events.deposit import DepositPayload
 
@@ -18,17 +18,17 @@ async def _validate_ticket(ticket_hash):
         raise ValueError('Ticket with given `ticket_hash` not found: {}', ticket_hash)
 
 
-async def register_etherlink_token(token_contract: str, ticket_hash: int) -> EtherlinkToken:
-    etherlink_token = await EtherlinkToken.get_or_none(id=token_contract)
+async def register_etherlink_token(token_contract: str, ticket_hash: int) -> L2Token:
+    etherlink_token = await L2Token.get_or_none(id=token_contract)
 
     if etherlink_token:
         return etherlink_token
 
     await _validate_ticket(ticket_hash)
-    if await EtherlinkToken.filter(ticket_id=ticket_hash).exclude(id=token_contract).count():
+    if await L2Token.filter(ticket_id=ticket_hash).exclude(id=token_contract).count():
         raise ValueError('Specified `proxy` contract address not whitelisted: {}', token_contract)
 
-    return await EtherlinkToken.create(
+    return await L2Token.create(
         id=token_contract,
         ticket_id=ticket_hash,
     )
@@ -65,7 +65,7 @@ async def on_deposit(
 
     l2_account = await resolve_l2_account(ctx, event.payload.receiver[-40:])
 
-    deposit = await EtherlinkDepositOperation.create(
+    deposit = await L2DepositOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
         level=event.data.level,
         address=event.data.address[-40:],
@@ -83,4 +83,4 @@ async def on_deposit(
 
     ctx.logger.info('Etherlink Deposit Event registered: %s', deposit.id)
 
-    BridgeMatcherLocks.set_pending_etherlink_deposits()
+    BridgeMatcherLocks.set_pending_l2_deposits()

@@ -7,8 +7,8 @@ from dipdup.models.evm import EvmEvent
 from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.rollup_message import WithdrawalEventParametersHash
-from rollup_bridge_indexer.models import EtherlinkToken
-from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
+from rollup_bridge_indexer.models import L2Token
+from rollup_bridge_indexer.models import L2WithdrawOperation
 from rollup_bridge_indexer.types.kernel.evm_events.withdrawal import WithdrawalPayload
 
 
@@ -18,7 +18,7 @@ async def on_withdraw(
 ) -> None:
     ctx.logger.info('Etherlink FA Withdraw Event found: %s', event.data.transaction_hash)
     token_contract = event.payload.ticket_owner.removeprefix('0x')
-    etherlink_token = await EtherlinkToken.get_or_none(id=token_contract).prefetch_related('ticket')
+    etherlink_token = await L2Token.get_or_none(id=token_contract).prefetch_related('ticket')
     if not etherlink_token:
         if event.payload.sender == event.payload.ticket_owner:
             ctx.logger.warning('Uncommon Withdraw Routing Info: `ticket_owner == sender`. Mark Operation as `Deposit Revert`.')
@@ -29,7 +29,7 @@ async def on_withdraw(
 
     l2_account = await resolve_l2_account(ctx, event.payload.sender[-40:])
 
-    withdrawal = await EtherlinkWithdrawOperation.create(
+    withdrawal = await L2WithdrawOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
         level=event.data.level,
         address=event.data.address[-40:],
@@ -49,6 +49,6 @@ async def on_withdraw(
 
     ctx.logger.info('Etherlink FA Token Withdraw Event registered: %s', withdrawal.id)
 
-    BridgeMatcherLocks.set_pending_etherlink_withdrawals()
+    BridgeMatcherLocks.set_pending_l2_withdrawals()
     BridgeMatcherLocks.set_pending_outbox()
     BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()

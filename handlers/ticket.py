@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
     from rollup_bridge_indexer.handlers.service_container import BridgeConstantStorage
 
-from rollup_bridge_indexer.models import EtherlinkToken
+from rollup_bridge_indexer.models import L2Token
 from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models import TezosToken
 from rollup_bridge_indexer.types.rollup.tezos_parameters.default import TicketContent
@@ -115,14 +115,14 @@ class TicketService:
                 whitelisted=True,
             )
             # Two L2 tokens on one native ticket: EVM handle in wei, Michelson in mutez.
-            await EtherlinkToken.create(
+            await L2Token.create(
                 id='xtz_evm',
                 name=xtz.name,
                 symbol=xtz.symbol,
                 decimals=EVM_XTZ_DECIMALS,
                 ticket=ticket,
             )
-            await EtherlinkToken.create(
+            await L2Token.create(
                 id='xtz_michelson',
                 name=xtz.name,
                 symbol=xtz.symbol,

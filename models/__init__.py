@@ -14,6 +14,7 @@ from rollup_bridge_indexer.models.enum import BridgeOperationKind
 from rollup_bridge_indexer.models.enum import BridgeOperationStatus
 from rollup_bridge_indexer.models.enum import BridgeOperationType
 from rollup_bridge_indexer.models.enum import L2AccountKind
+from rollup_bridge_indexer.models.enum import L2Kind
 from rollup_bridge_indexer.models.enum import RollupInboxMessageType
 from rollup_bridge_indexer.models.enum import RollupOutboxMessageBuilder
 
@@ -92,10 +93,10 @@ class TezosTicket(Model):
     whitelisted = fields.BooleanField(db_index=True, null=True, default=None)
 
 
-class EtherlinkToken(Model):
+class L2Token(Model):
     class Meta:
-        table = 'etherlink_token'
-        model = 'models.EtherlinkToken'
+        table = 'l2_token'
+        model = 'models.L2Token'
 
     id = fields.CharField(max_length=40, primary_key=True)
     name = fields.TextField(null=True)
@@ -114,9 +115,10 @@ class L2Account(DatetimeModelMixin, Model):
         table = 'l2_account'
         model = 'models.L2Account'
 
-    # EVM or TezosX original address
+    # Canonical origin (PK) always true address
+    # Unique by construction (PK) — the origin↔alias mapping is 1:1.
     origin = fields.CharField(primary_key=True, max_length=40)
-    # Alias if exists, else same as origin
+    # Raw on-chain address as observed on the operation (the EVM address in our case)
     address = fields.CharField(max_length=40, db_index=True, unique=True)
     kind = fields.EnumField(enum_type=L2AccountKind, db_index=True, default=L2AccountKind.evm)
 
@@ -262,25 +264,33 @@ class AbstractEtherlinkOperation(AbstractBlockchainOperation):
     address = fields.CharField(max_length=40)
 
 
-class EtherlinkDepositOperation(AbstractEtherlinkOperation):
+class L2DepositOperation(AbstractEtherlinkOperation):
     class Meta:
         table = 'l2_deposit'
-        model = 'models.EtherlinkDepositOperation'
+        model = 'models.L2DepositOperation'
 
-        ordering = ('-level', '-transaction_index', '-log_index')
+        # Wall-clock first: `timestamp` is comparable across both L2 runtimes, while
+        # `level` is per-runtime (an EVM level and a Michelson level are unrelated), so
+        # level-primary ordering floated Michelson rows above EVM rows as falsely "newest".
+        # transaction_index/log_index stay as in-block tiebreaks (log_index null for Michelson).
+        ordering = ('-timestamp', '-transaction_index', '-log_index')
 
         unique_together = (
             'inbox_message_level',
             'inbox_message_index',
         )
 
+    # The L2 runtime that produced this row. EVM handlers leave the default; the two
+    # Michelson handlers set `michelson`. The matcher keys its disjoint candidate pools
+    # on it instead of the old `transaction_hash`-prefix heuristic.
+    l2_kind = fields.EnumField(enum_type=L2Kind, db_index=True, default=L2Kind.evm)
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
         to_field='origin',
         related_name='l2_deposits',
     )
-    l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
-        model_name=EtherlinkToken.Meta.model,
+    l2_token: ForeignKeyFieldInstance[L2Token] = fields.ForeignKeyField(
+        model_name=L2Token.Meta.model,
         source_field='token_id',
         to_field='id',
         null=True,
@@ -300,21 +310,25 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
 
 
-class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
+class L2WithdrawOperation(AbstractEtherlinkOperation):
     class Meta:
         table = 'l2_withdrawal'
-        model = 'models.EtherlinkWithdrawOperation'
+        model = 'models.L2WithdrawOperation'
 
-        ordering = ('-level', '-transaction_index', '-log_index')
+        # See L2DepositOperation: wall-clock `timestamp` first, not per-runtime `level`.
+        ordering = ('-timestamp', '-transaction_index', '-log_index')
 
+    # Constant `evm` for now (no Michelson withdrawals yet); kept for symmetry with
+    # L2DepositOperation so consumers can filter withdrawals by runtime without a join.
+    l2_kind = fields.EnumField(enum_type=L2Kind, db_index=True, default=L2Kind.evm)
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
         to_field='origin',
         related_name='l2_withdrawals',
     )
     l1_account = fields.CharField(max_length=36)
-    l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
-        model_name=EtherlinkToken.Meta.model,
+    l2_token: ForeignKeyFieldInstance[L2Token] = fields.ForeignKeyField(
+        model_name=L2Token.Meta.model,
         source_field='token_id',
         to_field='id',
         null=True,
@@ -356,6 +370,10 @@ class BridgeOperation(AbstractBridgeOperation):
     )
     type = fields.EnumField(enum_type=BridgeOperationType, db_index=True)
     kind = fields.EnumField(enum_type=BridgeOperationKind, db_index=True, null=True)
+    # The L2 runtime of the operation, copied from the L2 leg. Null for a deposit until
+    # its L2 leg attaches (runtime genuinely unknown from L1 alone); set at creation for
+    # withdrawals (which start from the L2 leg). Lets UI/Hasura/Kuma filter without a join.
+    l2_kind = fields.EnumField(enum_type=L2Kind, db_index=True, null=True)
     is_completed = fields.BooleanField(default=False, db_index=True)
     is_successful = fields.BooleanField(default=False, db_index=True)
     status = fields.EnumField(enum_type=BridgeOperationStatus, db_index=True, null=True)
@@ -374,8 +392,8 @@ class BridgeDepositOperation(AbstractBridgeOperation):
         to_field='id',
         unique=True,
     )
-    l2_transaction: ForeignKeyFieldInstance[EtherlinkDepositOperation] = fields.ForeignKeyField(
-        model_name=EtherlinkDepositOperation.Meta.model,
+    l2_transaction: ForeignKeyFieldInstance[L2DepositOperation] = fields.ForeignKeyField(
+        model_name=L2DepositOperation.Meta.model,
         source_field='l2_transaction_id',
         to_field='id',
         null=True,
@@ -403,8 +421,8 @@ class BridgeWithdrawOperation(AbstractBridgeOperation):
         null=True,
         unique=True,
     )
-    l2_transaction: ForeignKeyFieldInstance[EtherlinkWithdrawOperation] = fields.ForeignKeyField(
-        model_name=EtherlinkWithdrawOperation.Meta.model,
+    l2_transaction: ForeignKeyFieldInstance[L2WithdrawOperation] = fields.ForeignKeyField(
+        model_name=L2WithdrawOperation.Meta.model,
         source_field='l2_transaction_id',
         to_field='id',
         unique=True,

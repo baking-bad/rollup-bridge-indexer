@@ -19,6 +19,7 @@ from pytezos import michelson_to_micheline
 from tortoise.exceptions import DoesNotExist
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from rollup_bridge_indexer.handlers.michelson_deposit import WEI_PER_MUTEZ
 from rollup_bridge_indexer.handlers.michelson_deposit import expected_op_hash_from_inbox
 from rollup_bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from rollup_bridge_indexer.handlers.ticket import WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
@@ -558,7 +559,7 @@ class WithdrawalEventParametersHash:
             comparable_data = WithdrawalParametersHashableDTO(
                 receiver=str(payload.receiver),
                 ticket_hash=ticket.hash,
-                amount=int(str(payload.amount)[:-12]),
+                amount=int(payload.amount) // WEI_PER_MUTEZ,  # wei (L2) -> mutez (L1 outbox)
                 ticketer_address=ticket.ticketer_address,
                 proxy=ticket.ticketer_address,
             )

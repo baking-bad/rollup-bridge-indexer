@@ -85,7 +85,7 @@
         {
             "type": "pg_create_array_relationship",
             "args": {
-                "name": "etherlink_tokens",
+                "name": "l2_tokens",
                 "table": {
                     "name": "tezos_ticket",
                     "schema": "public"
@@ -93,7 +93,7 @@
                 "using": {
                     "foreign_key_constraint_on": {
                         "table": {
-                            "name": "etherlink_token",
+                            "name": "l2_token",
                             "schema": "public"
                         },
                         "column": "ticket_hash"
@@ -167,7 +167,7 @@
             "args": {
                 "name": "l2_deposits",
                 "table": {
-                    "name": "etherlink_token",
+                    "name": "l2_token",
                     "schema": "public"
                 },
                 "using": {
@@ -187,7 +187,7 @@
             "args": {
                 "name": "l2_withdrawals",
                 "table": {
-                    "name": "etherlink_token",
+                    "name": "l2_token",
                     "schema": "public"
                 },
                 "using": {

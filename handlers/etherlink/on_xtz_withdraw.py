@@ -7,8 +7,8 @@ from dipdup.models.evm import EvmEvent
 from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.rollup_message import WithdrawalEventParametersHash
-from rollup_bridge_indexer.models import EtherlinkToken
-from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
+from rollup_bridge_indexer.models import L2Token
+from rollup_bridge_indexer.models import L2WithdrawOperation
 from rollup_bridge_indexer.types.kernel_native.evm_events.fast_withdrawal import FastWithdrawalPayload
 from rollup_bridge_indexer.types.kernel_native.evm_events.withdrawal import WithdrawalPayload as LegacyWithdrawalPayload
 
@@ -20,7 +20,7 @@ async def on_xtz_withdraw(
     event: EvmEvent[WithdrawalPayload],
 ) -> None:
     ctx.logger.info('Etherlink Native Withdraw Event found: %s', event.data.transaction_hash)
-    etherlink_token = await EtherlinkToken.get(id='xtz_evm').prefetch_related('ticket')
+    etherlink_token = await L2Token.get(id='xtz_evm').prefetch_related('ticket')
 
     l2_account_address = None
     fast_payload = None
@@ -33,7 +33,7 @@ async def on_xtz_withdraw(
     assert l2_account_address is not None  # the payload is always one of the two variants above
     l2_account = await resolve_l2_account(ctx, l2_account_address)
 
-    withdrawal = await EtherlinkWithdrawOperation.create(
+    withdrawal = await L2WithdrawOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
         level=event.data.level,
         address=event.data.address[-40:],
@@ -54,7 +54,7 @@ async def on_xtz_withdraw(
 
     ctx.logger.info('Etherlink Native Token Withdraw Event registered: %s', withdrawal.id)
 
-    BridgeMatcherLocks.set_pending_etherlink_withdrawals()
+    BridgeMatcherLocks.set_pending_l2_withdrawals()
     BridgeMatcherLocks.set_pending_outbox()
     if isinstance(event.payload, FastWithdrawalPayload):
         BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()
