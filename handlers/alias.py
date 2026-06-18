@@ -37,24 +37,34 @@ def _due_for_recheck(account: L2Account) -> bool:
     return datetime.now(UTC) - updated >= ALIAS_RECHECK_INTERVAL
 
 
+def _use_cached(account: L2Account) -> bool:
+    """Return the cached row without re-querying: a known alias is terminal, and a not-yet-alias is
+    trusted until its recheck cooldown elapses."""
+    return account.kind == L2AccountKind.evm_alias or not _due_for_recheck(account)
+
+
+async def _query_origin_of(ctx: HandlerContext, address: str) -> tuple[int, str]:
+    """Ask the RuntimeGateway `originOf` view about `address`; return (kind, native_address)."""
+    datasource = ctx.get_evm_node_datasource('etherlink_node')
+    calldata = ORIGIN_OF_SELECTOR + encode(['string', 'uint8'], [address, RUNTIME_ETHEREUM])
+    raw = await datasource.web3.eth.call({'to': RUNTIME_GATEWAY, 'data': HexStr('0x' + calldata.hex())})
+    kind_int, _home_runtime, native_address = decode(['uint8', 'uint8', 'string'], bytes(raw))
+    return kind_int, native_address
+
+
 async def resolve_l2_account(ctx: HandlerContext, address: str) -> L2Account:
     """Return the `L2Account` for an EVM `address` (40-hex, no `0x`), resolving its alias via `originOf`.
 
     A known alias (`kind=evm_alias`) is terminal and returned from cache. A not-yet-alias row is also
     cached, but re-resolved once its recheck cooldown elapses (an alias used before its native account
-    was initialized only becomes resolvable later). On first sight / re-resolution the `originOf`
-    precompile classifies the address: `origin` is the native tz/KT1 address for an alias
-    (`kind=evm_alias`), else the address itself (`kind=evm`).
+    was initialized only becomes resolvable later). `originOf` classifies the address: `origin` is the
+    native tz/KT1 address for an alias (`kind=evm_alias`), else the address itself (`kind=evm`).
     """
     account = await L2Account.get_or_none(runtime_address=address)
-    if account is not None and (account.kind == L2AccountKind.evm_alias or not _due_for_recheck(account)):
+    if account is not None and _use_cached(account):
         return account
 
-    datasource = ctx.get_evm_node_datasource('etherlink_node')
-    calldata = ORIGIN_OF_SELECTOR + encode(['string', 'uint8'], [address, RUNTIME_ETHEREUM])
-    raw = await datasource.web3.eth.call({'to': RUNTIME_GATEWAY, 'data': HexStr('0x' + calldata.hex())})
-    kind_int, _home_runtime, native_address = decode(['uint8', 'uint8', 'string'], bytes(raw))
-
+    kind_int, native_address = await _query_origin_of(ctx, address)
     if kind_int == ORIGIN_KIND_ALIAS:
         origin, kind = native_address, L2AccountKind.evm_alias
     else:
@@ -64,7 +74,6 @@ async def resolve_l2_account(ctx: HandlerContext, address: str) -> L2Account:
         return await L2Account.create(runtime_address=address, origin=origin, kind=kind)
     # Re-resolution: update in place (the PK runtime_address is stable). save() bumps `updated_at`,
     # resetting the cooldown whether or not the classification changed.
-    account.origin = origin
-    account.kind = kind
+    account.origin, account.kind = origin, kind
     await account.save()
     return account
