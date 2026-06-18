@@ -220,8 +220,9 @@ class TezosDepositOperation(AbstractTezosOperation):
         model = 'models.TezosDepositOperation'
 
     l1_account = fields.CharField(max_length=36)
-    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+    account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
+        source_field='l2_account',
         to_field='origin',
         related_name='l1_deposits',
     )
@@ -284,8 +285,9 @@ class L2DepositOperation(AbstractEtherlinkOperation):
     # Michelson handlers set `michelson`. The matcher keys its disjoint candidate pools
     # on it instead of the old `transaction_hash`-prefix heuristic.
     l2_kind = fields.EnumField(enum_type=L2Kind, db_index=True, default=L2Kind.evm)
-    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+    account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
+        source_field='l2_account',
         to_field='origin',
         related_name='l2_deposits',
     )
@@ -321,8 +323,9 @@ class L2WithdrawOperation(AbstractEtherlinkOperation):
     # Constant `evm` for now (no Michelson withdrawals yet); kept for symmetry with
     # L2DepositOperation so consumers can filter withdrawals by runtime without a join.
     l2_kind = fields.EnumField(enum_type=L2Kind, db_index=True, default=L2Kind.evm)
-    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+    account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
+        source_field='l2_account',
         to_field='origin',
         related_name='l2_withdrawals',
     )
@@ -363,8 +366,9 @@ class BridgeOperation(AbstractBridgeOperation):
         ordering = ('-created_at',)
 
     l1_account = fields.CharField(max_length=36, db_index=True)
-    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+    account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
+        source_field='l2_account',
         to_field='origin',
         related_name='bridge_operations',
     )

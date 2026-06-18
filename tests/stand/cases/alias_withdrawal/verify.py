@@ -22,13 +22,13 @@ def main() -> int:
     cur = lib.open_db('/tmp/bridge_alias_withdrawal.sqlite').cursor()
     lib.counts(cur, 'l2_account', 'l2_withdrawal')
     accounts = lib.dump_accounts(cur)
-    withdrawals = lib.dump(cur, 'l2_withdrawal', 'level, l2_account_id, amount, kernel_withdrawal_id, l1_account', order_by='level')
+    withdrawals = lib.dump(cur, 'l2_withdrawal', 'level, l2_account, amount, kernel_withdrawal_id, l1_account', order_by='level')
     amounts = {r['amount'] for r in withdrawals}
 
     v = lib.Verdict()
     v.check(len(withdrawals) >= 2, 'XTZ + FA withdrawals indexed')
     v.check_alias(accounts, ALIAS, NATIVE)
-    v.check(bool(withdrawals) and all(r['l2_account_id'] == NATIVE for r in withdrawals), 'every withdrawal attributed to tz origin')
+    v.check(bool(withdrawals) and all(r['l2_account'] == NATIVE for r in withdrawals), 'every withdrawal attributed to tz origin')
     for amount, label in EXPECTED:
         v.check(amount in amounts, f'withdrawal present: {label}')
     return v.report()

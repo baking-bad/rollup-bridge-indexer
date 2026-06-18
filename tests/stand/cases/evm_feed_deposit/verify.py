@@ -18,10 +18,10 @@ def main() -> int:
     lib.section('L2 deposits (l2_deposit) — the Tezos->EVM side')
     for r in lib.rows(
         cur,
-        'SELECT level, l2_account_id, amount, token_id, inbox_message_level, inbox_message_index FROM l2_deposit ORDER BY level LIMIT 20',
+        'SELECT level, l2_account, amount, token_id, inbox_message_level, inbox_message_index FROM l2_deposit ORDER BY level LIMIT 20',
     ):
         print(
-            f'  lvl={r["level"]} l2={r["l2_account_id"]} amount={r["amount"]} token={r["token_id"]} '
+            f'  lvl={r["level"]} l2={r["l2_account"]} amount={r["amount"]} token={r["token_id"]} '
             f'inbox=({r["inbox_message_level"]},{r["inbox_message_index"]})'
         )
 

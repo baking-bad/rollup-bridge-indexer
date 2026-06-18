@@ -38,9 +38,9 @@ def main() -> int:
         print(f'  ({r["level"]}, {r["index"]})')
 
     lib.section('L1 deposits (l1_deposit)')
-    l1 = lib.rows(cur, 'SELECT level, l2_account_id, amount FROM l1_deposit ORDER BY level')
+    l1 = lib.rows(cur, 'SELECT level, l2_account, amount FROM l1_deposit ORDER BY level')
     for r in l1:
-        print(f'  lvl={r["level"]} l2={r["l2_account_id"]} amount={r["amount"]}')
+        print(f'  lvl={r["level"]} l2={r["l2_account"]} amount={r["amount"]}')
 
     lib.section('bridge_deposit inbox attach')
     bridge = lib.rows(
@@ -60,7 +60,7 @@ def main() -> int:
     # The deposit itself indexed as expected.
     v.check(len(l1) == 1, 'exactly one L1 deposit indexed')
     v.check(bool(l1) and l1[0]['level'] == DEPOSIT_LEVEL, f'l1_deposit at level {DEPOSIT_LEVEL}')
-    v.check(bool(l1) and l1[0]['l2_account_id'] == RECEIVER, f'l1_deposit.l2_account_id is {RECEIVER}')
+    v.check(bool(l1) and l1[0]['l2_account'] == RECEIVER, f'l1_deposit.l2_account is {RECEIVER}')
     v.check(bool(l1) and l1[0]['amount'] == AMOUNT_MUTEZ, f'l1_deposit.amount is {AMOUNT_MUTEZ}')
     # Downstream effect: parameters-hash attach worked, the deposit is matchable.
     v.check(
