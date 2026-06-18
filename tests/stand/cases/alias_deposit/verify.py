@@ -14,9 +14,9 @@ FA_TOKEN = '3dff505a2a69e6e0b05fdb71b5f6ddd514fdaf47'
 
 # Each deposit the handlers index in this window: (amount, token_id, label).
 EXPECTED = [
-    ('1991000000000000', 'xtz_evm', 'XTZ before init'),
-    ('1997', FA_TOKEN, 'FA before init'),
-    ('500000000000000000', 'xtz_evm', 'XTZ after init'),
+    ('1991000000000000', 'xtz_evm', 'XTZ #1'),
+    ('1997', FA_TOKEN, 'FA'),
+    ('500000000000000000', 'xtz_evm', 'XTZ #2'),
 ]
 
 
@@ -28,7 +28,7 @@ def main() -> int:
     seen = {(r['amount'], r['token_id']) for r in deposits}
 
     v = lib.Verdict()
-    v.check(len(deposits) >= 3, 'XTZ (before + after init) + FA (before) deposits indexed')
+    v.check(len(deposits) >= 3, 'three deposits (2 XTZ + 1 FA) indexed')
     v.check_alias(accounts, ALIAS, NATIVE)
     v.check(bool(deposits) and all(r['l2_account_id'] == NATIVE for r in deposits), 'every deposit attributed to tz origin')
     for amount, token, label in EXPECTED:
