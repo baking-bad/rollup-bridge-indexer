@@ -1,12 +1,7 @@
-"""L2Account alias resolution — one native identity, reached from both bridge legs.
+"""Alias resolution in `resolve_l2_account` / `L2Account.get_or_create_for`.
 
-A native Tezos account is reachable two ways: its Michelson tz-side receiver
-(``L2Account.get_or_create_for``) and its EVM alias (``resolve_l2_account`` via the
-``originOf`` precompile). Each runtime address is its own row keyed by ``runtime_address``;
-both legs converge on the same ``origin`` (the native identity), in either index order.
-
-The precompile is the only external dependency, so it (and only it) is faked at the
-``eth.call`` boundary; the resolution behaviour under test is real ORM against sqlite.
+Only the `originOf` precompile (an `eth.call`) is faked; everything else is real ORM on
+in-memory sqlite.
 """
 
 from datetime import UTC
