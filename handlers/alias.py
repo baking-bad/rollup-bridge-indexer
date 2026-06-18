@@ -14,7 +14,7 @@ from rollup_bridge_indexer.models.enum import L2AccountKind
 
 # The `RuntimeGateway` precompile exposes a view that resolves an EVM address to its origin:
 #   originOf(string address, uint8 runtime) -> (uint8 kind, uint8 home_runtime, string native_address)
-# Verified live on Tezos X previewnet (2026-06-17); see tests/stand/cases/alias_xtz_deposit.
+# Verified live on Tezos X previewnet (2026-06-17); see tests/stand/cases/alias_deposit.
 RUNTIME_GATEWAY = Web3.to_checksum_address('0xff00000000000000000000000000000000000007')  # web3 eth.call requires checksum
 ORIGIN_OF_SELECTOR = bytes.fromhex('e3d35459')  # keccak('originOf(string,uint8)')[:4]
 RUNTIME_ETHEREUM = 1
@@ -25,10 +25,8 @@ RUNTIME_ETHEREUM = 1
 #   2 -> alias of a native Tezos account in another runtime (2, 0, '<tz1/tz2/tz3/KT1>')
 ORIGIN_KIND_ALIAS = 2
 
-# Re-ask `originOf` for a not-yet-alias row at most this often (override via ALIAS_RECHECK_SECONDS).
-# An alias used before its native account is initialized first resolves to itself (`kind=evm`) and
-# only becomes resolvable once the account is live; the cooldown recovers it without re-querying a
-# genuinely-native address every sighting.
+# How often to re-`originOf` a not-yet-alias row — recovers an alias first seen before its native
+# account existed, without re-querying on every sighting. Override via ALIAS_RECHECK_SECONDS.
 ALIAS_RECHECK_INTERVAL = timedelta(seconds=int(os.environ.get('ALIAS_RECHECK_SECONDS', 86400)))
 
 
