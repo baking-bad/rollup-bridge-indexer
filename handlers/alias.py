@@ -1,3 +1,8 @@
+import os
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
+
 from dipdup.context import HandlerContext
 from eth_abi import decode
 from eth_abi import encode
@@ -20,20 +25,31 @@ RUNTIME_ETHEREUM = 1
 #   2 -> alias of a native Tezos account in another runtime (2, 0, '<tz1/tz2/tz3/KT1>')
 ORIGIN_KIND_ALIAS = 2
 
+# Re-ask `originOf` for a not-yet-alias row at most this often (override via ALIAS_RECHECK_SECONDS).
+# An alias used before its native account is initialized first resolves to itself (`kind=evm`) and
+# only becomes resolvable once the account is live; the cooldown recovers it without re-querying a
+# genuinely-native address every sighting.
+ALIAS_RECHECK_INTERVAL = timedelta(seconds=int(os.environ.get('ALIAS_RECHECK_SECONDS', 86400)))
+
+
+def _due_for_recheck(account: L2Account) -> bool:
+    updated = account.updated_at
+    if updated.tzinfo is None:  # naive timestamps (use_tz off) are UTC by convention
+        updated = updated.replace(tzinfo=UTC)
+    return datetime.now(UTC) - updated >= ALIAS_RECHECK_INTERVAL
+
 
 async def resolve_l2_account(ctx: HandlerContext, address: str) -> L2Account:
-    """Return the `L2Account` for an EVM `address` (40-hex, no `0x`), resolving its alias on first sight.
+    """Return the `L2Account` for an EVM `address` (40-hex, no `0x`), resolving its alias via `originOf`.
 
-    A row keyed by this runtime address is returned as-is, no node call (query-once). Otherwise the
-    `originOf` precompile is asked whether the address aliases a Tezos-native account: if so `origin`
-    is that native tz/KT1 address and `kind=evm_alias`, else `origin` is the address itself (its own
-    canonical identity) and `kind=evm`.
+    A known alias (`kind=evm_alias`) is terminal and returned from cache. A not-yet-alias row is also
+    cached, but re-resolved once its recheck cooldown elapses (an alias used before its native account
+    was initialized only becomes resolvable later). On first sight / re-resolution the `originOf`
+    precompile classifies the address: `origin` is the native tz/KT1 address for an alias
+    (`kind=evm_alias`), else the address itself (`kind=evm`).
     """
     account = await L2Account.get_or_none(runtime_address=address)
-    if account is not None:
-        # TODO: an alias used before its native account is initialized resolves to origin=self here
-        # and is never re-checked. To recover it, re-resolve rows where kind != evm_alias on a
-        # cooldown (the mixin's `updated_at` is the clock) — keying on runtime_address makes it an UPDATE.
+    if account is not None and (account.kind == L2AccountKind.evm_alias or not _due_for_recheck(account)):
         return account
 
     datasource = ctx.get_evm_node_datasource('etherlink_node')
@@ -46,4 +62,11 @@ async def resolve_l2_account(ctx: HandlerContext, address: str) -> L2Account:
     else:
         origin, kind = address, L2AccountKind.evm
 
-    return await L2Account.create(runtime_address=address, origin=origin, kind=kind)
+    if account is None:
+        return await L2Account.create(runtime_address=address, origin=origin, kind=kind)
+    # Re-resolution: update in place (the PK runtime_address is stable). save() bumps `updated_at`,
+    # resetting the cooldown whether or not the classification changed.
+    account.origin = origin
+    account.kind = kind
+    await account.save()
+    return account

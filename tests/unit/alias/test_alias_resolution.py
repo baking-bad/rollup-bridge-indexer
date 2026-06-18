@@ -9,6 +9,9 @@ The precompile is the only external dependency, so it (and only it) is faked at 
 ``eth.call`` boundary; the resolution behaviour under test is real ORM against sqlite.
 """
 
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -70,3 +73,29 @@ async def test_plain_evm_account_is_its_own_origin(db):
     assert await L2Account.all().count() == 1
     assert row.origin == evm == row.runtime_address
     assert row.kind == L2AccountKind.evm
+
+
+async def test_not_yet_alias_recovered_after_cooldown(db):
+    # First sighting before the native account is initialized: originOf reports non-alias.
+    row = await resolve_l2_account(_ctx_with_origin_of(1, '0x' + ALIAS), ALIAS)
+    assert (row.origin, row.kind) == (ALIAS, L2AccountKind.evm)
+
+    # Age the row past the recheck cooldown (`.update()` bypasses the auto_now bump on `.save()`).
+    await L2Account.filter(runtime_address=ALIAS).update(updated_at=datetime.now(UTC) - timedelta(days=2))
+
+    # Next sighting now resolves the alias and updates the same row in place.
+    row = await resolve_l2_account(_ctx_resolving_alias(NATIVE), ALIAS)
+    assert await L2Account.all().count() == 1
+    assert (row.runtime_address, row.origin, row.kind) == (ALIAS, NATIVE, L2AccountKind.evm_alias)
+
+
+async def test_within_cooldown_not_rechecked(db):
+    # First sighting records a non-alias row.
+    await resolve_l2_account(_ctx_with_origin_of(1, '0x' + ALIAS), ALIAS)
+
+    # A second sighting within the cooldown must NOT call originOf again, even though it would now
+    # report an alias — the cached row is returned untouched.
+    ctx = _ctx_resolving_alias(NATIVE)
+    row = await resolve_l2_account(ctx, ALIAS)
+    ctx.get_evm_node_datasource('etherlink_node').web3.eth.call.assert_not_called()
+    assert (row.origin, row.kind) == (ALIAS, L2AccountKind.evm)
