@@ -217,7 +217,7 @@ class TezosDepositOperation(AbstractTezosOperation):
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
         to_field='runtime_address',
-        related_name='l1_deposits',
+        related_name=False,
     )
     ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
@@ -273,7 +273,7 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
         to_field='runtime_address',
-        related_name='l2_deposits',
+        related_name=False,
     )
     l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
         model_name=EtherlinkToken.Meta.model,
@@ -306,7 +306,7 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
         to_field='runtime_address',
-        related_name='l2_withdrawals',
+        related_name=False,
     )
     l1_account = fields.CharField(max_length=36)
     l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
