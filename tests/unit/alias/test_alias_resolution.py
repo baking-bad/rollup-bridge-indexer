@@ -31,7 +31,8 @@ ALIAS = '21ab829afe4b41dd3fb6eb5be4de2d20d9cebc21'
 
 
 def _ctx_with_origin_of(kind_int: int, native_address: str):
-    """A HandlerContext stub whose `originOf` call returns `(kind_int, 0, native_address)`."""
+    """Fake HandlerContext: its `originOf` eth_call returns `(kind_int, 0, native_address)`,
+    so resolution is driven without a real EVM node. Use the named wrappers below, not this."""
     raw = encode(['uint8', 'uint8', 'string'], [kind_int, 0, native_address])
     eth = SimpleNamespace(call=AsyncMock(return_value=raw))
     datasource = SimpleNamespace(web3=SimpleNamespace(eth=eth))
@@ -39,8 +40,13 @@ def _ctx_with_origin_of(kind_int: int, native_address: str):
 
 
 def _ctx_resolving_alias(native_address: str):
-    """A HandlerContext stub whose `originOf` call reports `address` aliases `native_address`."""
+    """`originOf` reports the address is an alias of `native_address`."""
     return _ctx_with_origin_of(ORIGIN_KIND_ALIAS, native_address)
+
+
+def _ctx_resolving_native(address: str):
+    """`originOf` reports the address is native — its own origin, not an alias (kind=1)."""
+    return _ctx_with_origin_of(1, '0x' + address)
 
 
 async def test_evm_alias_and_tz_leg_share_one_origin(db):
@@ -66,9 +72,9 @@ async def test_tz_leg_after_evm_alias_leaves_alias_row_intact(db):
 
 
 async def test_plain_evm_account_is_its_own_origin(db):
-    # originOf reports a non-alias account (kind != 2): the row is its own origin, kind=evm.
+    # originOf reports a non-alias account: the row is its own origin, kind=evm.
     evm = 'cd' * 20
-    row = await resolve_l2_account(_ctx_with_origin_of(1, '0x' + evm), evm)
+    row = await resolve_l2_account(_ctx_resolving_native(evm), evm)
 
     assert await L2Account.all().count() == 1
     assert row.origin == evm == row.runtime_address
@@ -77,7 +83,7 @@ async def test_plain_evm_account_is_its_own_origin(db):
 
 async def test_not_yet_alias_recovered_after_cooldown(db):
     # First sighting before the native account is initialized: originOf reports non-alias.
-    row = await resolve_l2_account(_ctx_with_origin_of(1, '0x' + ALIAS), ALIAS)
+    row = await resolve_l2_account(_ctx_resolving_native(ALIAS), ALIAS)
     assert (row.origin, row.kind) == (ALIAS, L2AccountKind.evm)
 
     # Age the row past the recheck cooldown (`.update()` bypasses the auto_now bump on `.save()`).
@@ -91,7 +97,7 @@ async def test_not_yet_alias_recovered_after_cooldown(db):
 
 async def test_within_cooldown_not_rechecked(db):
     # First sighting records a non-alias row.
-    await resolve_l2_account(_ctx_with_origin_of(1, '0x' + ALIAS), ALIAS)
+    await resolve_l2_account(_ctx_resolving_native(ALIAS), ALIAS)
 
     # A second sighting within the cooldown must NOT call originOf again, even though it would now
     # report an alias — the cached row is returned untouched.
