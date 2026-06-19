@@ -57,7 +57,7 @@ async def on_michelson_deposit_ophash(
         transaction_index=op.counter,  # ordering key only
         log_index=None,
         l2_kind=L2Kind.michelson,  # the matcher's michelson pool keys on this
-        account=l2_account,
+        l2_account=l2_account,
         l2_token=etherlink_token,
         ticket=tezos_ticket,
         ticket_owner=etherlink_token.id,

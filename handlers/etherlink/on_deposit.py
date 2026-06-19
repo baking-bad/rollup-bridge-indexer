@@ -72,7 +72,7 @@ async def on_deposit(
         log_index=event.data.log_index,
         transaction_hash=event.data.transaction_hash[-64:],
         transaction_index=event.data.transaction_index,
-        account=l2_account,
+        l2_account=l2_account,
         l2_token=etherlink_token,
         ticket_id=event.payload.ticket_hash,
         ticket_owner=event.payload.ticket_owner[-40:],

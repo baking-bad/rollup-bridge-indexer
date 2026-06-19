@@ -44,7 +44,7 @@ class BridgeMatcher:
                 id=bridge_deposit.id,
                 type=BridgeOperationType.deposit,
                 l1_account=l1_deposit.l1_account,
-                account_id=l1_deposit.account_id,
+                l2_account_id=l1_deposit.l2_account_id,
                 created_at=l1_deposit.timestamp,
                 updated_at=l1_deposit.timestamp,
                 status=BridgeOperationStatus.created,
@@ -234,7 +234,7 @@ class BridgeMatcher:
                     l1_transaction__ticket=l2_deposit.l2_token.ticket,
                     l1_transaction__timestamp__lte=l2_deposit.timestamp,
                     l1_transaction__timestamp__gte=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX,
-                    l1_transaction__account_id=l2_deposit.account_id,
+                    l1_transaction__l2_account_id=l2_deposit.l2_account_id,
                     l1_transaction__amount=l1_amount,
                 )
                 .order_by('l1_transaction__timestamp')
@@ -273,7 +273,7 @@ class BridgeMatcher:
                 id=bridge_withdrawal.id,
                 type=BridgeOperationType.withdrawal,
                 l1_account=l2_withdrawal.l1_account,
-                account_id=l2_withdrawal.account_id,
+                l2_account_id=l2_withdrawal.l2_account_id,
                 l2_kind=l2_withdrawal.l2_kind,
                 created_at=l2_withdrawal.timestamp,
                 updated_at=l2_withdrawal.timestamp,
@@ -373,7 +373,7 @@ class BridgeMatcher:
             try:
                 l2_withdrawal = await L2WithdrawOperation.get(
                     kernel_withdrawal_id=l1_payout.outbox_message.parameters_hash
-                ).prefetch_related('account', 'l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
+                ).prefetch_related('l2_account', 'l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
             except DoesNotExist:
                 continue
 
@@ -394,7 +394,7 @@ class BridgeMatcher:
                 l1_payout_parameters['withdrawal']['ticketer'] == l2_withdrawal.l1_ticket_owner
                 and l1_payout_parameters['withdrawal']['payload'] == l2_withdrawal.fast_payload.hex()
                 # `l2_caller` is the raw EVM caller the kernel emits
-                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.account.address
+                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account.address
                 and int(datetime.fromisoformat(l1_payout_parameters['withdrawal']['timestamp']).timestamp())
                 == int(l2_withdrawal.timestamp.timestamp())
                 and int(l1_payout_parameters['withdrawal']['full_amount']) * scale == int(l2_withdrawal.amount)
@@ -434,7 +434,7 @@ class BridgeMatcher:
                     type=BridgeOperationType.withdrawal,
                     kind=BridgeOperationKind.fast_withdrawal_service_provider,
                     l1_account=l1_payout_parameters['service_provider'],
-                    account_id=l2_withdrawal.account_id,
+                    l2_account_id=l2_withdrawal.l2_account_id,
                     l2_kind=l2_withdrawal.l2_kind,
                     created_at=l2_withdrawal.timestamp,
                     updated_at=l1_payout.timestamp,

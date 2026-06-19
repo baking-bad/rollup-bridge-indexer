@@ -53,33 +53,33 @@ def main() -> int:
         print(f'  {t:<22} {"(missing)" if c < 0 else c}')
 
     lib.section('L1 deposits (l1_deposit)')
-    l1 = lib.rows(cur, 'SELECT level, l1_account, l2_account, amount FROM l1_deposit ORDER BY level')
+    l1 = lib.rows(cur, 'SELECT level, l1_account, l2_account_id, amount FROM l1_deposit ORDER BY level')
     for r in l1:
-        print(f'  lvl={r["level"]} l1={r["l1_account"]} l2={r["l2_account"]} amount={r["amount"]}')
+        print(f'  lvl={r["level"]} l1={r["l1_account"]} l2={r["l2_account_id"]} amount={r["amount"]}')
 
     lib.section('L2 Michelson deposits (l2_deposit)')
     l2 = lib.rows(
         cur,
-        'SELECT level, transaction_hash, l2_account, amount, token_id, ticket_hash, '
+        'SELECT level, transaction_hash, l2_account_id, amount, token_id, ticket_hash, '
         'inbox_message_level, inbox_message_index FROM l2_deposit ORDER BY level',
     )
     for r in l2:
         print(
-            f'  lvl={r["level"]} op={r["transaction_hash"]} l2={r["l2_account"]} amount={r["amount"]} '
+            f'  lvl={r["level"]} op={r["transaction_hash"]} l2={r["l2_account_id"]} amount={r["amount"]} '
             f'token={r["token_id"]} inbox=({r["inbox_message_level"]},{r["inbox_message_index"]})'
         )
 
     lib.section('bridge_operation (matcher output)')
     bridge = lib.rows(
         cur,
-        'SELECT bo.status, bo.type, bo.is_completed, bo.is_successful, bo.l2_account, '
+        'SELECT bo.status, bo.type, bo.is_completed, bo.is_successful, bo.l2_account_id, '
         'bd.l1_transaction_id IS NOT NULL AS has_l1, bd.l2_transaction_id IS NOT NULL AS has_l2 '
         'FROM bridge_deposit bd JOIN bridge_operation bo ON bo.id = bd.id ORDER BY bo.created_at',
     )
     for r in bridge:
         print(
             f'  status={r["status"]} type={r["type"]} completed={bool(r["is_completed"])} '
-            f'ok={bool(r["is_successful"])} l2={r["l2_account"]} l1_leg={bool(r["has_l1"])} l2_leg={bool(r["has_l2"])}'
+            f'ok={bool(r["is_successful"])} l2={r["l2_account_id"]} l1_leg={bool(r["has_l1"])} l2_leg={bool(r["has_l2"])}'
         )
 
     expected = _reconstructed_op_hashes(cur)
@@ -88,9 +88,9 @@ def main() -> int:
         print(f'  inbox=({lvl},{idx})  ->  {op_hash}')
 
     v = lib.Verdict()
-    # L1 leg: indexed and routed to the real tz1 receiver (l2_account fix).
+    # L1 leg: indexed and routed to the real tz1 receiver (l2_account_id fix).
     v.check(len(l1) == 1, 'exactly one L1 deposit indexed')
-    v.check(bool(l1) and l1[0]['l2_account'] == RECEIVER, f'l1_deposit.l2_account is the tz1 receiver ({RECEIVER})')
+    v.check(bool(l1) and l1[0]['l2_account_id'] == RECEIVER, f'l1_deposit.l2_account_id is the tz1 receiver ({RECEIVER})')
     # L2 leg: full consumer-visible row — xtz_michelson token, mutez amount.
     v.check(len(l2) == 1, 'exactly one L2 Michelson deposit indexed')
     v.check(bool(l2) and l2[0]['transaction_hash'] == L2_OP_HASH, 'L2 row carries the synthetic op-hash')
@@ -105,7 +105,7 @@ def main() -> int:
         any(r['status'] == 'FINISHED' and bool(r['has_l1']) and bool(r['has_l2']) for r in bridge),
         'bridge_operation FINISHED with both legs (production matcher)',
     )
-    v.check(any(r['l2_account'] == RECEIVER for r in bridge), 'bridge_operation.l2_account is the tz1 receiver')
+    v.check(any(r['l2_account_id'] == RECEIVER for r in bridge), 'bridge_operation.l2_account_id is the tz1 receiver')
     # Secondary: the derivation itself still reproduces the L2 op-hash.
     v.check(L2_OP_HASH in expected, 'inbox row reconstructs to the expected op-hash (derivation sane)')
     conn.close()

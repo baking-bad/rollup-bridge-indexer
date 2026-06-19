@@ -36,7 +36,7 @@ async def on_withdraw(
         log_index=event.data.log_index,
         transaction_hash=event.data.transaction_hash[-64:],
         transaction_index=event.data.transaction_index,
-        account=l2_account,
+        l2_account=l2_account,
         l1_account=event.payload.receiver,
         l2_token=etherlink_token,
         ticket_id=event.payload.ticket_hash,

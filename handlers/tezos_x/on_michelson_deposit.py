@@ -88,7 +88,7 @@ async def on_michelson_deposit(
         transaction_index=op.counter,  # ordering key only; the match is by inbox coords
         log_index=None,
         l2_kind=L2Kind.michelson,
-        account=l2_account,
+        l2_account=l2_account,
         l2_token=etherlink_token,
         ticket=tezos_ticket,
         ticket_owner=etherlink_token.id,

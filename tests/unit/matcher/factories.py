@@ -68,7 +68,7 @@ async def l1_deposit(
         sender='tz1initiatorXXXXXXXXXXXXXXXXXXXXXXXX',
         target=ROLLUP,
         l1_account='tz1initiatorXXXXXXXXXXXXXXXXXXXXXXXX',
-        account=await _l2_account(l2_account),
+        l2_account=await _l2_account(l2_account),
         ticket=ticket,
         amount=amount,
         parameters_hash=parameters_hash,
@@ -119,7 +119,7 @@ async def evm_l2_deposit(
         transaction_hash='ef' * 32,
         transaction_index=0,
         log_index=0,
-        account=await _l2_account(l2_account),
+        l2_account=await _l2_account(l2_account),
         l2_token=l2_token,
         ticket=l2_token.ticket,
         ticket_owner=l2_token.id,
@@ -148,7 +148,7 @@ async def michelson_l2_deposit(
         transaction_index=1,
         log_index=None,
         l2_kind=L2Kind.michelson,  # as the ophash handler sets it
-        account=await _l2_account(l2_account),
+        l2_account=await _l2_account(l2_account),
         l2_token=token,
         ticket=xtz.ticket,  # same native ticket as the EVM handle, already loaded
         ticket_owner=token.id,

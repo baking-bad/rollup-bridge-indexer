@@ -6,7 +6,7 @@
 `sender` through the `originOf` precompile, so `l2_withdrawal` is attributed to the Tezos user.
 
 Also exercises the matcher's A4 fix: the fast-withdrawal step compares the kernel's raw `l2_caller`
-to `account.address` (raw EVM, via the `account` relation), not the `l2_account` column (a tz1 once the alias resolves).
+to `l2_account.address` (raw EVM), not `l2_account_id` (a tz1 once the alias resolves).
 
 Live data, alias `0x21ab…bc21` → `tz1ekkz…Vydc`. Exact blocks/amounts in `window.env`; asserted
 vectors in `verify.py`.

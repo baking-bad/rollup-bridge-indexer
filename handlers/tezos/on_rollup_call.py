@@ -47,7 +47,7 @@ async def on_rollup_call(
         sender=default.data.sender_address,
         target=default.data.target_address,
         l1_account=default.data.initiator_address,
-        account=l2_account,
+        l2_account=l2_account,
         ticket=ticket,
         amount=parameter.ticket.amount,
         parameters_hash=await TransactionParametersHash(default).from_transaction(),
