@@ -16,6 +16,7 @@ from rollup_bridge_indexer.models.enum import BridgeOperationType
 from rollup_bridge_indexer.models.enum import L2AccountKind
 from rollup_bridge_indexer.models.enum import RollupInboxMessageType
 from rollup_bridge_indexer.models.enum import RollupOutboxMessageBuilder
+from rollup_bridge_indexer.models.enum import RuntimeKind
 
 
 # TODO: move to framework
@@ -263,6 +264,7 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
         table = 'l2_deposit'
         model = 'models.EtherlinkDepositOperation'
 
+        # etherlink and tezlink runtimes share level with each other
         ordering = ('-level', '-transaction_index', '-log_index')
 
         unique_together = (
@@ -270,6 +272,8 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
             'inbox_message_index',
         )
 
+    # The L2 runtime that produced this row.
+    runtime_kind = fields.EnumField(enum_type=RuntimeKind, db_index=True, default=RuntimeKind.evm)
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
         to_field='runtime_address',
@@ -301,8 +305,12 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
         table = 'l2_withdrawal'
         model = 'models.EtherlinkWithdrawOperation'
 
+        # etherlink and tezlink runtimes share level with each other
         ordering = ('-level', '-transaction_index', '-log_index')
 
+    # Constant `evm` for now (no Michelson withdrawals yet); kept for symmetry with
+    # EtherlinkDepositOperation so consumers can filter withdrawals by runtime without a join.
+    runtime_kind = fields.EnumField(enum_type=RuntimeKind, db_index=True, default=RuntimeKind.evm)
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
         to_field='runtime_address',
@@ -352,6 +360,10 @@ class BridgeOperation(AbstractBridgeOperation):
     )
     type = fields.EnumField(enum_type=BridgeOperationType, db_index=True)
     kind = fields.EnumField(enum_type=BridgeOperationKind, db_index=True, null=True)
+    # The L2 runtime of the operation, copied from the L2 leg. Null for a deposit until
+    # its L2 leg attaches (runtime genuinely unknown from L1 alone); set at creation for
+    # withdrawals (which start from the L2 leg). Lets UI/Hasura/Kuma filter without a join.
+    runtime_kind = fields.EnumField(enum_type=RuntimeKind, db_index=True, null=True)
     is_completed = fields.BooleanField(default=False, db_index=True)
     is_successful = fields.BooleanField(default=False, db_index=True)
     status = fields.EnumField(enum_type=BridgeOperationStatus, db_index=True, null=True)

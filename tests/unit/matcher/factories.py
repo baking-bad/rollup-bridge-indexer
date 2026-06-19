@@ -20,6 +20,7 @@ from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import L2AccountKind
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupInboxMessageType
+from rollup_bridge_indexer.models import RuntimeKind
 from rollup_bridge_indexer.models import TezosDepositOperation
 from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models import TezosToken
@@ -146,6 +147,7 @@ async def michelson_l2_deposit(
         transaction_hash=op_hash,
         transaction_index=1,
         log_index=None,
+        runtime_kind=RuntimeKind.michelson,  # as the ophash handler sets it
         l2_account=await _l2_account(l2_account),
         l2_token=token,
         ticket=xtz.ticket,  # same native ticket as the EVM handle, already loaded
@@ -206,8 +208,8 @@ def build_deposit_op(seq: int, kind: str, xtz):
 
     NOT under test here (mirrored, not asserted — these belong to how rows are *read*, not to
     matching): the L1↔L2 amount scaling (wei = mutez*10**12) and `parameters_hash` derivation.
-    TODO: class is discriminated by the `o…` tx-hash prefix; once L2 ops gain a `runtime`
-    column (backlog, needs a prod change) the matcher and this builder should key on it.
+    The op-hash (michelson) class is discriminated by the `runtime_kind` column the producing
+    handlers set — `michelson_l2_deposit` stamps `michelson`, `evm_l2_deposit` the `evm` default.
     """
     level, index, params_hash, inbox_id = 1000 + seq, seq, format(seq, '032d'), 100 + seq
     amount = 1_000_000 + seq * 7  # distinct across all ops -> the value heuristic is unambiguous

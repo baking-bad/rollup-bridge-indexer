@@ -21,6 +21,7 @@ from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models.enum import L2AccountKind
+from rollup_bridge_indexer.models.enum import RuntimeKind
 
 # Exists only for this variant's stand case — not in any prod config.
 _NODE_DATASOURCE = 'tezos_x_michelson_node'
@@ -86,6 +87,7 @@ async def on_michelson_deposit(
         transaction_hash=op.hash,
         transaction_index=op.counter,  # ordering key only; the match is by inbox coords
         log_index=None,
+        runtime_kind=RuntimeKind.michelson,  # the matcher's michelson pool keys on this
         l2_account=l2_account,
         l2_token=etherlink_token,
         ticket=tezos_ticket,

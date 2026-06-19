@@ -29,6 +29,7 @@ from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models.enum import L2AccountKind
+from rollup_bridge_indexer.models.enum import RuntimeKind
 
 
 async def on_michelson_deposit_ophash(
@@ -55,6 +56,7 @@ async def on_michelson_deposit_ophash(
         transaction_hash=op.hash,  # the op-hash — the deterministic match key
         transaction_index=op.counter,  # ordering key only
         log_index=None,
+        runtime_kind=RuntimeKind.michelson,  # the matcher's michelson pool keys on this
         l2_account=l2_account,
         l2_token=etherlink_token,
         ticket=tezos_ticket,

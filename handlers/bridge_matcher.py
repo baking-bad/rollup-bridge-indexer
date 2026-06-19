@@ -17,6 +17,7 @@ from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupOutboxMessage
 from rollup_bridge_indexer.models import RollupOutboxMessageBuilder
+from rollup_bridge_indexer.models import RuntimeKind
 from rollup_bridge_indexer.models import TezosDepositOperation
 from rollup_bridge_indexer.models import TezosWithdrawOperation
 
@@ -122,7 +123,7 @@ class BridgeMatcher:
         qs = EtherlinkDepositOperation.filter(
             bridge_deposits=None,
             inbox_message_level__isnull=True,
-            transaction_hash__startswith='o',
+            runtime_kind=RuntimeKind.michelson,
         ).order_by('level', 'transaction_index')
 
         backfilled = 0
@@ -154,6 +155,9 @@ class BridgeMatcher:
             return
         BridgeMatcherLocks.pending_etherlink_deposits = False
 
+        # Runtime-agnostic by design: the unique inbox coords are the key, so both EVM
+        # deposits (born with coords) and Michelson deposits (coords backfilled by the
+        # step above) link here. No `runtime_kind` filter — the coords themselves are disjoint.
         qs = (
             EtherlinkDepositOperation.filter(
                 bridge_deposits=None,
@@ -183,6 +187,7 @@ class BridgeMatcher:
             bridge_operation = await BridgeOperation.get(id=bridge_deposit.pk)
             bridge_operation.is_completed = True
             bridge_operation.is_successful = l2_deposit.l2_token is not None
+            bridge_operation.runtime_kind = l2_deposit.runtime_kind
             bridge_operation.updated_at = l2_deposit.timestamp
             match (l2_deposit.l2_token_id, l2_deposit.ticket_id, l2_deposit.ticket_owner):
                 case str(), str(), str():
@@ -208,11 +213,11 @@ class BridgeMatcher:
             EtherlinkDepositOperation.filter(
                 bridge_deposits=None,
                 l2_token_id='xtz_evm',
+                # EVM-runtime rows only. Michelson rows carry a deterministic op-hash key
+                # (coords via check_pending_michelson_deposits) and this value-based zip must
+                # not preempt it — the `runtime_kind` discriminator replaced the old `o…`-prefix exclude.
+                runtime_kind=RuntimeKind.evm,
             )
-            # L2 Michelson rows (base58 `o…` hashes; EVM rows store bare hex) carry a
-            # deterministic op-hash key — they get their coords via
-            # check_pending_michelson_deposits, and this value-based zip must not preempt it.
-            .exclude(transaction_hash__startswith='o')
             .order_by('level', 'transaction_index')
             .prefetch_related('l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
         )
@@ -250,6 +255,7 @@ class BridgeMatcher:
             bridge_operation = await BridgeOperation.get(id=bridge_deposit.id)
             bridge_operation.is_completed = True
             bridge_operation.is_successful = l2_deposit.l2_token is not None
+            bridge_operation.runtime_kind = l2_deposit.runtime_kind
             bridge_operation.updated_at = l2_deposit.timestamp
             bridge_operation.status = BridgeOperationStatus.finished
             await bridge_operation.save()
@@ -268,6 +274,7 @@ class BridgeMatcher:
                 type=BridgeOperationType.withdrawal,
                 l1_account=l2_withdrawal.l1_account,
                 l2_account_id=l2_withdrawal.l2_account_id,
+                runtime_kind=l2_withdrawal.runtime_kind,
                 created_at=l2_withdrawal.timestamp,
                 updated_at=l2_withdrawal.timestamp,
                 status=BridgeOperationStatus.created,
@@ -424,6 +431,7 @@ class BridgeMatcher:
                     kind=BridgeOperationKind.fast_withdrawal_service_provider,
                     l1_account=l1_payout_parameters['service_provider'],
                     l2_account_id=l2_withdrawal.l2_account_id,
+                    runtime_kind=l2_withdrawal.runtime_kind,
                     created_at=l2_withdrawal.timestamp,
                     updated_at=l1_payout.timestamp,
                     status=BridgeOperationStatus.created,
