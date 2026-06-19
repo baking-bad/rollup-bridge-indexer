@@ -14,16 +14,14 @@ class RollupOutboxMessageBuilder(Enum):
     service_provider = 'service_provider'
 
 
-class L2AccountKind(Enum):
-    # Account NOT (yet) known to be an alias: there is no positive "native" proof for bridge
-    # addresses, so evm/tz just mean an EVM/tz runtime address whose `origin` is itself.
-    evm = 'evm'
-    tz = 'tz'
-    # Known alias: `origin` holds the native account it resolves to (`runtime_address` is the alias
-    # form). evm_alias = an EVM address aliasing a tz origin (the only one we write).
-    # tz_alias = a tz address aliasing an EVM origin; kept for completeness, never written.
-    evm_alias = 'evm_alias'
-    tz_alias = 'tz_alias'
+class OriginKind(Enum):
+    # The `originOf` precompile's classification of an L2 address (see handlers/alias.py).
+    # Classifies the address's *identity* — distinct from RuntimeKind, which is the runtime
+    # that processed an *operation*. `origin`/`home_runtime` are only meaningful once the
+    # address is classified; an `unknown` row is re-resolved until originOf gains a record.
+    unknown = 'unknown'  # precompile kind 0 — no origin record (yet)
+    native = 'native'  # precompile kind 1 — a native account of its own runtime
+    alias = 'alias'  # precompile kind 2 — an alias of a native account in another runtime
 
 
 class RuntimeKind(Enum):
@@ -31,7 +29,8 @@ class RuntimeKind(Enum):
     # replaced the matcher's `transaction_hash`-prefix / inbox-coords-null heuristics.
     # evm = the EVM rollup runtime (real txs, wei-denominated, 0x receivers);
     # michelson = the Tezos X Michelson runtime (synthetic tz-receiver deposits,
-    # mutez-denominated). Distinct from L2AccountKind, which classifies the *address*.
+    # mutez-denominated). Distinct from OriginKind, which classifies the *address*. Also
+    # reused as L2Account.home_runtime (the runtime an account's `origin` lives in).
     evm = 'evm'
     michelson = 'michelson'
 

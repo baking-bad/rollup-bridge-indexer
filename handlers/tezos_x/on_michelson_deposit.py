@@ -20,7 +20,6 @@ from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import TezosTicket
-from rollup_bridge_indexer.models.enum import L2AccountKind
 from rollup_bridge_indexer.models.enum import RuntimeKind
 
 # Exists only for this variant's stand case — not in any prod config.
@@ -78,7 +77,7 @@ async def on_michelson_deposit(
     etherlink_token = await EtherlinkToken.get(id='xtz_michelson')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
     assert op.target_address is not None  # a deposit always carries its tz1 receiver
-    l2_account = await L2Account.get_or_create_for(op.target_address, L2AccountKind.tz)  # L2 receiver (tz1)
+    l2_account = await L2Account.get_or_create_for(op.target_address, RuntimeKind.michelson)  # L2 receiver (tz1)
 
     deposit = await EtherlinkDepositOperation.create(
         timestamp=op.timestamp,

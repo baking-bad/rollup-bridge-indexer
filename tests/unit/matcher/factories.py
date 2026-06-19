@@ -17,7 +17,6 @@ from rollup_bridge_indexer.models import BridgeOperationStatus
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import L2Account
-from rollup_bridge_indexer.models import L2AccountKind
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupInboxMessageType
 from rollup_bridge_indexer.models import RuntimeKind
@@ -31,9 +30,9 @@ TS = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
 
 async def _l2_account(address: str) -> L2Account:
-    """Resolve the FK row the way the handlers do (kind by address shape — test-only)."""
-    kind = L2AccountKind.tz if address.startswith(('tz', 'KT')) else L2AccountKind.evm
-    return await L2Account.get_or_create_for(address, kind)
+    """Resolve the FK row the way the handlers do (home_runtime by address shape — test-only)."""
+    home_runtime = RuntimeKind.michelson if address.startswith(('tz', 'KT')) else RuntimeKind.evm
+    return await L2Account.get_or_create_for(address, home_runtime)
 
 
 async def seed_xtz() -> EtherlinkToken:

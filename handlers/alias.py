@@ -10,7 +10,8 @@ from eth_typing import HexStr
 from web3 import Web3
 
 from rollup_bridge_indexer.models import L2Account
-from rollup_bridge_indexer.models.enum import L2AccountKind
+from rollup_bridge_indexer.models.enum import OriginKind
+from rollup_bridge_indexer.models.enum import RuntimeKind
 
 # The `RuntimeGateway` precompile exposes a view that resolves an EVM address to its origin:
 #   originOf(string address, uint8 runtime) -> (uint8 kind, uint8 home_runtime, string native_address)
@@ -24,6 +25,10 @@ RUNTIME_ETHEREUM = 1
 #   1 -> native account of the runtime (1, 1, '0x<self>')
 #   2 -> alias of a native Tezos account in another runtime (2, 0, '<tz1/tz2/tz3/KT1>')
 ORIGIN_KIND_ALIAS = 2
+_ORIGIN_KIND_BY_INT = {0: OriginKind.unknown, 1: OriginKind.native, ORIGIN_KIND_ALIAS: OriginKind.alias}
+# originOf `home_runtime` ids -> our RuntimeKind. 1 = the EVM rollup runtime; 0 = the Tezos X
+# Michelson (tezlink) runtime (an EVM alias of a tz account returns home_runtime 0, see above).
+_RUNTIME_BY_ID = {0: RuntimeKind.michelson, 1: RuntimeKind.evm}
 
 # How often to re-`originOf` a not-yet-alias row — recovers an alias first seen before its native
 # account existed, without re-querying on every sighting. Override via ALIAS_RECHECK_SECONDS.
@@ -38,42 +43,48 @@ def _due_for_recheck(account: L2Account) -> bool:
 
 
 def _use_cached(account: L2Account) -> bool:
-    """Return the cached row without re-querying: a known alias is terminal, and a not-yet-alias is
-    trusted until its recheck cooldown elapses."""
-    return account.kind == L2AccountKind.evm_alias or not _due_for_recheck(account)
+    """Return the cached row without re-querying: a classified row (native/alias) is terminal, and an
+    `unknown` row is trusted until its recheck cooldown elapses."""
+    return account.kind != OriginKind.unknown or not _due_for_recheck(account)
 
 
-async def _query_origin_of(ctx: HandlerContext, address: str) -> tuple[int, str]:
-    """Ask the RuntimeGateway `originOf` view about `address`; return (kind, native_address)."""
+async def _query_origin_of(ctx: HandlerContext, address: str) -> tuple[int, int, str]:
+    """Ask the RuntimeGateway `originOf` view about `address`; return (kind, home_runtime, native_address)."""
     datasource = ctx.get_evm_node_datasource('etherlink_node')
     calldata = ORIGIN_OF_SELECTOR + encode(['string', 'uint8'], [address, RUNTIME_ETHEREUM])
     raw = await datasource.web3.eth.call({'to': RUNTIME_GATEWAY, 'data': HexStr('0x' + calldata.hex())})
-    kind_int, _home_runtime, native_address = decode(['uint8', 'uint8', 'string'], bytes(raw))
-    return kind_int, native_address
+    kind_int, home_runtime_int, native_address = decode(['uint8', 'uint8', 'string'], bytes(raw))
+    return kind_int, home_runtime_int, native_address
 
 
 async def resolve_l2_account(ctx: HandlerContext, address: str) -> L2Account:
-    """Return the `L2Account` for an EVM `address` (40-hex, no `0x`), resolving its alias via `originOf`.
+    """Return the `L2Account` for an EVM `address` (40-hex, no `0x`), classifying it via `originOf`.
 
-    A known alias (`kind=evm_alias`) is terminal and returned from cache. A not-yet-alias row is also
-    cached, but re-resolved once its recheck cooldown elapses (an alias used before its native account
-    was initialized only becomes resolvable later). `originOf` classifies the address: `origin` is the
-    native tz/KT1 address for an alias (`kind=evm_alias`), else the address itself (`kind=evm`).
+    A classified row (`kind` native/alias) is terminal and returned from cache. An `unknown` row is
+    also cached, but re-resolved once its recheck cooldown elapses (an alias used before its native
+    account was initialized reads as `unknown` until the record appears). `originOf` sets: `origin` is
+    the native tz/KT1 address for an `alias`, else the address itself; `home_runtime` is the runtime
+    the origin lives in (null while `unknown`).
     """
     account = await L2Account.get_or_none(runtime_address=address)
     if account is not None and _use_cached(account):
         return account
 
-    kind_int, native_address = await _query_origin_of(ctx, address)
-    if kind_int == ORIGIN_KIND_ALIAS:
-        origin, kind = native_address, L2AccountKind.evm_alias
-    else:
-        origin, kind = address, L2AccountKind.evm
+    kind_int, home_runtime_int, native_address = await _query_origin_of(ctx, address)
+    kind = _ORIGIN_KIND_BY_INT.get(kind_int, OriginKind.unknown)
+    if kind == OriginKind.alias:
+        origin, home_runtime = native_address, _RUNTIME_BY_ID.get(home_runtime_int)
+    elif kind == OriginKind.native:
+        # native echoes a `0x`-prefixed self; keep the bare runtime_address form as origin.
+        origin, home_runtime = address, _RUNTIME_BY_ID.get(home_runtime_int)
+    else:  # unknown: no record yet — origin is self, home_runtime undefined (⊥)
+        origin, home_runtime = address, None
 
     if account is None:
-        return await L2Account.create(runtime_address=address, origin=origin, kind=kind)
+        return await L2Account.create(runtime_address=address, origin=origin, kind=kind, home_runtime=home_runtime)
     # Re-resolution: update in place (the PK runtime_address is stable). save() bumps `updated_at`,
     # resetting the cooldown whether or not the classification changed.
     account.origin, account.kind = origin, kind
+    account.home_runtime = home_runtime  # type: ignore[assignment]  # nullable field, tortoise types it non-optional
     await account.save()
     return account

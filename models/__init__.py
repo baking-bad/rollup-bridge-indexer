@@ -13,7 +13,7 @@ from tortoise.fields.data import JSONField
 from rollup_bridge_indexer.models.enum import BridgeOperationKind
 from rollup_bridge_indexer.models.enum import BridgeOperationStatus
 from rollup_bridge_indexer.models.enum import BridgeOperationType
-from rollup_bridge_indexer.models.enum import L2AccountKind
+from rollup_bridge_indexer.models.enum import OriginKind
 from rollup_bridge_indexer.models.enum import RollupInboxMessageType
 from rollup_bridge_indexer.models.enum import RollupOutboxMessageBuilder
 from rollup_bridge_indexer.models.enum import RuntimeKind
@@ -118,16 +118,25 @@ class L2Account(DatetimeModelMixin, Model):
     # Runtime L2 address actually seen on-chain (EVM 0x… or tz…): stable and always known, so it is
     # the PK. One native identity reached from several runtimes is several rows, one per address.
     runtime_address = fields.CharField(primary_key=True, max_length=40)
-    # Canonical native identity this address resolves to: an alias's tz origin, or the address itself
-    # when not (yet) known to be an alias. Group an account's runtime forms by `origin`.
+    # Canonical native identity this address resolves to (originOf `nativeAddress`): an alias's
+    # native account, or the address itself when native / not yet classified. Group an account's
+    # runtime forms by `origin`.
     origin = fields.CharField(max_length=40, db_index=True)
-    kind = fields.EnumField(enum_type=L2AccountKind, db_index=True, default=L2AccountKind.evm)
+    # originOf classification of the address (unknown/native/alias) — NOT the operation runtime
+    # (that's RuntimeKind on the *_deposit/*_withdrawal tables). Re-resolved while `unknown`.
+    kind = fields.EnumField(enum_type=OriginKind, db_index=True, default=OriginKind.unknown)
+    # The runtime `origin` lives in (originOf `homeRuntime`): for an alias the native account's
+    # runtime, for a native row the address's own runtime. Null while `unknown` (homeRuntime is ⊥).
+    home_runtime = fields.EnumField(enum_type=RuntimeKind, db_index=True, null=True)
 
     @classmethod
-    async def get_or_create_for(cls, address: str, kind: L2AccountKind) -> 'L2Account':
-        # tz-side L2 receivers are native (never aliases), so origin is the address itself. EVM
-        # addresses instead go through handlers/alias.py::resolve_l2_account (originOf precompile).
-        account, _ = await cls.get_or_create(runtime_address=address, defaults={'origin': address, 'kind': kind})
+    async def get_or_create_for(cls, address: str, home_runtime: RuntimeKind) -> 'L2Account':
+        # For addresses native by construction (tz-side Michelson receivers): origin is the address
+        # itself, kind native. EVM addresses instead go through handlers/alias.py::resolve_l2_account.
+        account, _ = await cls.get_or_create(
+            runtime_address=address,
+            defaults={'origin': address, 'kind': OriginKind.native, 'home_runtime': home_runtime},
+        )
         return account
 
 

@@ -8,7 +8,7 @@ from rollup_bridge_indexer.handlers.rollup_message import TransactionParametersH
 from rollup_bridge_indexer.handlers.service_container import get_container
 from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import TezosDepositOperation
-from rollup_bridge_indexer.models.enum import L2AccountKind
+from rollup_bridge_indexer.models.enum import RuntimeKind
 from rollup_bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 from rollup_bridge_indexer.types.rollup.tezos_storage import RollupStorage
 
@@ -28,7 +28,7 @@ async def on_rollup_call(
     # way the L2 handlers do, so the shared L2Account row is correct whichever leg is indexed first.
     # A tz receiver is an L2 Michelson account, never an alias — keep the non-resolving path.
     if receiver_kind == 'tezos':
-        l2_account = await L2Account.get_or_create_for(l2_account_address, L2AccountKind.tz)
+        l2_account = await L2Account.get_or_create_for(l2_account_address, RuntimeKind.michelson)
     else:
         l2_account = await resolve_l2_account(ctx, l2_account_address)
 
