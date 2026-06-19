@@ -364,9 +364,7 @@ class BridgeMatcher:
             l1_payout: TezosWithdrawOperation
 
             try:
-                l2_withdrawal = await EtherlinkWithdrawOperation.get(
-                    kernel_withdrawal_id=l1_payout.outbox_message.parameters_hash
-                ).prefetch_related('l2_account')
+                l2_withdrawal = await EtherlinkWithdrawOperation.get(kernel_withdrawal_id=l1_payout.outbox_message.parameters_hash)
             except DoesNotExist:
                 continue
 
@@ -383,8 +381,9 @@ class BridgeMatcher:
             if (
                 l1_payout_parameters['withdrawal']['ticketer'] == l2_withdrawal.l1_ticket_owner
                 and l1_payout_parameters['withdrawal']['payload'] == l2_withdrawal.fast_payload.hex()
-                # `l2_caller` is the raw EVM caller the kernel emits
-                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account.address
+                # `l2_caller` is the raw EVM caller the kernel emits; `l2_account_id` is the runtime
+                # address (the FK keys on it), not the resolved tz origin
+                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account_id
                 and int(datetime.fromisoformat(l1_payout_parameters['withdrawal']['timestamp']).timestamp())
                 == int(l2_withdrawal.timestamp.timestamp())
                 and int(l1_payout_parameters['withdrawal']['full_amount']) * int(1e12) == int(l2_withdrawal.amount)

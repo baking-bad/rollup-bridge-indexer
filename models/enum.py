@@ -15,11 +15,12 @@ class RollupOutboxMessageBuilder(Enum):
 
 
 class L2AccountKind(Enum):
-    # A plain account whose canonical address equals the address itself.
+    # Account NOT (yet) known to be an alias: there is no positive "native" proof for bridge
+    # addresses, so evm/tz just mean an EVM/tz runtime address whose `origin` is itself.
     evm = 'evm'
     tz = 'tz'
-    # An alias: `address` holds the canonical origin, `alias` holds the alias form.
-    # evm_alias = an EVM address aliasing a tz1 origin (the only one we actually write).
+    # Known alias: `origin` holds the native account it resolves to (`runtime_address` is the alias
+    # form). evm_alias = an EVM address aliasing a tz origin (the only one we write).
     # tz_alias = a tz address aliasing an EVM origin; kept for completeness, never written.
     evm_alias = 'evm_alias'
     tz_alias = 'tz_alias'

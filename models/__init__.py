@@ -114,23 +114,19 @@ class L2Account(DatetimeModelMixin, Model):
         table = 'l2_account'
         model = 'models.L2Account'
 
-    # EVM or TezosX original address
-    origin = fields.CharField(primary_key=True, max_length=40)
-    # Alias if exists, else same as origin
-    address = fields.CharField(max_length=40, db_index=True, unique=True)
+    # Runtime L2 address actually seen on-chain (EVM 0x… or tz…): stable and always known, so it is
+    # the PK. One native identity reached from several runtimes is several rows, one per address.
+    runtime_address = fields.CharField(primary_key=True, max_length=40)
+    # Canonical native identity this address resolves to: an alias's tz origin, or the address itself
+    # when not (yet) known to be an alias. Group an account's runtime forms by `origin`.
+    origin = fields.CharField(max_length=40, db_index=True)
     kind = fields.EnumField(enum_type=L2AccountKind, db_index=True, default=L2AccountKind.evm)
 
     @classmethod
     async def get_or_create_for(cls, address: str, kind: L2AccountKind) -> 'L2Account':
-        # Non-resolving path (origin == address) for tz-side L2 receivers, which are never aliases.
-        # EVM addresses go through handlers/alias.py::resolve_l2_account, which resolves aliases
-        # against the originOf precompile before falling back to this shape.
-        #
-        # Key on `origin`, not `address`: the same native account may already have a row under a
-        # different `address` (its EVM alias, recorded by resolve_l2_account). Looking up by origin
-        # reuses that row instead of inserting a duplicate-`origin` PK, and create-only `defaults`
-        # leave an already-recorded alias form untouched (no downgrade back to the tz-side shape).
-        account, _ = await cls.get_or_create(origin=address, defaults={'address': address, 'kind': kind})
+        # tz-side L2 receivers are native (never aliases), so origin is the address itself. EVM
+        # addresses instead go through handlers/alias.py::resolve_l2_account (originOf precompile).
+        account, _ = await cls.get_or_create(runtime_address=address, defaults={'origin': address, 'kind': kind})
         return account
 
 
@@ -220,8 +216,8 @@ class TezosDepositOperation(AbstractTezosOperation):
     l1_account = fields.CharField(max_length=36)
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
-        to_field='origin',
-        related_name='l1_deposits',
+        to_field='runtime_address',
+        related_name=False,
     )
     ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
@@ -276,8 +272,8 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
 
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
-        to_field='origin',
-        related_name='l2_deposits',
+        to_field='runtime_address',
+        related_name=False,
     )
     l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
         model_name=EtherlinkToken.Meta.model,
@@ -309,8 +305,8 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
 
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
-        to_field='origin',
-        related_name='l2_withdrawals',
+        to_field='runtime_address',
+        related_name=False,
     )
     l1_account = fields.CharField(max_length=36)
     l2_token: ForeignKeyFieldInstance[EtherlinkToken] = fields.ForeignKeyField(
@@ -351,7 +347,7 @@ class BridgeOperation(AbstractBridgeOperation):
     l1_account = fields.CharField(max_length=36, db_index=True)
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
-        to_field='origin',
+        to_field='runtime_address',
         related_name='bridge_operations',
     )
     type = fields.EnumField(enum_type=BridgeOperationType, db_index=True)
