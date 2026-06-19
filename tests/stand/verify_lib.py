@@ -98,10 +98,10 @@ class Verdict:
         return bool(ok)
 
     def check_alias(self, accounts: dict[str, sqlite3.Row], alias: str, native: str) -> None:
-        """Assert the alias `l2_account` row exists and resolved to `native` (kind=evm_alias)."""
+        """Assert the alias `l2_account` row exists and resolved to `native` (kind=alias)."""
         row = accounts.get(alias)
         self.check(row is not None, f'l2_account row exists for alias {alias}')
-        self.check(row is not None and row['kind'] == 'evm_alias', 'alias resolved: kind == evm_alias')
+        self.check(row is not None and row['kind'] == 'alias', 'alias resolved: kind == alias')
         self.check(row is not None and row['origin'] == native, f'alias resolved: origin == {native}')
 
     def report(self) -> int:
