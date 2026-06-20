@@ -140,7 +140,7 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
    <div class="pbar">COVERAGE · <b>five failure stories</b></div>
 
    <div class="step"><div class="n a">1</div><div>
-     <p class="sh">Container died or websocket hung<span class="b a">alert in 3–30 min</span></p>
+     <p class="sh">Container died or websocket hung<span class="b a">alert in ~1 h</span></p>
      <p class="sd">Fresh blocks stop landing in the database; one monitor per stack polls its GraphQL every minute.</p>
      <p class="mref who">Mainnet <b>#187 #249</b> · Shadownet <b>#268</b> · Tezos X <b>#304</b></p>
    </div></div>
@@ -170,7 +170,7 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
    </div></div>
 
    <div class="facts">
-    <div class="f"><p class="fk">detection</p><p class="fv">3 min – 24 h<small>from a dead container to the worst case</small></p></div>
+    <div class="f"><p class="fk">detection</p><p class="fv">3 min – 24 h<small>from an upstream probe to the worst case</small></p></div>
     <div class="f"><p class="fk">probes</p><p class="fv">7 + 6<small>seven watch our GraphQL, six watch the sources</small></p></div>
     <div class="f"><p class="fk">secrets</p><p class="fv">0<small>everything is read anonymously</small></p></div>
    </div>
@@ -193,13 +193,14 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
     <table>
      <thead><tr><th>stack</th><th>N freshness</th><th>G gap</th><th>poll</th></tr></thead>
      <tbody>
-      <tr><td>prod #187</td><td class="mono">15 min</td><td class="mono">100</td><td class="mono">60s × r3</td></tr>
-      <tr><td>staging #249</td><td class="mono">30 min</td><td class="mono">100</td><td class="mono">60s × r3</td></tr>
-      <tr><td>shadownet #268</td><td class="mono">20 min</td><td class="mono">250</td><td class="mono">60s × r3</td></tr>
-      <tr><td>tezosx #304</td><td class="mono">30 min</td><td class="mono">250</td><td class="mono">60s × r3</td></tr>
+      <tr><td>prod #187</td><td class="mono">60 min</td><td class="mono">100</td><td class="mono">60s × r3</td></tr>
+      <tr><td>staging #249</td><td class="mono">60 min</td><td class="mono">100</td><td class="mono">60s × r3</td></tr>
+      <tr><td>shadownet #268</td><td class="mono">60 min</td><td class="mono">250</td><td class="mono">60s × r3</td></tr>
+      <tr><td>tezosx #304</td><td class="mono">60 min</td><td class="mono">250</td><td class="mono">60s × r3</td></tr>
      </tbody>
     </table>
     <p style="margin:8px 0 0">L1 block time: 8s on mainnet, ~3.4s on shadownet — hence the different G. 3 retries mute one-off failures: Down only after ~3 min of a persistent problem.</p>
+    <p style="margin:8px 0 0">Freshness N is a uniform <b>1 h</b> on every stack. This indexer tolerates large lag (hours is fine), so freshness only has to catch a genuinely dead/hung process — not lateness. Lateness is caught sooner and more cheaply by the gap term (~13 min). The wide N also rides out transient upstream stalls (e.g. a TzKT realtime head-channel stall, which froze the <code>tezos_head</code>/<code>dipdup_head</code> records on prod+staging for ~37 min on 2026-06-18 while indexing stayed healthy) without paging.</p>
     <h3>Matching checks (#305 #312 #313)</h3>
     <p style="margin:0">#305 and #312: the 100 freshest unmatched operations, window 1 h – 7 days <b>by block time</b> (<code>l1_transaction.timestamp</code>), not by <code>created_at</code> — indexing time makes all history look "fresh" after a backfill. One hour = matching grace; one week cuts off the permanent residue (~546 historical deposits; withdrawals 0 of 26 796). L1 execution of withdrawals is excluded — it legitimately waits ~2 weeks for cementation (703 pending is normal). Poll 300s × r2.</p>
     <p style="margin:8px 0 0">#313: <code>head − max(inbox.level) &lt; 10 800</code> blocks (~24 h); messages on prod arrive every ~300 blocks, 28-day max — 8 538. Poll 600s × r3. Interim until a heartbeat key in <code>dipdup_meta</code> written by the loop itself — that will cover the quiet stacks too.</p>
@@ -224,18 +225,18 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
   <div class="panel">
    <div class="pbar">STACK PROBES · <b>blocks &amp; operations freshness</b> — stories 1–3</div>
    <div class="step"><div class="n a">●</div><div>
-     <p class="sh">One monitor per stack, three failure classes<span class="b a">alert in 3 min – 1.3 h</span></p>
+     <p class="sh">One monitor per stack, three failure classes<span class="b a">alert in ~13 min – 1.3 h</span></p>
      <p class="sd">Polls the stack's GraphQL every minute: blocks fresh, head gap &lt; 100, all four operation indexes alive and &lt; 600 blocks behind.</p>
      <div class="cards">
       <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/187" target="_blank" rel="noopener">
        <span class="mid">#187</span><span class="net">prod</span>
        <span class="mhead">Etherlink Mainnet API</span>
-       <span class="mcatch">Data older than <b>15 min</b> fires · head gap 100 · op-lag 600 blocks.</span>
+       <span class="mcatch">Data older than <b>1 h</b> fires · head gap 100 · op-lag 600 blocks.</span>
       </a>
       <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/249" target="_blank" rel="noopener">
        <span class="mid">#249</span><span class="net">staging</span>
        <span class="mhead">Etherlink Mainnet Staging API</span>
-       <span class="mcatch">Same checks, relaxed: <b>30 min</b> freshness.</span>
+       <span class="mcatch">Same checks · <b>1 h</b> freshness.</span>
       </a>
      </div>
    </div></div>
@@ -303,13 +304,13 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
   <div class="panel">
    <div class="pbar">STACK PROBES · <b>blocks &amp; operations freshness</b> — stories 1–3</div>
    <div class="step"><div class="n a">●</div><div>
-     <p class="sh">One monitor, three failure classes<span class="b a">alert in 3 min – 1.3 h</span></p>
+     <p class="sh">One monitor, three failure classes<span class="b a">alert in ~13 min – 1.3 h</span></p>
      <p class="sd">Polls the stack's GraphQL every minute: blocks fresh, head gap &lt; 250 (faster L1 blocks), all four operation indexes alive and &lt; 600 blocks behind.</p>
      <div class="cards">
       <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/268" target="_blank" rel="noopener">
        <span class="mid">#268</span><span class="net">shadownet</span>
        <span class="mhead">Etherlink Shadownet API</span>
-       <span class="mcatch">Data older than <b>20 min</b> fires · head gap 250 · op-lag 600 blocks.</span>
+       <span class="mcatch">Data older than <b>1 h</b> fires · head gap 250 · op-lag 600 blocks.</span>
       </a>
      </div>
      <p class="mref">no matching checks on this stack — the database-level matchers (story 4) exist on mainnet prod only</p>
@@ -358,13 +359,13 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
   <div class="panel">
    <div class="pbar">STACK PROBES · <b>blocks &amp; operations freshness</b> — stories 1–3</div>
    <div class="step"><div class="n a">●</div><div>
-     <p class="sh">One monitor, three failure classes<span class="b a">alert in 3 min – 1.3 h</span></p>
+     <p class="sh">One monitor, three failure classes<span class="b a">alert in ~13 min – 1.3 h</span></p>
      <p class="sd">Polls the stack's GraphQL every minute: blocks fresh, head gap &lt; 250, all four operation indexes alive and &lt; 600 blocks behind.</p>
      <div class="cards">
       <a class="mcard" href="https://uptime.piltover.baking-bad.org/dashboard/304" target="_blank" rel="noopener">
        <span class="mid">#304</span><span class="net">tezosx</span>
        <span class="mhead">Etherlink TezosX Shadownet API</span>
-       <span class="mcatch">Data older than <b>30 min</b> fires · head gap 250 · op-lag 600 blocks.</span>
+       <span class="mcatch">Data older than <b>1 h</b> fires · head gap 250 · op-lag 600 blocks.</span>
        <span class="mnote">red during a full reindex, until backfill completes</span>
       </a>
      </div>
@@ -399,7 +400,7 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
 
 <footer>
  <span class="s">RE-VERIFY:</span> on major matching changes (michelson on prod, heartbeat replacing #313)<br>
- <span class="s">SRC:</span> uptime.piltover.baking-bad.org · monitors #187–#313 · stack/rollup map from deployment envs · verified 2026-06-11
+ <span class="s">SRC:</span> uptime.piltover.baking-bad.org · monitors #187–#313 · stack/rollup map from deployment envs · verified 2026-06-11 · freshness N relaxed to 1 h on all stacks 2026-06-20
 </footer>
 
 </div>
