@@ -25,8 +25,7 @@ class OriginKind(Enum):
 
 
 class RuntimeKind(Enum):
-    # The L2 runtime that processed the operation — the honest discriminator that
-    # replaced the matcher's `transaction_hash`-prefix / inbox-coords-null heuristics.
+    # The L2 runtime that processed the operation.
     # evm = the EVM rollup runtime (real txs, wei-denominated, 0x receivers);
     # michelson = the Tezos X Michelson runtime (synthetic tz-receiver deposits,
     # mutez-denominated). Distinct from OriginKind, which classifies the *address*. Also

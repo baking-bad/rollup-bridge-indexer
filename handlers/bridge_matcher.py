@@ -40,11 +40,18 @@ class BridgeMatcher:
         async for l1_deposit in qs:
             l1_deposit: TezosDepositOperation
             bridge_deposit = await BridgeDepositOperation.create(l1_transaction=l1_deposit)
+            # tz receiver -> Michelson L2, hex receiver -> EVM (known from the L1 routing).
+            runtime_kind = (
+                RuntimeKind.michelson
+                if l1_deposit.l2_account_id.startswith('tz')
+                else RuntimeKind.evm
+            )
             await BridgeOperation.create(
                 id=bridge_deposit.id,
                 type=BridgeOperationType.deposit,
                 l1_account=l1_deposit.l1_account,
                 l2_account_id=l1_deposit.l2_account_id,
+                runtime_kind=runtime_kind,
                 created_at=l1_deposit.timestamp,
                 updated_at=l1_deposit.timestamp,
                 status=BridgeOperationStatus.created,
