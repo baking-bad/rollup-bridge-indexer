@@ -4,6 +4,7 @@ from datetime import datetime
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmTransactionData
 
+from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
@@ -41,6 +42,7 @@ async def on_xtz_deposit(
     assert transaction.to is not None  # validated above: a deposit always has a destination
     etherlink_token = await EtherlinkToken.get(id='xtz_evm')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
+    l2_account = await resolve_l2_account(ctx, transaction.to[-40:])
 
     deposit = await EtherlinkDepositOperation.create(
         timestamp=datetime.fromtimestamp(transaction.timestamp, tz=UTC),
@@ -48,7 +50,7 @@ async def on_xtz_deposit(
         address=transaction.from_[-40:],
         transaction_hash=transaction.hash[-64:],
         transaction_index=transaction.transaction_index,
-        l2_account=transaction.to[-40:],
+        l2_account=l2_account,
         l2_token=etherlink_token,
         ticket=tezos_ticket,
         ticket_owner=etherlink_token.id,

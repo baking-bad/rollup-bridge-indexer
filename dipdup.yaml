@@ -1,6 +1,14 @@
 spec_version: 3.0
 package: rollup_bridge_indexer
 
+custom:
+  # Whether this rollup runs a Michelson runtime alongside the EVM one. Only then do EVM↔tz aliases
+  # exist and the RuntimeGateway `originOf` precompile answer (see handlers/alias.py). REQUIRED — the
+  # code has no default (guessing is unsafe both ways), so every config must declare it. Base value is
+  # plain Etherlink (EVM-only); the TezosX overlay sets it true. Overlays merge first-level only, so an
+  # overlay that defines `custom` must restate this key.
+  has_michelson_runtime: false
+
 
 database:
   kind: postgres

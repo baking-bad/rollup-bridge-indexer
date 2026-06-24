@@ -4,6 +4,7 @@ from datetime import datetime
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
 
+from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
@@ -11,10 +12,11 @@ from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.types.kernel.evm_events.deposit import DepositPayload
 
 
-async def _validate_ticket(ticket_hash):
+async def _validate_ticket(ticket_hash) -> TezosTicket:
     tezos_ticket = await TezosTicket.get_or_none(pk=ticket_hash)
     if tezos_ticket is None:
         raise ValueError('Ticket with given `ticket_hash` not found: {}', ticket_hash)
+    return tezos_ticket
 
 
 async def register_etherlink_token(token_contract: str, ticket_hash: int) -> EtherlinkToken:
@@ -23,13 +25,17 @@ async def register_etherlink_token(token_contract: str, ticket_hash: int) -> Eth
     if etherlink_token:
         return etherlink_token
 
-    await _validate_ticket(ticket_hash)
+    tezos_ticket = await _validate_ticket(ticket_hash)
     if await EtherlinkToken.filter(ticket_id=ticket_hash).exclude(id=token_contract).count():
         raise ValueError('Specified `proxy` contract address not whitelisted: {}', token_contract)
 
+    l1_token = await tezos_ticket.token
     return await EtherlinkToken.create(
         id=token_contract,
         ticket_id=ticket_hash,
+        name=l1_token.name,
+        symbol=l1_token.symbol,
+        decimals=l1_token.decimals,
     )
 
 
@@ -62,6 +68,8 @@ async def on_deposit(
                 )
                 etherlink_token = None
 
+    l2_account = await resolve_l2_account(ctx, event.payload.receiver[-40:])
+
     deposit = await EtherlinkDepositOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
         level=event.data.level,
@@ -69,7 +77,7 @@ async def on_deposit(
         log_index=event.data.log_index,
         transaction_hash=event.data.transaction_hash[-64:],
         transaction_index=event.data.transaction_index,
-        l2_account=event.payload.receiver[-40:],
+        l2_account=l2_account,
         l2_token=etherlink_token,
         ticket_id=event.payload.ticket_hash,
         ticket_owner=event.payload.ticket_owner[-40:],

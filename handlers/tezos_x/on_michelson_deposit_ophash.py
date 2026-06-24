@@ -26,7 +26,9 @@ from dipdup.models.tezos import TezosOperationData
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
+from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import TezosTicket
+from rollup_bridge_indexer.models.enum import RuntimeKind
 
 
 async def on_michelson_deposit_ophash(
@@ -43,6 +45,8 @@ async def on_michelson_deposit_ophash(
 
     etherlink_token = await EtherlinkToken.get(id='xtz_michelson')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
+    assert op.target_address is not None  # a deposit always carries its tz1 receiver
+    l2_account = await L2Account.get_or_create_for(op.target_address, RuntimeKind.michelson)  # L2 receiver (tz1)
 
     deposit = await EtherlinkDepositOperation.create(
         timestamp=op.timestamp,
@@ -51,7 +55,8 @@ async def on_michelson_deposit_ophash(
         transaction_hash=op.hash,  # the op-hash — the deterministic match key
         transaction_index=op.counter,  # ordering key only
         log_index=None,
-        l2_account=op.target_address,  # L2 receiver (tz1)
+        runtime_kind=RuntimeKind.michelson,  # the matcher's michelson pool keys on this
+        l2_account=l2_account,
         l2_token=etherlink_token,
         ticket=tezos_ticket,
         ticket_owner=etherlink_token.id,

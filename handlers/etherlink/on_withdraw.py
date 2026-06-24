@@ -4,6 +4,7 @@ from datetime import datetime
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
 
+from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.rollup_message import WithdrawalEventParametersHash
 from rollup_bridge_indexer.models import EtherlinkToken
@@ -26,6 +27,8 @@ async def on_withdraw(
     if etherlink_token and event.payload.proxy != etherlink_token.ticket.ticketer_address:
         ctx.logger.warning('Uncommon Withdraw Routing Info: `proxy != ticketer_address`.')
 
+    l2_account = await resolve_l2_account(ctx, event.payload.sender[-40:])
+
     withdrawal = await EtherlinkWithdrawOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
         level=event.data.level,
@@ -33,7 +36,7 @@ async def on_withdraw(
         log_index=event.data.log_index,
         transaction_hash=event.data.transaction_hash[-64:],
         transaction_index=event.data.transaction_index,
-        l2_account=event.payload.sender[-40:],
+        l2_account=l2_account,
         l1_account=event.payload.receiver,
         l2_token=etherlink_token,
         ticket_id=event.payload.ticket_hash,

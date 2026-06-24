@@ -16,8 +16,10 @@ from rollup_bridge_indexer.models import BridgeOperation
 from rollup_bridge_indexer.models import BridgeOperationStatus
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
+from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupInboxMessageType
+from rollup_bridge_indexer.models import RuntimeKind
 from rollup_bridge_indexer.models import TezosDepositOperation
 from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models import TezosToken
@@ -25,6 +27,12 @@ from rollup_bridge_indexer.models import TezosToken
 ROLLUP = 'sr1TCYofXUuJjmQvZ26XE4YAwXdfetQfZ6rR'
 NATIVE_TICKETER = 'KT1FcWeWiEC7Ve5JMdZpKyvaFdsJv7n4GFzi'
 TS = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
+
+
+async def _l2_account(address: str) -> L2Account:
+    """Resolve the FK row the way the handlers do (home_runtime by address shape — test-only)."""
+    home_runtime = RuntimeKind.michelson if address.startswith(('tz', 'KT')) else RuntimeKind.evm
+    return await L2Account.get_or_create_for(address, home_runtime)
 
 
 async def seed_xtz() -> EtherlinkToken:
@@ -59,7 +67,7 @@ async def l1_deposit(
         sender='tz1initiatorXXXXXXXXXXXXXXXXXXXXXXXX',
         target=ROLLUP,
         l1_account='tz1initiatorXXXXXXXXXXXXXXXXXXXXXXXX',
-        l2_account=l2_account,
+        l2_account=await _l2_account(l2_account),
         ticket=ticket,
         amount=amount,
         parameters_hash=parameters_hash,
@@ -110,7 +118,7 @@ async def evm_l2_deposit(
         transaction_hash='ef' * 32,
         transaction_index=0,
         log_index=0,
-        l2_account=l2_account,
+        l2_account=await _l2_account(l2_account),
         l2_token=l2_token,
         ticket=l2_token.ticket,
         ticket_owner=l2_token.id,
@@ -138,7 +146,8 @@ async def michelson_l2_deposit(
         transaction_hash=op_hash,
         transaction_index=1,
         log_index=None,
-        l2_account=l2_account,
+        runtime_kind=RuntimeKind.michelson,  # as the ophash handler sets it
+        l2_account=await _l2_account(l2_account),
         l2_token=token,
         ticket=xtz.ticket,  # same native ticket as the EVM handle, already loaded
         ticket_owner=token.id,
@@ -198,8 +207,8 @@ def build_deposit_op(seq: int, kind: str, xtz):
 
     NOT under test here (mirrored, not asserted — these belong to how rows are *read*, not to
     matching): the L1↔L2 amount scaling (wei = mutez*10**12) and `parameters_hash` derivation.
-    TODO: class is discriminated by the `o…` tx-hash prefix; once L2 ops gain a `runtime`
-    column (backlog, needs a prod change) the matcher and this builder should key on it.
+    The op-hash (michelson) class is discriminated by the `runtime_kind` column the producing
+    handlers set — `michelson_l2_deposit` stamps `michelson`, `evm_l2_deposit` the `evm` default.
     """
     level, index, params_hash, inbox_id = 1000 + seq, seq, format(seq, '032d'), 100 + seq
     amount = 1_000_000 + seq * 7  # distinct across all ops -> the value heuristic is unambiguous

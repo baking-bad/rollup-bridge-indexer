@@ -1,0 +1,102 @@
+# Standalone config for the alias-deposit case. See README.md.
+# sqlite + oneshot. Runs the EVM deposit indexes (XTZ value-transfer from 0x…feed via
+# on_xtz_deposit, FA Deposit events on 0xff…02 via on_deposit). No L1 / matching — this
+# case exercises the deposit handlers' alias resolution only.
+
+spec_version: 3.0
+package: rollup_bridge_indexer
+
+custom:
+  # TezosX has a Michelson runtime, so originOf is authoritative (this case tests alias resolution).
+  # Required, no default (see handlers/alias.py::_has_michelson_runtime).
+  has_michelson_runtime: true
+
+
+database:
+  kind: sqlite
+  path: ${SQLITE_PATH:-/tmp/bridge_alias_deposit.sqlite}
+
+
+datasources:
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+  metadata:
+    kind: tzip_metadata
+    network: ${NETWORK}
+    url: ${METADATA_URL}
+
+  tezos_node:
+    kind: http
+    url: ${TEZOS_NODE_URL}
+
+  etherlink_node:
+    kind: evm.node
+    url: ${ETHERLINK_NODE_URL}
+    http:
+      batch_size: 100
+      ratelimit_rate: 900
+      ratelimit_period: 60
+      ratelimit_sleep: 10
+
+  rollup_node:
+    kind: http
+    url: ${ROLLUP_NODE_URL}
+    http:
+      retry_count: 2
+      retry_sleep: 1.0
+      retry_multiplier: 1.0
+      connection_timeout: 1
+      request_timeout: 4
+
+
+contracts:
+  tezos_smart_rollup:
+    kind: tezos
+    address: ${SMART_ROLLUP_ADDRESS}
+    typename: rollup
+
+  etherlink_deposit_sender:
+    kind: evm
+    # FEED_DEPOSIT_ADDR — synthetic `from` of XTZ deposit value-transfers.
+    address: '0x000000000000000000000000000000000000feed'
+    typename: kernel
+
+  l2_withdrawal_precompile_fa:
+    kind: evm
+    address: '0xff00000000000000000000000000000000000002'
+    typename: kernel
+
+
+indexes:
+  etherlink_xtz_deposit_transactions:
+    kind: evm.transactions
+    first_level: ${L2_FIRST_LEVEL}
+    last_level: ${L2_LAST_LEVEL}
+    datasources:
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_xtz_deposit
+        from_: etherlink_deposit_sender
+
+  etherlink_deposit_events:
+    kind: evm.events
+    first_level: ${L2_FIRST_LEVEL}
+    last_level: ${L2_LAST_LEVEL}
+    datasources:
+      - etherlink_node
+    handlers:
+      - callback: etherlink.on_deposit
+        contract: l2_withdrawal_precompile_fa
+        name: Deposit
+
+
+advanced:
+  unsafe_sqlite: true
+  reindex:
+    config_modified: ignore
+    schema_modified: ignore
+    migration: ignore
+    rollback: ignore
+    manual: wipe
