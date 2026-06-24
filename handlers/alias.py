@@ -4,8 +4,10 @@ from datetime import datetime
 from datetime import timedelta
 
 from dipdup.context import HandlerContext
+from dipdup.exceptions import ConfigurationError
 from eth_abi import decode
 from eth_abi import encode
+from eth_abi.exceptions import DecodingError
 from eth_typing import HexStr
 from web3 import Web3
 
@@ -48,24 +50,64 @@ def _use_cached(account: L2Account) -> bool:
     return account.kind != OriginKind.unknown or not _due_for_recheck(account)
 
 
+class RuntimeGatewayUnsupportedError(Exception):
+    """`originOf` did not return a decodable `(uint8, uint8, string)` tuple: the RuntimeGateway
+    precompile is absent (empty `0x`) or the node is wrong and answers with garbage. A node that has
+    it answers with a ≥128-byte tuple even for unknown addresses (kind 0), so anything undecodable
+    means the node is wrong/misconfigured, or `has_michelson_runtime` is mistakenly true for an
+    EVM-only rollup. We fail loud here instead of silently recording the address as native — a
+    transient bad answer must not permanently misclassify a real alias."""
+
+
 async def _query_origin_of(ctx: HandlerContext, address: str) -> tuple[int, int, str]:
     """Ask the RuntimeGateway `originOf` view about `address`; return (kind, home_runtime, native_address)."""
     datasource = ctx.get_evm_node_datasource('etherlink_node')
     calldata = ORIGIN_OF_SELECTOR + encode(['string', 'uint8'], [address, RUNTIME_ETHEREUM])
-    raw = await datasource.web3.eth.call({'to': RUNTIME_GATEWAY, 'data': HexStr('0x' + calldata.hex())})
-    kind_int, home_runtime_int, native_address = decode(['uint8', 'uint8', 'string'], bytes(raw))
+    raw = bytes(await datasource.web3.eth.call({'to': RUNTIME_GATEWAY, 'data': HexStr('0x' + calldata.hex())}))
+    try:
+        kind_int, home_runtime_int, native_address = decode(['uint8', 'uint8', 'string'], raw)
+    except DecodingError as error:
+        raise RuntimeGatewayUnsupportedError(
+            f'originOf gave an undecodable answer for {address} ({len(raw)} bytes) from RuntimeGateway '
+            f'{RUNTIME_GATEWAY} on etherlink_node — check the EVM node, or set has_michelson_runtime=false '
+            'if this rollup is EVM-only.'
+        ) from error
     return kind_int, home_runtime_int, native_address
+
+
+def _has_michelson_runtime(ctx: HandlerContext) -> bool:
+    """Whether this rollup runs a Michelson runtime alongside the EVM one. Only then do EVM↔tz aliases
+    exist and the RuntimeGateway `originOf` precompile answer — so only then is `originOf` queried.
+
+    Required, with NO default: if absent we don't know the rollup's topology, and guessing is unsafe
+    either way (true crashes EVM-only nodes on the missing precompile; false silently misclassifies
+    real aliases as native). Every config declares it — base `dipdup.yaml` sets it false, the TezosX
+    overlay true."""
+    value = ctx.config.custom.get('has_michelson_runtime')
+    if not isinstance(value, bool):
+        raise ConfigurationError(
+            'custom.has_michelson_runtime must be set to a bool: true for a rollup with a Michelson '
+            'runtime (originOf authoritative), false for plain Etherlink (EVM-only). There is no safe '
+            f'default — got {value!r}.'
+        )
+    return value
 
 
 async def resolve_l2_account(ctx: HandlerContext, address: str) -> L2Account:
     """Return the `L2Account` for an EVM `address` (40-hex, no `0x`), classifying it via `originOf`.
 
-    A classified row (`kind` native/alias) is terminal and returned from cache. An `unknown` row is
-    also cached, but re-resolved once its recheck cooldown elapses (an alias used before its native
-    account was initialized reads as `unknown` until the record appears). `originOf` sets: `origin` is
-    the native tz/KT1 address for an `alias`, else the address itself; `home_runtime` is the runtime
-    the origin lives in (null while `unknown`).
+    On a rollup without a Michelson runtime (plain Etherlink) there are no aliases and no
+    RuntimeGateway precompile, so the address is recorded as a native EVM account without querying.
+
+    Otherwise: a classified row (`kind` native/alias) is terminal and returned from cache. An
+    `unknown` row is also cached, but re-resolved once its recheck cooldown elapses (an alias used
+    before its native account was initialized reads as `unknown` until the record appears). `originOf`
+    sets: `origin` is the native tz/KT1 address for an `alias`, else the address itself; `home_runtime`
+    is the runtime the origin lives in (null while `unknown`).
     """
+    if not _has_michelson_runtime(ctx):
+        return await L2Account.get_or_create_for(address, RuntimeKind.evm)
+
     account = await L2Account.get_or_none(runtime_address=address)
     if account is not None and _use_cached(account):
         return account

@@ -1,3 +1,9 @@
+custom:
+  # TezosX runs a Michelson runtime alongside the EVM one, so EVM↔tz aliases exist and the
+  # RuntimeGateway `originOf` precompile is authoritative. Restated here because `custom` merges
+  # first-level only — this whole block replaces the base default (see dipdup.yaml).
+  has_michelson_runtime: true
+
 datasources:
   tzkt:
     kind: tezos.tzkt

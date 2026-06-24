@@ -11,9 +11,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from dipdup.exceptions import ConfigurationError
 from eth_abi import encode
 
 from rollup_bridge_indexer.handlers.alias import ORIGIN_KIND_ALIAS
+from rollup_bridge_indexer.handlers.alias import RuntimeGatewayUnsupportedError
 from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import OriginKind
@@ -26,14 +28,40 @@ NATIVE = 'tz1ekkzEN2LB1cpf7dCaonKt6x9KVd9YVydc'
 ALIAS = '21ab829afe4b41dd3fb6eb5be4de2d20d9cebc21'
 
 
+def _ctx(eth_call: AsyncMock, has_michelson_runtime: bool = True):
+    """Fake HandlerContext: `config.custom['has_michelson_runtime']` drives whether the rollup is
+    treated as having a Michelson runtime (so `originOf` is authoritative), and `eth_call` stands in
+    for the `originOf` precompile. Use the named wrappers below, not this."""
+    datasource = SimpleNamespace(web3=SimpleNamespace(eth=SimpleNamespace(call=eth_call)))
+    config = SimpleNamespace(custom={'has_michelson_runtime': has_michelson_runtime})
+    return SimpleNamespace(config=config, get_evm_node_datasource=lambda _name: datasource)
+
+
+def _ctx_origin_of_returns(raw: bytes):
+    """Michelson runtime expected, and the node's `originOf` returns `raw`. Used both for happy-path
+    tuples and for malformed answers (precompile absent → empty `0x`, or a wrong/garbage node →
+    non-empty but undecodable) that must surface as RuntimeGatewayUnsupportedError."""
+    return _ctx(AsyncMock(return_value=raw))
+
+
 def _ctx_with_origin_of(kind_int: int, native_address: str, home_runtime_int: int = 0):
-    """Fake HandlerContext: its `originOf` eth_call returns `(kind_int, home_runtime_int,
-    native_address)`, so resolution is driven without a real EVM node. Use the named wrappers
-    below, not this."""
-    raw = encode(['uint8', 'uint8', 'string'], [kind_int, home_runtime_int, native_address])
-    eth = SimpleNamespace(call=AsyncMock(return_value=raw))
-    datasource = SimpleNamespace(web3=SimpleNamespace(eth=eth))
-    return SimpleNamespace(get_evm_node_datasource=lambda _name: datasource)
+    """`originOf` eth_call returns `(kind_int, home_runtime_int, native_address)`, so resolution is
+    driven without a real EVM node. Rollup has a Michelson runtime (originOf is authoritative)."""
+    return _ctx_origin_of_returns(encode(['uint8', 'uint8', 'string'], [kind_int, home_runtime_int, native_address]))
+
+
+def _ctx_no_michelson_runtime():
+    """Plain Etherlink rollup: no Michelson runtime, so `originOf` must never be called. The eth_call
+    spy lets a test assert it stays untouched."""
+    return _ctx(AsyncMock(), has_michelson_runtime=False)
+
+
+def _ctx_missing_flag():
+    """Config omits `has_michelson_runtime` entirely — whether to resolve aliases is unknown. There is
+    no safe default, so this must be a hard config error rather than a guess."""
+    ctx = _ctx(AsyncMock())
+    ctx.config.custom = {}
+    return ctx
 
 
 def _ctx_resolving_alias(native_address: str):
@@ -91,6 +119,46 @@ async def test_plain_evm_account_is_its_own_origin(db):
     assert await L2Account.all().count() == 1
     assert row.origin == evm == row.runtime_address
     assert (row.kind, row.home_runtime) == (OriginKind.native, RuntimeKind.evm)
+
+
+async def test_missing_has_michelson_runtime_config_raises(db):
+    # The config did not declare has_michelson_runtime, so whether this rollup has a Michelson runtime
+    # is unknown. Defaulting either way is wrong (true crashes EVM-only nodes; false silently
+    # misclassifies real aliases as native), so the absence is a hard config error. No row is written.
+    with pytest.raises(ConfigurationError):
+        await resolve_l2_account(_ctx_missing_flag(), 'ab' * 20)
+    assert await L2Account.all().count() == 0
+
+
+async def test_no_michelson_runtime_classifies_native_without_originof(db):
+    # On a rollup without a Michelson runtime there are no aliases and no RuntimeGateway precompile:
+    # every EVM address is a native EVM account, and originOf must not be queried at all.
+    ctx = _ctx_no_michelson_runtime()
+    evm = 'ab' * 20
+    row = await resolve_l2_account(ctx, evm)
+
+    ctx.get_evm_node_datasource('etherlink_node').web3.eth.call.assert_not_called()
+    assert await L2Account.all().count() == 1
+    assert row.origin == evm == row.runtime_address
+    assert (row.kind, row.home_runtime) == (OriginKind.native, RuntimeKind.evm)
+
+
+@pytest.mark.parametrize(
+    'raw',
+    [
+        pytest.param(b'', id='empty-no-precompile'),
+        pytest.param(bytes(32), id='truncated'),
+        pytest.param(bytes(96), id='nonempty-but-undecodable'),
+    ],
+)
+async def test_originof_undecodable_raises_unsupported(db, raw):
+    # Michelson runtime is expected (flag true) but the node's originOf answer is not a valid
+    # (uint8, uint8, string) tuple — the precompile is absent (empty `0x`) or the node is wrong and
+    # returns garbage. Either way, fail loud with our diagnostic error (not a cryptic eth_abi decode
+    # error), and write no row, so the wrong node / wrong has_michelson_runtime config surfaces.
+    with pytest.raises(RuntimeGatewayUnsupportedError):
+        await resolve_l2_account(_ctx_origin_of_returns(raw), 'ab' * 20)
+    assert await L2Account.all().count() == 0
 
 
 async def test_unknown_recovered_after_cooldown(db):

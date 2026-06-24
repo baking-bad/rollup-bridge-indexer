@@ -41,11 +41,7 @@ class BridgeMatcher:
             l1_deposit: TezosDepositOperation
             bridge_deposit = await BridgeDepositOperation.create(l1_transaction=l1_deposit)
             # tz receiver -> Michelson L2, hex receiver -> EVM (known from the L1 routing).
-            runtime_kind = (
-                RuntimeKind.michelson
-                if l1_deposit.l2_account_id.startswith('tz')
-                else RuntimeKind.evm
-            )
+            runtime_kind = RuntimeKind.michelson if l1_deposit.l2_account_id.startswith('tz') else RuntimeKind.evm
             await BridgeOperation.create(
                 id=bridge_deposit.id,
                 type=BridgeOperationType.deposit,
