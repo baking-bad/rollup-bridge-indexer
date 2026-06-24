@@ -11,10 +11,11 @@ from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.types.kernel.evm_events.deposit import DepositPayload
 
 
-async def _validate_ticket(ticket_hash):
+async def _validate_ticket(ticket_hash) -> TezosTicket:
     tezos_ticket = await TezosTicket.get_or_none(pk=ticket_hash)
     if tezos_ticket is None:
         raise ValueError('Ticket with given `ticket_hash` not found: {}', ticket_hash)
+    return tezos_ticket
 
 
 async def register_etherlink_token(token_contract: str, ticket_hash: int) -> EtherlinkToken:
@@ -23,13 +24,17 @@ async def register_etherlink_token(token_contract: str, ticket_hash: int) -> Eth
     if etherlink_token:
         return etherlink_token
 
-    await _validate_ticket(ticket_hash)
+    tezos_ticket = await _validate_ticket(ticket_hash)
     if await EtherlinkToken.filter(ticket_id=ticket_hash).exclude(id=token_contract).count():
         raise ValueError('Specified `proxy` contract address not whitelisted: {}', token_contract)
 
+    l1_token = await tezos_ticket.token
     return await EtherlinkToken.create(
         id=token_contract,
         ticket_id=ticket_hash,
+        name=l1_token.name,
+        symbol=l1_token.symbol,
+        decimals=l1_token.decimals,
     )
 
 
