@@ -6,6 +6,8 @@ on:
   push:
     branches:
       - 'master'
+    tags:
+      - 'frozen-*'
   pull_request:
     branches:
       - 'master'
