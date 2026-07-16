@@ -126,7 +126,7 @@ def test_parse_v1_tz3_receiver_and_op_hash_live_vector():
     recv = parse_routing_info(raw)
     assert recv.kind == 'tezos'
     assert recv.address == 'tz3duiskLgZdaEvkgEwWYF4mUnVXde7JTtef'
-    assert l2_account_from_routing_info(raw) == 'tz3duiskLgZdaEvkgEwWYF4mUnVXde7JTtef'
+    assert l2_account_from_routing_info(raw) == ('tz3duiskLgZdaEvkgEwWYF4mUnVXde7JTtef', 'tezos')
     op_hash = compute_deposit_op_hash(10_000_000, recv, 3540152, 10, ROLLUP)
     assert op_hash == 'opEeCWYHcYbQWWvfef2JBoGJBGTKougCGS3UrbgxN9YcsZbdzXt'
 
@@ -143,18 +143,18 @@ def test_l2_account_v1_tezos_receiver_is_tz_address():
     # tz1-target deposit: the stored l2_account must be the human tz address,
     # not the first 20 bytes of the RLP envelope.
     raw = bytes.fromhex('01dad80196000029a8a3205033f6d4f0fb7c218e4a7e8bc12a798cc0')
-    assert l2_account_from_routing_info(raw) == 'tz1PSJR6wBtoiv56Uz1w1bBxeoBnWpDYMwV7'
+    assert l2_account_from_routing_info(raw) == ('tz1PSJR6wBtoiv56Uz1w1bBxeoBnWpDYMwV7', 'tezos')
 
 
 def test_l2_account_legacy_20_bytes_keeps_bare_hex():
     # Legacy XTZ->EVM routing: behavior must stay byte-identical to the old
     # `routing_info[:20].hex()` (bare hex, no 0x prefix).
-    assert l2_account_from_routing_info(bytes.fromhex('ab' * 20)) == 'ab' * 20
+    assert l2_account_from_routing_info(bytes.fromhex('ab' * 20)) == ('ab' * 20, 'evm')
 
 
 def test_l2_account_legacy_52_bytes_drops_chain_id():
     raw = bytes.fromhex('cd' * 20) + (128064).to_bytes(32, 'little')
-    assert l2_account_from_routing_info(raw) == 'cd' * 20
+    assert l2_account_from_routing_info(raw) == ('cd' * 20, 'evm')
 
 
 def test_l2_account_legacy_fa_40_bytes_is_receiver_slice():
@@ -162,17 +162,17 @@ def test_l2_account_legacy_fa_40_bytes_is_receiver_slice():
     # routing — must keep returning the receiver slice as before.
     receiver = bytes.fromhex('12' * 20)
     proxy = bytes.fromhex('34' * 20)
-    assert l2_account_from_routing_info(receiver + proxy) == '12' * 20
+    assert l2_account_from_routing_info(receiver + proxy) == ('12' * 20, 'evm')
 
 
 def test_l2_account_v1_evm_receiver_is_bare_hex():
     h160 = bytes.fromhex('9299f940615dfc7fab9e3cefe6c87ca484dd51ec')
     raw = b'\x01' + rlp.encode([h160, b''])
-    assert l2_account_from_routing_info(raw) == '9299f940615dfc7fab9e3cefe6c87ca484dd51ec'
+    assert l2_account_from_routing_info(raw) == ('9299f940615dfc7fab9e3cefe6c87ca484dd51ec', 'evm')
 
 
 def test_l2_account_unparseable_falls_back_to_slice():
     # Unknown/garbage routing must not raise inside on_rollup_call — fall back to
     # the legacy slice so the deposit is still indexed.
     raw = b'\x07' + b'\xee' * 30
-    assert l2_account_from_routing_info(raw) == raw[:20].hex()
+    assert l2_account_from_routing_info(raw) == (raw[:20].hex(), 'evm')

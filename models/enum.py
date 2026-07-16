@@ -14,6 +14,26 @@ class RollupOutboxMessageBuilder(Enum):
     service_provider = 'service_provider'
 
 
+class OriginKind(Enum):
+    # The `originOf` precompile's classification of an L2 address (see handlers/alias.py).
+    # Classifies the address's *identity* — distinct from RuntimeKind, which is the runtime
+    # that processed an *operation*. `origin`/`home_runtime` are only meaningful once the
+    # address is classified; an `unknown` row is re-resolved until originOf gains a record.
+    unknown = 'unknown'  # precompile kind 0 — no origin record (yet)
+    native = 'native'  # precompile kind 1 — a native account of its own runtime
+    alias = 'alias'  # precompile kind 2 — an alias of a native account in another runtime
+
+
+class RuntimeKind(Enum):
+    # The L2 runtime that processed the operation.
+    # evm = the EVM rollup runtime (real txs, wei-denominated, 0x receivers);
+    # michelson = the Tezos X Michelson runtime (synthetic tz-receiver deposits,
+    # mutez-denominated). Distinct from OriginKind, which classifies the *address*. Also
+    # reused as L2Account.home_runtime (the runtime an account's `origin` lives in).
+    evm = 'evm'
+    michelson = 'michelson'
+
+
 class BridgeOperationType(Enum):
     deposit = 'deposit'
     withdrawal = 'withdrawal'

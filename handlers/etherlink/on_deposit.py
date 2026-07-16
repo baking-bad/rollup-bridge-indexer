@@ -4,6 +4,7 @@ from datetime import datetime
 from dipdup.context import HandlerContext
 from dipdup.models.evm import EvmEvent
 
+from rollup_bridge_indexer.handlers.alias import resolve_l2_account
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
@@ -67,6 +68,8 @@ async def on_deposit(
                 )
                 etherlink_token = None
 
+    l2_account = await resolve_l2_account(ctx, event.payload.receiver[-40:])
+
     deposit = await EtherlinkDepositOperation.create(
         timestamp=datetime.fromtimestamp(event.data.timestamp, tz=UTC),
         level=event.data.level,
@@ -74,7 +77,7 @@ async def on_deposit(
         log_index=event.data.log_index,
         transaction_hash=event.data.transaction_hash[-64:],
         transaction_index=event.data.transaction_index,
-        l2_account=event.payload.receiver[-40:],
+        l2_account=l2_account,
         l2_token=etherlink_token,
         ticket_id=event.payload.ticket_hash,
         ticket_owner=event.payload.ticket_owner[-40:],

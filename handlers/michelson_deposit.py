@@ -96,8 +96,12 @@ def parse_routing_info(raw: bytes) -> DepositReceiver:
     return DepositReceiver(kind='evm', address='0x' + receiver_item.hex(), rlp_item=receiver_item, chain_id=chain_id)
 
 
-def l2_account_from_routing_info(raw: bytes) -> str:
-    """The `l2_account` string `on_rollup_call` stores for this routing data.
+def l2_account_from_routing_info(raw: bytes) -> tuple[str, str]:
+    """The `l2_account` string `on_rollup_call` stores, plus its receiver kind.
+
+    Returns `(l2_account, kind)` where `kind` is the `DepositReceiver.kind` literal
+    (`'tezos'` or `'evm'`) so the caller can record the L2Account kind without re-deriving
+    it from the address shape.
 
     v1 routing resolves to the receiver (`tz1…` base58 for Tezos, bare 40-hex for EVM).
     40B FA routing (receiver ++ proxy) is sliced up front — it is not versioned routing.
@@ -105,14 +109,14 @@ def l2_account_from_routing_info(raw: bytes) -> str:
     is still indexed.
     """
     if len(raw) == 40:
-        return raw[:20].hex()
+        return raw[:20].hex(), 'evm'
     try:
         receiver = parse_routing_info(raw)
     except ValueError:
-        return raw[:20].hex()
+        return raw[:20].hex(), 'evm'
     if receiver.kind == 'evm':
-        return receiver.address.removeprefix('0x')
-    return receiver.address
+        return receiver.address.removeprefix('0x'), 'evm'
+    return receiver.address, receiver.kind
 
 
 def expected_op_hash_from_inbox(message: dict, level: int, index: int, rollup_address: str) -> str | None:

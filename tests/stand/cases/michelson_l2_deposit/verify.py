@@ -20,8 +20,8 @@ def main() -> int:
         print(f'  {t:<22} {"(missing)" if c < 0 else c}')
 
     lib.section('L1 deposits (l1_deposit)')
-    for r in lib.rows(cur, 'SELECT level, l1_account, l2_account, amount FROM l1_deposit ORDER BY level LIMIT 20'):
-        print(f'  lvl={r["level"]} l1={r["l1_account"]} l2={r["l2_account"]} amount={r["amount"]}')
+    for r in lib.rows(cur, 'SELECT level, l1_account, l2_account_id, amount FROM l1_deposit ORDER BY level LIMIT 20'):
+        print(f'  lvl={r["level"]} l1={r["l1_account"]} l2={r["l2_account_id"]} amount={r["amount"]}')
 
     lib.section('bridge_operation (deposit side)')
     matched = lib.rows(

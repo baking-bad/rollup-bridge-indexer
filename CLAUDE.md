@@ -58,13 +58,19 @@ Tests are split by purpose and kept out of the prod image (`.dockerignore` exclu
 
 - **Tezos (L1) handlers** in `./handlers/tezos/`: deposit calls (`on_rollup_call`), withdrawal executions (`on_rollup_execute`), commitment cementing (`on_cement_commitment`), fast withdrawal claims, head tracking
 - **Tezos X (L2 Michelson) handlers** in `./handlers/tezos_x/`: Tezos-shaped handlers that record the **L2** leg of Tezos X Michelson (tz1-receiver) XTZ deposits — `on_michelson_deposit_ophash` (production, op-hash matched) and `on_michelson_deposit` (event/node-polling variant, stand-only). Convention: `tezos/` = L1, `etherlink/` = L2 EVM, `tezos_x/` = L2 Michelson
-- **Etherlink (L2) handlers** in `./handlers/etherlink/`: deposit events (`on_deposit`, `on_xtz_deposit`), withdrawal events (`on_withdraw`, `on_xtz_withdraw`), ERC-20 transfers (`on_transfer`)
+- **Etherlink (L2) handlers** in `./handlers/etherlink/`: deposit events (`on_deposit`, `on_xtz_deposit`), withdrawal events (`on_withdraw`, `on_xtz_withdraw`), ERC-20 transfers (`on_transfer`). These resolve the EVM receiver/sender to a native Tezos origin via `resolve_l2_account` (see *L2 Account / Alias Resolution*)
 
 ### Bridge Matcher (core reconciliation)
 
 `./handlers/bridge_matcher.py` is the central matching engine. It correlates L1 and L2 operations into unified `BridgeOperation` records through 8 ordered matching steps. Uses a **lock-based batching system** (`bridge_matcher_locks.py`): handlers set boolean flags, and the batch handler (`batch.py`) checks and clears them after each handler batch.
 
-A ninth, deliberately **separated** step lives in `./handlers/michelson_matcher.py`: Tezos X L2 Michelson (tz1-receiver) XTZ deposits are matched by reconstructing the L2 synthetic-op hash from L1 inbox data (`./handlers/michelson_deposit.py`, kernel-verified derivation) because TzKT drops the kernel's implicit-source deposit event. This is the **production** mechanism with no planned removal; the separation only keeps an option open — IF TzKT ever serves those events (not committed anywhere), the module + its lock could be deleted and these deposits would flow through the regular inbox-coords step (the event-based alternative is kept alive in `./handlers/tezos_x/on_michelson_deposit.py` + the `michelson_l2_deposit` stand case).
+A ninth step — `BridgeMatcher.check_pending_michelson_deposits` (guarded by its own `BridgeMatcherLocks.pending_michelson_deposits` flag) — matches Tezos X L2 Michelson (tz1-receiver) XTZ deposits by reconstructing the L2 synthetic-op hash from L1 inbox data (derivation in `./handlers/michelson_deposit.py`, kernel-verified) because TzKT drops the kernel's implicit-source deposit event. This is the **production** mechanism with no planned removal. It was once a separate `./handlers/michelson_matcher.py` module to keep it cleanly deletable, but was **folded into `BridgeMatcher`** — the disjoint op-hash vs. value-based matching is now expressed as ordered steps sharing the matcher. The event-based alternative (used IF TzKT ever serves implicit-source events, not committed anywhere) is kept alive in `./handlers/tezos_x/on_michelson_deposit.py` + the `michelson_l2_deposit` stand case.
+
+### L2 Account / Alias Resolution
+
+`./handlers/alias.py` resolves an EVM address to the native Tezos identity it stands for. It calls the `RuntimeGateway` precompile (`0xff…07`) `originOf(string,uint8)` view, which classifies an address as `unknown` (no record yet), `native` (a real account of its own runtime), or `alias` (an EVM stand-in for a native tz account in another runtime). Results are cached in the `l2_account` table — PK `runtime_address` (40-hex, no `0x`); `origin` (the native tz/KT1 address for an alias, else the address itself — group an account's runtime forms by this); `kind` (`OriginKind`); `home_runtime` (`RuntimeKind`, nullable). A classified row is terminal; an `unknown` row is re-resolved once a recheck cooldown elapses (`ALIAS_RECHECK_SECONDS`, default 24h) so an alias first seen before its native account existed is recovered.
+
+EVM (`etherlink/`) handlers call `resolve_l2_account(ctx, address)`; tz-side Michelson receivers are native by construction and use `L2Account.get_or_create_for(addr, RuntimeKind.michelson)` instead (no precompile call). The `runtime_kind` discriminator (`RuntimeKind` = `evm` | `michelson`) on `l2_deposit` / `l2_withdrawal` / `bridge_operation` records which runtime an op belongs to; it replaced the old `o…`-prefix exclude and keeps the EVM value-based deposit zip from preempting the Michelson op-hash step.
 
 ### Parameter Hash Matching
 
@@ -87,7 +93,7 @@ L1 operations and L2 events are correlated via deterministic parameter hashes: `
 
 ### Models
 
-All models in `./models/__init__.py`, enums in `./models/enum.py`. Key tables: `tezos_token`, `tezos_ticket`, `etherlink_token`, `l1_deposit`, `l2_deposit`, `l1_withdrawal`, `l2_withdrawal`, `bridge_operation`, `bridge_deposit`, `bridge_withdrawal`, `rollup_inbox_message`, `rollup_outbox_message`.
+All models in `./models/__init__.py`, enums in `./models/enum.py`. Key tables: `tezos_token`, `tezos_ticket`, `etherlink_token`, `l2_account`, `l1_deposit`, `l2_deposit`, `l1_withdrawal`, `l2_withdrawal`, `bridge_operation`, `bridge_deposit`, `bridge_withdrawal`, `rollup_inbox_message`, `rollup_outbox_message`. The L2 legs (`l2_deposit`/`l2_withdrawal`/`bridge_operation`) FK to `l2_account` and carry a `runtime_kind` discriminator. Alias-related enums: `OriginKind` (unknown/native/alias) and `RuntimeKind` (evm/michelson).
 
 ### Output Proof Decoder
 
