@@ -569,22 +569,21 @@ wheels = [
 
 [[package]]
 name = "datamodel-code-generator"
-version = "0.28.5"
+version = "0.71.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "argcomplete" },
-    { name = "black" },
+    { name = "black", marker = "sys_platform != 'emscripten'" },
     { name = "genson" },
     { name = "inflect" },
-    { name = "isort" },
+    { name = "isort", marker = "sys_platform != 'emscripten'" },
     { name = "jinja2" },
-    { name = "packaging" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/65/19/d9d922913b86e9df48bfd4f959f3b215cd16c9fd563b4d0b1b6b31d3703b/datamodel_code_generator-0.28.5.tar.gz", hash = "sha256:20e8b817d301d2d0bb15f436e81c97b25ad1c2ef922c99249c2444141ae15a6a", size = 444237, upload-time = "2025-03-24T17:36:33.471Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/f5/f4ce23d99503b147c9ec514dc995a96d3b4d2a3284252ad665f875a3145d/datamodel_code_generator-0.71.0.tar.gz", hash = "sha256:d27cd7a0d10f9b2db74a41db7f3e050c226da9cf0afb4916a7ab56275ebacbf2", size = 1684916, upload-time = "2026-07-24T15:32:04.334Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/af/fdb43505db1accf89c4551eacedd3bc756b7bf57b190b87c29c75fee2555/datamodel_code_generator-0.28.5-py3-none-any.whl", hash = "sha256:f899c1da5af04b5d5b6e3edbd718c1bf3a00fc4b2fe8210cef609d93a9983e9e", size = 117290, upload-time = "2025-03-24T17:36:31.73Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/4d/556cb290170f41b97ce50fd872e10a266f141d7a38352bb3071e4ae61f41/datamodel_code_generator-0.71.0-py3-none-any.whl", hash = "sha256:680b68338d59e98a0559eeb54d8e5ca33c35b3ec0bef922ec2cc783f2cb28e9a", size = 452379, upload-time = "2026-07-24T15:32:02.467Z" },
 ]
 
 [[package]]
@@ -632,7 +631,7 @@ wheels = [
 
 [[package]]
 name = "dipdup"
-version = "8.6.0"
+version = "8.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -669,9 +668,9 @@ dependencies = [
     { name = "uvloop" },
     { name = "web3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/47/89/b4d748cf7388a84c8aeea57fa009afc98f255d6a728b96c0ab9d44c40da6/dipdup-8.6.0.tar.gz", hash = "sha256:ebe7d7027950b02013c22d471c64d2ef044e1b9fd6435a60d0394eb29c8998f9", size = 222292, upload-time = "2026-06-29T12:37:42.457Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/f9/17353ec24bc7b14cdde1b7d09ffec5c1e5532e37573aaf5776df60e1cf1d/dipdup-8.6.1.tar.gz", hash = "sha256:ebdc4732cae399f0da32cfa2eccab4997e2dbfccc4ead5172515004736617aa7", size = 224124, upload-time = "2026-08-03T18:20:30.058Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/87/9843cbe8965d4e00921e8ac33784e02b724435e7e96a95e21f2f62e7814e/dipdup-8.6.0-py3-none-any.whl", hash = "sha256:ff4771e38d6bed4a391a6634c2ddf84619bf1de4fd4dc7db4d5ff2912cea3691", size = 359627, upload-time = "2026-06-29T12:37:40.941Z" },
+    { url = "https://files.pythonhosted.org/packages/85/76/6cf91da3088c7777706ef8381032256b41beea740398ee0dd827d094d4d2/dipdup-8.6.1-py3-none-any.whl", hash = "sha256:0f890e87d3aca9bdb8f0db7bd18a2fd533f789bd503f84dd42b80706cd143edb", size = 361952, upload-time = "2026-08-03T18:20:28.575Z" },
 ]
 
 [[package]]
@@ -2241,7 +2240,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "base58", specifier = ">=2.1.1" },
-    { name = "dipdup", specifier = ">=8.6.0" },
+    { name = "dipdup", specifier = ">=8.6.1" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
     { name = "pytezos", specifier = ">=3.16.1" },
 ]

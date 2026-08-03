@@ -8,7 +8,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "dipdup>=8.6.0",
+    "dipdup>=8.6.1",
     "base58>=2.1.1",
     "pydantic-settings>=2.8.1",
     "pytezos>=3.16.1",
