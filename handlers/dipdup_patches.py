@@ -50,9 +50,15 @@ _logger = logging.getLogger(__name__)
 # duplicate that arrives while the emitter is mid-pass: the key is still in `_level_data` and its
 # `head` is still set until the pass ends, so the frame is folded into the in-flight entry.
 #
+# The duplicate is not a node anomaly: `EvmNodeHeadSubscription` carries a `transactions` flag, so an
+# `evm.events` index and an `evm.transactions` index on the same node datasource are two unequal
+# subscription values, and nothing merges them. DipDup opens two `eth_subscribe ["newHeads"]` channels
+# on one connection and the node delivers every head once per subscription id. Any config with both
+# index kinds and a `ws_url` dies on the first block after reaching realtime.
+#
 # REMOVAL: delete this patch and its `apply_dipdup_patches()` entry once a released DipDup ships
 # the fix. `tests/unit/datasource/test_evm_node_duplicate_head.py` is the gate -- it must pass
-# with the patch gone. Reported upstream against `dipdup-io/dipdup`.
+# with the patch gone. Upstream: https://github.com/dipdup-io/dipdup/pull/1328
 # --------------------------------------------------------------------------------------------
 
 # The exact `_handle_subscription` body this patch was written against (DipDup 8.6.1, and
