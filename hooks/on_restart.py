@@ -1,6 +1,7 @@
 from dipdup.context import HookContext
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from rollup_bridge_indexer.handlers.dipdup_patches import apply_dipdup_patches
 from rollup_bridge_indexer.handlers.service_container import ServiceContainer
 from rollup_bridge_indexer.handlers.service_container import get_container
 
@@ -8,6 +9,10 @@ from rollup_bridge_indexer.handlers.service_container import get_container
 async def on_restart(
     ctx: HookContext,
 ) -> None:
+    # NOTE: DipDup fires this hook before starting datasources, so no patched coroutine can
+    # already be running. See handlers/dipdup_patches.py for what is patched and why.
+    apply_dipdup_patches()
+
     await ctx.execute_sql('on_restart')
 
     await ServiceContainer(ctx).register()
