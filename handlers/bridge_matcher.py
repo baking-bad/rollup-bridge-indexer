@@ -3,8 +3,6 @@ import threading
 from datetime import datetime
 from datetime import timedelta
 
-from tortoise.exceptions import DoesNotExist
-
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.models import BridgeDepositOperation
 from rollup_bridge_indexer.models import BridgeOperation
@@ -370,19 +368,48 @@ class BridgeMatcher:
             .order_by('level')
         )
 
+        # The payout carries its withdrawal id in `parameters_hash`, a CharField, while the
+        # column it joins is an integer. Tortoise coerces a scalar lookup but not the members
+        # of an `__in` list, so cast here — and a hash that is no number names no withdrawal
+        # id, so it drops out instead of failing the cast for every other payout in the pass.
+        payouts: list[tuple[TezosWithdrawOperation, int]] = []
         async for l1_payout in qs:
             l1_payout: TezosWithdrawOperation
-
             try:
-                l2_withdrawal = await EtherlinkWithdrawOperation.get(kernel_withdrawal_id=l1_payout.outbox_message.parameters_hash)
-            except DoesNotExist:
+                payouts.append((l1_payout, int(l1_payout.outbox_message.parameters_hash or '')))
+            except ValueError:
                 continue
 
-            withdrawal_id_finished = await BridgeWithdrawOperation.exists(
-                l1_transaction_id__isnull=False,
-                l2_transaction=l2_withdrawal,
+        if not payouts:
+            return
+
+        # `kernel_withdrawal_id` is unique, so each id maps to a single L2 leg and there is no
+        # candidate tie-break here.
+        l2_withdrawals: dict[int, EtherlinkWithdrawOperation] = {
+            l2_withdrawal.kernel_withdrawal_id: l2_withdrawal
+            async for l2_withdrawal in EtherlinkWithdrawOperation.filter(
+                kernel_withdrawal_id__in=sorted({withdrawal_id for _, withdrawal_id in payouts})
             )
-            if withdrawal_id_finished:
+        }
+        if not l2_withdrawals:
+            return
+
+        # L2 legs already paid out on L1 — the slow way, or by an earlier payout of this very
+        # pass, which is why the walk below keeps adding to the set: a leg must not be handed
+        # to a second payout.
+        settled_l2_ids: set[int] = set(
+            await BridgeWithdrawOperation.filter(
+                l1_transaction_id__isnull=False,
+                l2_transaction_id__in=[l2_withdrawal.pk for l2_withdrawal in l2_withdrawals.values()],
+            ).values_list('l2_transaction_id', flat=True)
+        )
+
+        for l1_payout, withdrawal_id in payouts:
+            l2_withdrawal = l2_withdrawals.get(withdrawal_id)
+            if l2_withdrawal is None:
+                continue
+
+            if l2_withdrawal.pk in settled_l2_ids:
                 l1_payout.outbox_message.parameters_hash = None
                 await l1_payout.outbox_message.save()
                 continue
@@ -413,6 +440,7 @@ class BridgeMatcher:
                 customers_bridge_withdrawal.outbox_message = l1_payout.outbox_message
                 customers_bridge_withdrawal.l1_transaction = l1_payout
                 await customers_bridge_withdrawal.save()
+                settled_l2_ids.add(l2_withdrawal.pk)
 
                 customers_bridge_operation = await BridgeOperation.get(id=customers_bridge_withdrawal.pk)
                 customers_bridge_operation.is_completed = True
