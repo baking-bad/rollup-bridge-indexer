@@ -224,30 +224,46 @@ class BridgeMatcher:
             .order_by('level', 'transaction_index')
             .prefetch_related('l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
         )
+
+        # The counter side is read once and narrowed in Python. It stays a handful by
+        # construction (a bridge deposit exists only once its L1 leg landed) while the pool
+        # above grows unbounded whenever L2 runs ahead during a backfill, so the per-row
+        # candidate query was the entire cost of the step. Ordering and predicates below
+        # mirror that query exactly — the surviving candidate is the same one.
+        open_deposits = (
+            await BridgeDepositOperation.filter(
+                l2_transaction=None,
+                inbox_message_id__isnull=False,
+            )
+            .order_by('l1_transaction__timestamp')
+            .prefetch_related('inbox_message', 'l1_transaction')
+        )
+
         async for l2_deposit in qs:
             l2_deposit: EtherlinkDepositOperation
             # L1 stores mutez, the L2 EVM handle stores wei; the scale is the decimal gap
             # between the two token representations of the same native ticket (no magic 12).
             scale = 10 ** (l2_deposit.l2_token.decimals - l2_deposit.l2_token.ticket.token.decimals)
             l1_amount = str(int(l2_deposit.amount) // scale)
-            bridge_deposit = (
-                await BridgeDepositOperation.filter(
-                    l2_transaction=None,
-                    inbox_message_id__isnull=False,
-                    l1_transaction__ticket=l2_deposit.l2_token.ticket,
-                    l1_transaction__timestamp__lte=l2_deposit.timestamp,
-                    l1_transaction__timestamp__gte=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX,
-                    l1_transaction__l2_account_id=l2_deposit.l2_account_id,
-                    l1_transaction__amount=l1_amount,
-                )
-                .order_by('l1_transaction__timestamp')
-                .prefetch_related('inbox_message', 'l1_transaction')
-                .first()
+            window_start = l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX
+            taken = next(
+                (
+                    i
+                    for i, candidate in enumerate(open_deposits)
+                    if candidate.l1_transaction.ticket_id == l2_deposit.l2_token.ticket_id
+                    and window_start <= candidate.l1_transaction.timestamp <= l2_deposit.timestamp
+                    and candidate.l1_transaction.l2_account_id == l2_deposit.l2_account_id
+                    and candidate.l1_transaction.amount == l1_amount
+                ),
+                None,
             )
 
-            if not bridge_deposit:
+            if taken is None:
                 continue
 
+            # `l2_transaction` is unique, so a claimed deposit must leave the pool — the
+            # discarded per-row query got that for free by re-reading `l2_transaction=None`.
+            bridge_deposit = open_deposits.pop(taken)
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
             bridge_deposit.l1_transaction.parameters_hash = None
