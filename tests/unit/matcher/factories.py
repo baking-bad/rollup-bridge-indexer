@@ -39,17 +39,20 @@ async def _l2_account(address: str) -> L2Account:
     return await L2Account.get_or_create_for(address, home_runtime)
 
 
-async def seed_xtz() -> EtherlinkToken:
+async def seed_xtz(*, evm_decimals: int = 18) -> EtherlinkToken:
     """The native token/ticket triple every network seeds on reindex.
 
     XTZ surfaces as two L2 tokens on the same native ticket — `xtz_evm` (18 decimals) and
     `xtz_michelson` (6 decimals). Returns the EVM token (its `.ticket` is loaded in-memory);
     `michelson_l2_deposit` pulls `xtz_michelson` itself.
+
+    `evm_decimals` moves the L1<->L2 amount scale off the production 12-order gap, so a test
+    can tell a decimals-derived scale from a hardcoded 10**12.
     """
     token = await TezosToken.create(id='xtz', contract_address=NATIVE_TICKETER, name='Tezos', symbol='XTZ', decimals=6, type='native')
     ticket = await TezosTicket.create(hash='1', ticketer_address=NATIVE_TICKETER, token=token, whitelisted=True)
     await EtherlinkToken.create(id='xtz_michelson', name='Tezos', symbol='XTZ', decimals=6, ticket=ticket)
-    return await EtherlinkToken.create(id='xtz_evm', name='Tezos', symbol='XTZ', decimals=18, ticket=ticket)
+    return await EtherlinkToken.create(id='xtz_evm', name='Tezos', symbol='XTZ', decimals=evm_decimals, ticket=ticket)
 
 
 async def l1_deposit(
