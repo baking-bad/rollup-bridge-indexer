@@ -25,6 +25,10 @@
 # (COPY . ./ now copies from the repo root since the package was flattened.)
 .venv/**
 .git/**
+# Agent-local state, and in particular git worktrees under .claude/worktrees/ — a whole
+# second checkout of this repo, whose *.py would be dragged in by the re-includes above
+# (`tests/**` below is anchored at the root and does not match a nested copy).
+.claude/**
 **/.*_cache
 **/.*_cache/**
 **/__pycache__

@@ -1,0 +1,120 @@
+{
+ "label": "p3-xtz-zip",
+ "scale": 1.0,
+ "passes": 3,
+ "seed_seconds": 12.1,
+ "requested_pools": {
+  "tezos_withdrawals": 8886,
+  "xtz_deposits": 2656,
+  "claimed_fast": 950,
+  "etherlink_deposits": 453,
+  "open_bridge_withdrawals": 26,
+  "open_bridge_deposits": 16,
+  "settled_bridge_withdrawals": 26000,
+  "settled_bridge_deposits": 26000
+ },
+ "pools": {
+  "tezos_withdrawals": 8886,
+  "claimed_fast": 950,
+  "xtz_deposits": 2656,
+  "etherlink_deposits": 453,
+  "open_bridge_withdrawals": 26,
+  "open_bridge_deposits": 16
+ },
+ "pools_after": {
+  "tezos_withdrawals": 8886,
+  "claimed_fast": 950,
+  "xtz_deposits": 2656,
+  "etherlink_deposits": 453,
+  "open_bridge_withdrawals": 26,
+  "open_bridge_deposits": 16
+ },
+ "fixed_point": true,
+ "steps": {
+  "tezos_deposits": {
+   "queries": 1,
+   "ms": 8.2,
+   "ms_all": [
+    37.6,
+    8.2,
+    6.9
+   ]
+  },
+  "inbox": {
+   "queries": 1,
+   "ms": 2.5,
+   "ms_all": [
+    3.0,
+    2.5,
+    1.9
+   ]
+  },
+  "michelson_deposits": {
+   "queries": 1,
+   "ms": 1.2,
+   "ms_all": [
+    1.2,
+    1.4,
+    1.0
+   ]
+  },
+  "etherlink_deposits": {
+   "queries": 455,
+   "ms": 373.7,
+   "ms_all": [
+    373.7,
+    361.4,
+    385.0
+   ]
+  },
+  "etherlink_xtz_deposits": {
+   "queries": 7,
+   "ms": 138.7,
+   "ms_all": [
+    138.7,
+    115.5,
+    149.3
+   ]
+  },
+  "etherlink_withdrawals": {
+   "queries": 1,
+   "ms": 9.8,
+   "ms_all": [
+    33.3,
+    9.8,
+    7.7
+   ]
+  },
+  "outbox": {
+   "queries": 1,
+   "ms": 2.4,
+   "ms_all": [
+    3.0,
+    2.4,
+    2.2
+   ]
+  },
+  "tezos_withdrawals": {
+   "queries": 8888,
+   "ms": 15547.4,
+   "ms_all": [
+    16785.1,
+    15547.4,
+    15408.5
+   ]
+  },
+  "claimed_fast_withdrawals": {
+   "queries": 952,
+   "ms": 655.3,
+   "ms_all": [
+    639.5,
+    655.3,
+    668.1
+   ]
+  }
+ },
+ "total": {
+  "queries": 10307,
+  "ms": 16739.2
+ }
+}

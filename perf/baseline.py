@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Снимок производительности индексера для сравнения «до/после» патча матчера.
+"""Throughput snapshot of a deployed indexer, for before/after comparison of a matcher patch.
 
-Запуск:  python3 perf/baseline.py [окно_сек] [--url URL] > perf/snapshots/<имя>.json
+Usage:  python3 perf/baseline.py [window_seconds] [--url URL] > perf/snapshots/<name>.json
 
-Вердикт читается по `derived.throughput_per_backlog_row` — полезная работа, поделённая
-на размер бэклога, который матчер обязан обойти. Почему делить именно так, чем мерить
-нельзя и какие патчи этим прибором вообще различимы (а какие нет) — в
-docs/matcher-perf-patches.md, раздел «Как проверять, что стало лучше».
+The verdict is `derived.throughput_per_backlog_row`: useful rows written per minute, divided
+by the backlog the matcher is obliged to walk. Why the division goes that way, what cannot be
+measured with, and which patches this instrument can distinguish at all — see
+docs/matcher-perf-patches.md, section "Как проверять, что стало лучше".
 
-`derived.pool_shares` — доля каждого пула во внешнем бэклоге. Это ожидаемый размер
-сигнала: патч, чинящий пул в 3% бэклога, снаружи не виден, и мерить его надо иначе.
+This measures a *deployed* instance over the network. For a controlled per-step measurement
+against a seeded backlog, use `make bench-matcher` (tests/perf/) instead.
+
+`derived.pool_shares` is each pool's share of the walked backlog — the expected signal size:
+a patch fixing a pool worth 3% of the backlog is invisible from outside and needs the bench.
 """
 import json
 import subprocess
@@ -33,9 +36,9 @@ Q_COUNTS = '''{
  outbox: rollup_outbox_message_aggregate { aggregate { count } }
 }'''
 
-# Пулы, по которым матчер идёт циклом (внешняя сторона), и встречные пулы,
-# по которым он делает запрос на каждую строку (внутренняя сторона).
-# Стоимость прохода = размер ВНЕШНЕГО пула; выигрыш патча = переход на внутренний.
+# The pools the matcher walks (the outer side), against the pools it queries into once per
+# walked row (the inner side). Pass cost = the size of the OUTER pool; a patch's win is
+# moving the work onto the inner one.
 Q_POOLS = '''{
  outer_tezos_withdrawals: l1_withdrawal_aggregate(where:{_not:{bridge_withdrawals:{}}, outbox_message:{builder:{_eq:"kernel"}}}) { aggregate { count } }
  outer_claimed_fast: l1_withdrawal_aggregate(where:{_not:{bridge_withdrawals:{}}, outbox_message:{builder:{_eq:"service_provider"}, parameters_hash:{_is_null:false}}}) { aggregate { count } }
@@ -59,7 +62,7 @@ def gq(url: str, query: str) -> dict:
     )
     d = json.loads(r.stdout)
     if 'errors' in d:
-        raise SystemExit(f'GraphQL отказал целиком: {d["errors"]}')
+        raise SystemExit(f'GraphQL rejected the whole query: {d["errors"]}')
     return d['data']
 
 
@@ -111,13 +114,13 @@ def main() -> None:
             'rows_per_min': round(rows_per_min, 1),
             'outer_pool_total': outer_total,
             'inner_pool_total': inner_total,
-            # ВЕРДИКТ ЧИТАЕТСЯ ОТСЮДА. Полезных строк в минуту на каждую строку бэклога,
-            # которую матчер обходит. Больше — лучше. Патч обязан поднять эту величину,
-            # и поднять при бэклоге не меньше базового: если outer_pool_total упал,
-            # рост объясняется бэклогом, а не патчем.
+            # THE VERDICT IS READ HERE. Useful rows per minute per row of backlog the matcher
+            # walks. Higher is better. A patch must raise this AND do so at a backlog no
+            # smaller than the baseline's: if outer_pool_total fell, the backlog explains the
+            # rise, not the patch.
             'throughput_per_backlog_row': round(rows_per_min / outer_total, 6) if outer_total else None,
-            # Доля каждого пула во внешнем бэклоге = ожидаемый размер сигнала от патча,
-            # который чинит именно этот пул. Ниже нескольких процентов — снаружи не различим.
+            # Each pool's share of the walked backlog = the expected signal size from a patch
+            # fixing that pool. Below a few percent it is not distinguishable from outside.
             'pool_shares': (
                 {
                     k[len('outer_') :]: round(v / outer_total, 3)
@@ -127,8 +130,8 @@ def main() -> None:
                 if outer_total
                 else {}
             ),
-            # Во столько раз меньше строк перебирал бы матчер, ходи он по встречной стороне.
-            # Это оценка потолка выигрыша, а не результат замера.
+            # How many times fewer rows the matcher would walk if it went down the counter
+            # side. An estimate of the ceiling, not a measurement.
             'inversion_factor': round(outer_total / inner_total, 1) if inner_total else None,
         },
     }
