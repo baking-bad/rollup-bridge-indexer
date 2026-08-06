@@ -16,13 +16,17 @@ from rollup_bridge_indexer.models import BridgeOperation
 from rollup_bridge_indexer.models import BridgeOperationStatus
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
+from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
 from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupInboxMessageType
+from rollup_bridge_indexer.models import RollupOutboxMessage
+from rollup_bridge_indexer.models import RollupOutboxMessageBuilder
 from rollup_bridge_indexer.models import RuntimeKind
 from rollup_bridge_indexer.models import TezosDepositOperation
 from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models import TezosToken
+from rollup_bridge_indexer.models import TezosWithdrawOperation
 
 ROLLUP = 'sr1TCYofXUuJjmQvZ26XE4YAwXdfetQfZ6rR'
 NATIVE_TICKETER = 'KT1FcWeWiEC7Ve5JMdZpKyvaFdsJv7n4GFzi'
@@ -155,6 +159,129 @@ async def michelson_l2_deposit(
     )
 
 
+# --- Withdrawal side --------------------------------------------------------------
+# Mirrors `etherlink/on_xtz_withdraw`, `tezos/on_rollup_execute` and
+# `tezos/on_claim_xtz_fast_withdrawal`. A withdrawal starts on L2 and settles on L1, the
+# opposite direction from a deposit: the L2 event creates the bridge row, the outbox
+# message attaches by `parameters_hash`, and the L1 execute closes it.
+
+
+async def outbox_message(
+    *,
+    level: int = 200,
+    index: int = 0,
+    builder: RollupOutboxMessageBuilder = RollupOutboxMessageBuilder.kernel,
+    message: dict | None = None,
+    parameters_hash: str | None = 'b' * 32,
+    created_at: datetime = TS,
+) -> RollupOutboxMessage:
+    """A cemented outbox message as `RollupMessageIndex._handle_outbox_level` stores it.
+
+    `created_at` is explicit because the matcher's implicit tie-break orders bridge rows by
+    it — a test that needs two candidates must be able to say which one is newer.
+    """
+    return await RollupOutboxMessage.create(
+        level=level,
+        index=index,
+        builder=builder,
+        message=message if message is not None else {},
+        parameters_hash=parameters_hash,
+        created_at=created_at,
+        cemented_at=created_at,
+        cemented_level=level + 40,
+    )
+
+
+async def l2_withdrawal(
+    l2_token: EtherlinkToken,
+    *,
+    level: int = 150,
+    amount_wei: str = '1000000' + '0' * 12,
+    l2_account: str = 'ab' * 20,
+    l1_account: str = 'tz1withdrawerXXXXXXXXXXXXXXXXXXXXXXX',
+    parameters_hash: str | None = 'b' * 32,
+    fast_payload: bytes | None = None,
+    kernel_withdrawal_id: int | None = None,
+    transaction_index: int = 0,
+    log_index: int = 0,
+    timestamp: datetime = TS,
+) -> EtherlinkWithdrawOperation:
+    """An L2 withdrawal row as the EVM withdrawal handlers store it.
+
+    `fast_payload` non-None is what makes it a fast withdrawal (the kind the claimed-fast
+    step pairs with an L1 payout); `kernel_withdrawal_id` is that step's join key.
+    """
+    return await EtherlinkWithdrawOperation.create(
+        timestamp=timestamp,
+        level=level,
+        address='cd' * 20,
+        transaction_hash='ab' * 32,
+        transaction_index=transaction_index,
+        log_index=log_index,
+        l2_account=await _l2_account(l2_account),
+        l1_account=l1_account,
+        l2_token=l2_token,
+        ticket=l2_token.ticket,
+        l2_ticket_owner='cd' * 20,
+        l1_ticket_owner=l2_token.ticket.ticketer_address,
+        amount=amount_wei,
+        fast_payload=fast_payload,
+        parameters_hash=parameters_hash,
+        kernel_withdrawal_id=kernel_withdrawal_id,
+    )
+
+
+async def l1_withdrawal(
+    outbox: RollupOutboxMessage,
+    *,
+    level: int = 210,
+    amount: str | None = '1000000',
+    counter: int = 1,
+    timestamp: datetime = TS,
+) -> TezosWithdrawOperation:
+    """The L1 leg: an `sr_execute` of `outbox` (kernel builder) or a fast-withdrawal payout
+    (service_provider builder). `outbox_message` is unique, so each row needs its own."""
+    return await TezosWithdrawOperation.create(
+        timestamp=timestamp,
+        level=level,
+        operation_hash=f'o{outbox.level:025d}{outbox.index:024d}',
+        counter=counter,
+        nonce=None,
+        initiator='tz1executorXXXXXXXXXXXXXXXXXXXXXXXXX',
+        sender='tz1executorXXXXXXXXXXXXXXXXXXXXXXXXX',
+        target=ROLLUP,
+        amount=amount,
+        outbox_message=outbox,
+    )
+
+
+def fast_payout_message(
+    l2: EtherlinkWithdrawOperation,
+    *,
+    service_provider: str = 'tz1providerXXXXXXXXXXXXXXXXXXXXXXXXX',
+) -> dict:
+    """A `payout_withdrawal` parameter that matches `l2` on all six fields the claimed-fast
+    step compares. Tests break exactly one key to assert the comparison is load-bearing.
+
+    Shape = `PayoutWithdrawalParameter.model_dump(mode='json')`; the amount scale is the
+    same mutez->wei gap the step asserts.
+    """
+    assert l2.fast_payload is not None, 'a payout pairs with a FAST withdrawal'
+    return {
+        'withdrawal': {
+            'withdrawal_id': str(l2.kernel_withdrawal_id),
+            'full_amount': str(int(l2.amount) // int(1e12)),
+            'ticketer': l2.l1_ticket_owner,
+            'content': {'nat': '0', 'bytes': None},
+            'timestamp': l2.timestamp.isoformat(),
+            'base_withdrawer': l2.l1_account,
+            'payload': l2.fast_payload.hex(),
+            'l2_caller': l2.l2_account_id,  # type: ignore[attr-defined]  # tortoise generates the FK id attr
+        },
+        'service_provider': service_provider,
+    }
+
+
 async def run_matcher_pass() -> None:
     """One production matcher pass — the exact `batch()` sequence via `run_matcher_steps`.
 
@@ -172,6 +299,16 @@ async def run_deposit_matching() -> None:
     BridgeMatcherLocks.set_pending_etherlink_deposits()
     BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
     BridgeMatcherLocks.set_pending_michelson_deposits()
+    await run_matcher_pass()
+
+
+async def run_withdrawal_matching() -> None:
+    """One production batch pass with every withdrawal lock set — the state
+    on_restart/on_synchronized leave behind, mirrored for the withdrawal direction."""
+    BridgeMatcherLocks.set_pending_etherlink_withdrawals()
+    BridgeMatcherLocks.set_pending_outbox()
+    BridgeMatcherLocks.set_pending_tezos_withdrawals()
+    BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()
     await run_matcher_pass()
 
 
