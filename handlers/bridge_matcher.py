@@ -1,5 +1,6 @@
 import logging
 import threading
+from collections import deque
 from datetime import datetime
 from datetime import timedelta
 
@@ -174,16 +175,34 @@ class BridgeMatcher:
             .order_by('level', 'transaction_index', 'log_index')
         )
 
+        # The counter side is fetched once and indexed by coords instead of re-queried per L2
+        # row: an open bridge deposit only exists once its L1 leg landed, so this side stays
+        # small while the L2 pool runs ahead by the whole index-speed gap during a backfill.
+        # `-created_at` is the ordering the per-row `.first()` inherited from `Meta.ordering`,
+        # so the head of each queue is the candidate that query would have returned; the rest
+        # stay queued because a bridge deposit taken here must still be reachable by the next
+        # L2 row on the same coordinates, which re-querying used to arrange for free.
+        candidates: dict[tuple[int, int], deque[BridgeDepositOperation]] = {}
+        open_deposits = (
+            BridgeDepositOperation.filter(
+                l2_transaction=None,
+                # Mirrors the join the per-row query did: only an attached inbox message has
+                # coords to key on, and a NULL FK must not collapse into the (None, None) key.
+                inbox_message_id__isnull=False,
+            )
+            .order_by('-created_at')
+            .prefetch_related('inbox_message')
+        )
+        async for open_deposit in open_deposits:
+            open_deposit: BridgeDepositOperation
+            candidates.setdefault((open_deposit.inbox_message.level, open_deposit.inbox_message.index), deque()).append(open_deposit)
+
         async for l2_deposit in qs:
             l2_deposit: EtherlinkDepositOperation
-            bridge_deposit = await BridgeDepositOperation.filter(
-                inbox_message__level=l2_deposit.inbox_message_level,
-                inbox_message__index=l2_deposit.inbox_message_index,
-                l2_transaction=None,
-            ).first()
-
-            if not bridge_deposit:
+            queue = candidates.get((l2_deposit.inbox_message_level, l2_deposit.inbox_message_index))
+            if not queue:
                 continue
+            bridge_deposit = queue.popleft()
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
 
