@@ -1,7 +1,9 @@
 import logging
 import threading
+from collections import deque
 from datetime import datetime
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from tortoise.exceptions import DoesNotExist
 
@@ -20,6 +22,9 @@ from rollup_bridge_indexer.models import RollupOutboxMessageBuilder
 from rollup_bridge_indexer.models import RuntimeKind
 from rollup_bridge_indexer.models import TezosDepositOperation
 from rollup_bridge_indexer.models import TezosWithdrawOperation
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 logger = logging.getLogger('rollup_bridge_indexer.handlers.bridge_matcher')
 
@@ -326,24 +331,33 @@ class BridgeMatcher:
             return
         BridgeMatcherLocks.pending_tezos_withdrawals = False
 
-        qs = (
-            TezosWithdrawOperation.filter(
-                bridge_withdrawals=None,
-                outbox_message__builder=RollupOutboxMessageBuilder.kernel,
-            )
-            .prefetch_related('outbox_message')
-            .order_by('level')
-        )
+        qs = TezosWithdrawOperation.filter(
+            bridge_withdrawals=None,
+            outbox_message__builder=RollupOutboxMessageBuilder.kernel,
+        ).order_by('level')
+
+        # The open pool is read once instead of once per execution: it stays small (a bridge row
+        # exists only from its L2 leg on) while the walk grows with every unsettled execution the
+        # backfill piles up, and `bridge_withdrawal.outbox_message_id` has no index.
+        # `-created_at` is BridgeWithdrawOperation.Meta.ordering, which the per-row `.first()`
+        # applied implicitly — spelled out here because that order IS the tie-break between
+        # several open rows on one outbox message.
+        open_withdrawals: dict[UUID, deque[BridgeWithdrawOperation]] = {}
+        async for open_withdrawal in BridgeWithdrawOperation.filter(l1_transaction=None).order_by('-created_at'):
+            # An execution always carries an outbox message (the FK is non-null), so a bridge row
+            # without one is nobody's counterpart — keeping the null key out of the index.
+            if open_withdrawal.outbox_message_id is not None:
+                open_withdrawals.setdefault(open_withdrawal.outbox_message_id, deque()).append(open_withdrawal)
+
         async for l1_withdrawal in qs:
             l1_withdrawal: TezosWithdrawOperation
-            bridge_withdrawal = await BridgeWithdrawOperation.filter(
-                l1_transaction=None,
-                outbox_message=l1_withdrawal.outbox_message,
-            ).first()
+            candidates = open_withdrawals.get(l1_withdrawal.outbox_message_id)
 
-            if not bridge_withdrawal:
+            if not candidates:
                 continue
 
+            # Taken rows leave the pool, the way re-querying used to drop them for free.
+            bridge_withdrawal = candidates.popleft()
             bridge_withdrawal.l1_transaction = l1_withdrawal
             await bridge_withdrawal.save()
 
