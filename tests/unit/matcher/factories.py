@@ -14,6 +14,7 @@ from rollup_bridge_indexer.handlers.michelson_deposit import expected_op_hash_fr
 from rollup_bridge_indexer.models import BridgeDepositOperation
 from rollup_bridge_indexer.models import BridgeOperation
 from rollup_bridge_indexer.models import BridgeOperationStatus
+from rollup_bridge_indexer.models import BridgeOperationType
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
@@ -105,7 +106,7 @@ async def inbox_message(
 
 
 async def evm_l2_deposit(
-    l2_token: EtherlinkToken,
+    l2_token: EtherlinkToken | None,
     *,
     level: int = 50,
     inbox_message_level: int | None = 100,
@@ -113,8 +114,15 @@ async def evm_l2_deposit(
     amount_wei: str = '1000000' + '0' * 12,
     l2_account: str = 'ab' * 20,
     timestamp: datetime = TS,
+    ticket: TezosTicket | None = None,
+    ticket_owner: str | None = None,
 ) -> EtherlinkDepositOperation:
-    """An L2 deposit row as the EVM-side handlers store it (bare-hex tx hash)."""
+    """An L2 deposit row as the EVM-side handlers store it (bare-hex tx hash).
+
+    `l2_token=None` is the shape the kernel writes when the deposit did not resolve to a
+    token; combined with `ticket`/`ticket_owner` it reaches the coords step's non-`finished`
+    statuses. Both default to whatever `l2_token` implies, so a resolved deposit needs neither.
+    """
     return await EtherlinkDepositOperation.create(
         timestamp=timestamp,
         level=level,
@@ -124,12 +132,43 @@ async def evm_l2_deposit(
         log_index=0,
         l2_account=await _l2_account(l2_account),
         l2_token=l2_token,
-        ticket=l2_token.ticket,
-        ticket_owner=l2_token.id,
+        ticket=l2_token.ticket if l2_token is not None else ticket,
+        ticket_owner=ticket_owner if ticket_owner is not None else (l2_token.id if l2_token is not None else ''),
         amount=amount_wei,
         inbox_message_level=inbox_message_level,
         inbox_message_index=inbox_message_index,
     )
+
+
+async def bridge_deposit(
+    l1: TezosDepositOperation,
+    *,
+    inbox: RollupInboxMessage | None = None,
+    l2: EtherlinkDepositOperation | None = None,
+    runtime_kind: RuntimeKind | None = None,
+    created_at: datetime = TS,
+) -> BridgeDepositOperation:
+    """The bridge_deposit + bridge_operation pair `check_pending_tezos_deposits` and
+    `check_pending_inbox` leave behind, minus the steps themselves.
+
+    Direct construction is what makes the coords step's candidate set reachable: two bridge
+    deposits can share one inbox message (the FK is not unique), but `check_pending_inbox`
+    clears the parameters hash on attach and so never builds that state itself. `created_at`
+    is explicit because the step's candidate tie-break is the implicit `Meta.ordering` on it.
+    """
+    receiver: str = l1.l2_account_id  # type: ignore[attr-defined]  # tortoise generates the FK id attr
+    row = await BridgeDepositOperation.create(l1_transaction=l1, inbox_message=inbox, l2_transaction=l2, created_at=created_at)
+    await BridgeOperation.create(
+        id=row.id,
+        type=BridgeOperationType.deposit,
+        l1_account=l1.l1_account,
+        l2_account_id=receiver,
+        runtime_kind=runtime_kind or (RuntimeKind.michelson if receiver.startswith('tz') else RuntimeKind.evm),
+        created_at=created_at,
+        updated_at=l1.timestamp,
+        status=BridgeOperationStatus.created,
+    )
+    return row
 
 
 async def michelson_l2_deposit(
