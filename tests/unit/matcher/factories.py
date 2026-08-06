@@ -15,6 +15,7 @@ from rollup_bridge_indexer.models import BridgeDepositOperation
 from rollup_bridge_indexer.models import BridgeOperation
 from rollup_bridge_indexer.models import BridgeOperationStatus
 from rollup_bridge_indexer.models import BridgeOperationType
+from rollup_bridge_indexer.models import BridgeWithdrawOperation
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
 from rollup_bridge_indexer.models import EtherlinkToken
 from rollup_bridge_indexer.models import EtherlinkWithdrawOperation
@@ -292,6 +293,43 @@ async def l1_withdrawal(
         amount=amount,
         outbox_message=outbox,
     )
+
+
+async def bridge_withdrawal(
+    l2: EtherlinkWithdrawOperation,
+    *,
+    outbox: RollupOutboxMessage | None = None,
+    l1: TezosWithdrawOperation | None = None,
+    created_at: datetime = TS,
+) -> BridgeWithdrawOperation:
+    """A bridge withdrawal + its operation row, exactly as `check_pending_etherlink_withdrawals`
+    creates the pair and `check_pending_outbox` then attaches the outbox message.
+
+    Built directly rather than through those two steps because they attach at most one bridge
+    row per outbox message, while `bridge_withdrawal.outbox_message` is neither unique nor
+    non-null — two rows on one message (what the fast-withdrawal split produces) and a row
+    still waiting for its message are both legal states the L1 step has to survive.
+
+    The operation is left unstamped (`created`, not completed) even when `l1` is given, so a
+    test can tell a step that re-stamps a settled row apart from one that leaves it alone.
+    """
+    bridge = await BridgeWithdrawOperation.create(
+        created_at=created_at,
+        l2_transaction=l2,
+        outbox_message=outbox,
+        l1_transaction=l1,
+    )
+    await BridgeOperation.create(
+        id=bridge.id,
+        type=BridgeOperationType.withdrawal,
+        l1_account=l2.l1_account,
+        l2_account_id=l2.l2_account_id,  # type: ignore[attr-defined]  # tortoise generates the FK id attr
+        runtime_kind=l2.runtime_kind,
+        created_at=created_at,
+        updated_at=created_at,
+        status=BridgeOperationStatus.created,
+    )
+    return bridge
 
 
 def fast_payout_message(
