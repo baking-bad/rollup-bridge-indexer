@@ -56,9 +56,10 @@ _logger = logging.getLogger(__name__)
 # on one connection and the node delivers every head once per subscription id. Any config with both
 # index kinds and a `ws_url` dies on the first block after reaching realtime.
 #
-# No deployed config sets `etherlink_node.ws_url` right now, so nothing reaches `_emitter_loop` and
-# this patch is inert. It stays because turning the websocket back on is a one-line config change --
-# see the TODO in `configs/shadownet.yaml`, which is the same 8.6.2 change as the removal below.
+# `configs/shadownet.yaml` sets `etherlink_node.ws_url`, so on that network this patch is live: every
+# head the node announces twice reaches `_handle_subscription` and is folded here. The other networks
+# still take the polling branch and never start the emitter, which makes shadownet the single place
+# where the patch is exercised against a real node -- and the one to watch before `ws_url` spreads.
 #
 # REMOVAL: delete this patch and its `apply_dipdup_patches()` entry once a released DipDup ships
 # the fix, and restore `ws_url` across the network configs in the same change.
