@@ -48,6 +48,20 @@ datasources:
   etherlink_node:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
+    # Realtime heads arrive on the node's `newHeads` stream instead of a 1s head poll. The value must
+    # carry the node's websocket path (`wss://host/ws`) -- a bare host answers 405 to the upgrade and
+    # fails at connect time; unset (`~`) falls back to polling.
+    # Every deployment pairs an `evm.events` index with an `evm.transactions` one, so DipDup opens two
+    # `newHeads` subscriptions on one connection and the node announces every head twice. The duplicate
+    # is dropped by `handlers/dipdup_patches.py`, without which `_emitter_loop` dies on
+    # `del self._level_data[head.hash]` at the first realtime block. Upstream fix:
+    # https://github.com/dipdup-io/dipdup/pull/1328 -- unmerged, absent from 8.6.1.
+    # NOTE for anything reading indexer state: with `ws_url` set, an `evm.events` index writes its
+    # `dipdup_index` row only when a matching log arrives, so its `level`/`updated_at` stop tracking the
+    # head. Liveness must be read from `dipdup_head[etherlink_node]` or from the `evm.transactions`
+    # index -- never from an events index. Under polling the same row tracks the head only because the
+    # resync loop rewrites it every second.
+    ws_url: ${ETHERLINK_NODE_WS:-~}
     http:
       batch_size: 100
       ratelimit_rate: 900

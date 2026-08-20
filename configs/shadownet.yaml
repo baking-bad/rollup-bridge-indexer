@@ -15,17 +15,8 @@ datasources:
   etherlink_node:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
-    # Realtime heads arrive on the node's `newHeads` stream instead of a 1s head poll. This config
-    # has both an `evm.events` and an `evm.transactions` index, so DipDup opens two `newHeads`
-    # subscriptions on one connection and the node announces every head twice; the duplicate is
-    # dropped by `handlers/dipdup_patches.py`, without which `_emitter_loop` dies on
-    # `del self._level_data[head.hash]` on the first realtime block. Upstream fix:
-    # https://github.com/dipdup-io/dipdup/pull/1328 — unmerged, absent from 8.6.1; once it ships in
-    # a release, drop the patch and add `ws_url` to the other networks in the same change.
-    # shadownet goes first on purpose: it is the only network where the crash was reproducible, so
-    # it is where the patch gets its production proof.
-    # The value must carry the node's websocket path (e.g. `wss://host/ws`) — the bare host answers
-    # 405 to the upgrade, so a host-only value fails at connect time.
+    # Mirrored from the base `dipdup.yaml`, which carries the rationale: this overlay redefines
+    # `datasources` wholesale and DipDup's shallow -c merge would otherwise drop `ws_url` entirely.
     ws_url: ${ETHERLINK_NODE_WS:-~}
     http:
       batch_size: 100
