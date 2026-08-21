@@ -82,19 +82,27 @@ class BridgeMatcher:
             )
             .prefetch_related('l1_transaction')
         )
+        pending = await qs
+        if not pending:
+            return
+
         # A deposit names its inbox message by the parameters hash it carries, at its own
-        # level. Attaching consumes the message — both sides drop the hash — so the pool is
-        # the messages still up for grabs. On a fresh database that is the entire deposit
-        # backlog on both sides, which is what this step costs when it costs anything.
+        # level. Only the hashes this walk asks about are read: most unclaimed inbox messages
+        # are not deposits at all and would sit in the pool forever, and this step runs after
+        # every level batch.
         candidates: CandidatePool[RollupInboxMessage, tuple[str | None, int]] = CandidatePool(
             'pending_inbox',
-            RollupInboxMessage.filter(parameters_hash__isnull=False).order_by('level', 'index'),
+            RollupInboxMessage.filter(
+                parameters_hash__in=sorted({deposit.l1_transaction.parameters_hash for deposit in pending} - {None}),
+            ).order_by('level', 'index'),
             key=lambda message: (message.parameters_hash, message.level),
+            # Two identical deposits in one block share a hash by construction, and either
+            # message will do — a tie here is not news.
             warn_on_tie=False,
         )
 
         attached = False
-        async for bridge_deposit in qs:
+        for bridge_deposit in pending:
             bridge_deposit: BridgeDepositOperation
             inbox_message = await candidates.take(
                 (bridge_deposit.l1_transaction.parameters_hash, bridge_deposit.l1_transaction.level),
@@ -348,20 +356,25 @@ class BridgeMatcher:
             )
             .prefetch_related('l2_transaction')
         )
-        # A withdrawal names its outbox message by the parameters hash it carries. Attaching
-        # consumes the message, so the pool is the unclaimed ones — the whole withdrawal
-        # backlog on a fresh database, and a few hundred rows once the backfill has settled.
+        pending = await qs
+        if not pending:
+            return
+
+        # A withdrawal names its outbox message by the parameters hash it carries, and only
+        # an unclaimed message can answer. Read by the hashes this walk asks about, for the
+        # same reason as the inbox side: the step runs after every level batch.
         candidates: CandidatePool[RollupOutboxMessage, str | None] = CandidatePool(
             'pending_outbox',
             RollupOutboxMessage.filter(
-                parameters_hash__isnull=False,
+                parameters_hash__in=sorted({withdrawal.l2_transaction.parameters_hash for withdrawal in pending} - {None}),
                 bridge_withdrawals=None,
             ).order_by('level', 'index'),
             key=lambda message: message.parameters_hash,
+            # Two identical withdrawals share a hash by construction; either message will do.
             warn_on_tie=False,
         )
 
-        async for bridge_withdrawal in qs:
+        for bridge_withdrawal in pending:
             bridge_withdrawal: BridgeWithdrawOperation
             outbox_message = await candidates.take(bridge_withdrawal.l2_transaction.parameters_hash)
 
