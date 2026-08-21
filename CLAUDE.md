@@ -237,14 +237,16 @@ test.
 - **PRs land as merge commits — never squashed.** The commit sequence is part of what a PR delivers
   here (a harness that goes red, then the fix that turns it green), and a squash throws it away.
   Master having single-parent commits is history, not the convention.
-- **Every push publishes an image; only `master` arms a deploy.**
-  `.github/workflows/build.yml` runs on pushes to `master` and on pull requests against it, and
-  the publish step is unconditional — a PR build lands in GHCR as `pr-<N>`, a master push as
-  `master`. Tags are in the metadata but are not a trigger. Publishing by itself deploys nothing:
-  the consequence lives in the deployment compose, which resolves `${TAG:-master}`, so a stack on
-  the default tag picks up whatever `master` last published the next time its task is recreated —
-  a host drain, a node reboot, any Swarm reschedule, no operator involved. Every publish is gated
-  on the hermetic docker smoke test first.
+- **Publishing an image is not deploying it.** `.github/workflows/build.yml` runs on pushes to
+  `master` and on pull requests against it, and the publish step is unconditional — a PR build
+  lands in GHCR as `pr-<N>`, a master push as `master`. Tags are in the metadata but are not a
+  trigger. Every publish is gated on the hermetic docker smoke test first.
+  Nothing picks the new image up on its own: Swarm resolves `${TAG:-master}` to a **digest** when
+  the service is deployed and stores that digest in the service spec, so every later task
+  recreation — a host drain, a node reboot, a crash loop, any reschedule — starts the same binary
+  it was running before. Moving a stack to a newer image is an explicit redeploy that someone
+  performs. Pinning a tag to hold a version still is therefore unnecessary, and can be done later
+  if a particular run needs it.
 - **Any change to `models/` costs a full reindex.** `advanced.reindex.schema_modified: exception`
   makes DipDup refuse to start against a database whose schema hash no longer matches, so a new
   field is not a deploy — it is a wipe and a rebuild. Measured on mainnet from scratch: **3 d 11 h**
