@@ -1,0 +1,89 @@
+# Standalone config for the outbox-fetch-failure case. See README.md.
+# sqlite + oneshot (no tezos.head, last_level on every index).
+#
+# The subject is NOT an index: it is the rollup-message backfill that `on_restart` drives
+# (RollupMessageIndex.synchronize -> _process -> _handle_outbox_level). The L1 index below is a
+# tiny no-op window that only gives `dipdup run` something bounded to finish on.
+#
+# `rollup_node` deliberately points at the case's fault-injecting proxy (ROLLUP_NODE_URL in
+# window.env), not at the real node — the CONTROL and TREATMENT arms differ only by the
+# proxy's PROXY_FAIL_LEVELS.
+
+spec_version: 3.0
+package: rollup_bridge_indexer
+
+
+database:
+  kind: sqlite
+  path: ${SQLITE_PATH:-/tmp/bridge_outbox_fetch_failure.sqlite}
+
+
+datasources:
+  tzkt:
+    kind: tezos.tzkt
+    url: ${TZKT_URL}
+
+  metadata:
+    kind: tzip_metadata
+    network: ${NETWORK}
+    url: ${METADATA_URL}
+
+  tezos_node:
+    kind: http
+    url: ${TEZOS_NODE_URL}
+
+  # Same http settings as the prod base config (dipdup.yaml) — retry_count is load-bearing:
+  # the injected failure must survive the retries and reach the caller (2 retries, then
+  # `_retry_request` re-raises the ClientResponseError).
+  #
+  # `request_timeout: 4` is far below the proxy's 30s upstream fetch, so a cache MISS could
+  # surface as a TimeoutError that looks exactly like the injected fault. run_arms.sh keeps
+  # that out of the run by asserting the prewarmed cache covers every level of the page
+  # before any arm starts.
+  rollup_node:
+    kind: http
+    url: ${ROLLUP_NODE_URL}
+    http:
+      retry_count: 2
+      retry_sleep: 1.0
+      retry_multiplier: 1.0
+      connection_timeout: 1
+      request_timeout: 4
+
+
+contracts:
+  tezos_smart_rollup:
+    kind: tezos
+    address: ${SMART_ROLLUP_ADDRESS}
+    typename: rollup
+
+
+indexes:
+  tezos_deposit_operations:
+    kind: tezos.operations
+    first_level: ${L1_FIRST_LEVEL}
+    last_level: ${L1_LAST_LEVEL}
+    datasources:
+      - tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_smart_rollup
+    handlers:
+      - callback: tezos.on_rollup_call
+        pattern:
+          - type: transaction
+            destination: tezos_smart_rollup
+            entrypoint: default
+
+
+# No `unsafe_sqlite` here (prod runs Postgres with a journal): it sets journal_mode=OFF and
+# synchronous=OFF, i.e. undefined database state after a crash — and this case's whole subject
+# is what survives a crash mid-run.
+advanced:
+  reindex:
+    config_modified: ignore
+    schema_modified: ignore
+    migration: ignore
+    rollback: ignore
+    manual: wipe
