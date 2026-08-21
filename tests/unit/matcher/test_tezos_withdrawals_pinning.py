@@ -68,6 +68,23 @@ async def test_settlement_stamps_updated_at_at_save_time_not_from_the_l1_leg(db)
     assert operation.updated_at >= before
 
 
+async def test_withdrawal_without_its_l1_leg_stays_open(db):
+    """No execution yet: the bridge row holds its outbox message and stays unfinished."""
+    xtz = await f.seed_xtz()
+    l2 = await f.l2_withdrawal(xtz, parameters_hash='b' * 32)
+    outbox = await f.outbox_message(parameters_hash='b' * 32)
+
+    await f.run_withdrawal_matching()
+
+    bridge = await BridgeWithdrawOperation.get(l2_transaction_id=l2.id)
+    assert bridge.outbox_message_id == outbox.id
+    assert bridge.l1_transaction_id is None
+
+    operation = await BridgeOperation.get(id=bridge.id)
+    assert not operation.is_completed
+    assert operation.status == BridgeOperationStatus.created
+
+
 async def test_service_provider_payout_is_left_to_the_claimed_fast_step(db):
     """`outbox_message__builder=kernel` is the only thing keeping this step off a fast-
     withdrawal payout. The state below would match but for that filter — an open bridge

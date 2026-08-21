@@ -63,3 +63,16 @@ async def test_an_attached_message_is_not_offered_again(db):
 
     assert (await BridgeDepositOperation.get(l1_transaction_id=lonely.id)).inbox_message_id == 1
     assert (await BridgeDepositOperation.get(l1_transaction_id=late.id)).inbox_message_id is None
+
+
+async def test_attaching_an_outbox_message_consumes_both_hashes(db):
+    xtz = await seed_xtz()
+    l2 = await l2_withdrawal(xtz, parameters_hash='b' * 32)
+    outbox = await outbox_message(parameters_hash='b' * 32)
+
+    await run_withdrawal_matching()
+
+    await l2.refresh_from_db()
+    await outbox.refresh_from_db()
+    assert l2.parameters_hash is None
+    assert outbox.parameters_hash is None

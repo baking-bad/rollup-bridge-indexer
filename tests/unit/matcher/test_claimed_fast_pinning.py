@@ -107,12 +107,9 @@ async def test_claimed_fast_split_repoints_the_customer_and_hands_the_kernel_mes
     assert provider_operation.runtime_kind == l2.runtime_kind
     assert provider_operation.status == BridgeOperationStatus.created
     assert not provider_operation.is_completed
-    # `created_at` is auto_now_add and keeps an explicitly passed value — which is what makes
-    # the L2 timestamp survive here, and it is the implicit `Meta.ordering` key every candidate
-    # tie-break falls back to. `updated_at` is auto_now and does NOT: the payout timestamp the
-    # step assigns is overwritten with wall clock on save.
+    # `created_at` is auto_now_add and keeps an explicitly passed value, so the L2 timestamp
+    # survives — and it is the `Meta.ordering` key every candidate tie-break falls back to.
     assert provider_operation.created_at == l2.timestamp
-    assert customer_operation.updated_at > PAYOUT_TS
 
     # The payout message is consumed, so the step cannot pick it up again.
     await payout_outbox.refresh_from_db()

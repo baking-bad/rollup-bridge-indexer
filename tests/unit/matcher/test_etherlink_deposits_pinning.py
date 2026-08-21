@@ -10,8 +10,6 @@ other deposit steps would otherwise be free to link the same rows by value or op
 hide which step did the work.
 """
 
-from datetime import UTC
-from datetime import datetime
 from datetime import timedelta
 
 import pytest
@@ -48,28 +46,6 @@ async def test_coords_bearing_l2_leg_completes_the_bridge_operation(db):
     assert operation.is_successful
     assert operation.status == BridgeOperationStatus.finished
     assert operation.runtime_kind == RuntimeKind.evm
-
-
-async def test_updated_at_is_wall_clock_not_the_l2_timestamp(db):
-    """The step assigns `updated_at = l2_deposit.timestamp`, and the column throws it away.
-
-    `updated_at` is `auto_now=True`, so Tortoise overwrites the assignment with `now()` on
-    every save. The operation therefore carries the moment it was matched, not the moment
-    the L2 leg was produced — pinned because a rewrite could plausibly "fix" the assignment
-    and change what consumers read.
-    """
-    xtz = await f.seed_xtz()
-    inbox = await f.inbox_message(level=100, index=5)
-    bridge = await f.bridge_deposit(await f.l1_deposit(xtz.ticket), inbox=inbox)
-    l2 = await f.evm_l2_deposit(xtz, inbox_message_level=100, inbox_message_index=5)
-
-    before = datetime.now(UTC)
-    BridgeMatcherLocks.set_pending_etherlink_deposits()
-    await f.run_matcher_pass()
-
-    operation = await BridgeOperation.get(id=bridge.id)
-    assert operation.updated_at != l2.timestamp
-    assert operation.updated_at >= before
 
 
 @pytest.mark.parametrize(

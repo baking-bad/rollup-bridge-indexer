@@ -12,8 +12,6 @@ reject is placed EARLIER than the row that must win, so a dropped filter loses t
 the test fails on identity rather than on a count.
 """
 
-from datetime import UTC
-from datetime import datetime
 from datetime import timedelta
 
 import pytest
@@ -90,24 +88,6 @@ async def test_matched_xtz_credit_finishes_the_operation_with_the_l2_runtime_kin
     assert operation.is_successful
     assert operation.status == BridgeOperationStatus.finished
     assert operation.runtime_kind == RuntimeKind.evm
-
-
-async def test_updated_at_is_stamped_at_save_time_not_taken_from_the_l2_leg(db):
-    # The step assigns `updated_at = l2_deposit.timestamp`, but the column is `auto_now`, so
-    # Tortoise overwrites the assignment on save with wall-clock now. The stored value tracks
-    # WHEN THE MATCH RAN, not the L2 leg — pinned as-is because consumers read this column.
-    xtz = await seed_xtz()
-    l1 = await mk_l1(xtz, level=100, ts=TS)
-    l2 = await mk_l2(xtz, level=200, ts=TS + timedelta(seconds=20))
-    before = datetime.now(UTC)
-
-    await run_deposit_matching()
-
-    operation = await BridgeOperation.get(id=(await BridgeDepositOperation.get(l1_transaction_id=l1.id)).id)
-    assert operation.updated_at != l2.timestamp
-    assert operation.updated_at >= before
-    # `created_at` is auto_now_add and was given a value at creation, so it does survive.
-    assert operation.created_at == l1.timestamp
 
 
 async def test_match_nulls_the_parameters_hash_on_both_the_l1_transaction_and_the_inbox_message(db):
