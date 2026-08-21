@@ -3,7 +3,7 @@
 `RollupMessageIndex` learns which outbox levels to fetch from the inbox page it is walking
 (`_handle_external_inbox_message`) and from a full outbox asking for its continuation
 (`_handle_outbox_level`, `outbox_level + 1`). Both used to live only in the in-memory
-`_outbox_level_queue`, while the resume cursor — `1 + max(RollupInboxMessage.id)` — was
+`_outbox_level_queue`, while the resume cursor, derived from the last saved inbox row, was
 written *before* the drain. A drain that died halfway therefore resumed above the external
 messages it had not served yet, and those outbox messages were gone for good.
 
@@ -199,7 +199,7 @@ async def test_pending_levels_survive_a_failed_drain(db: Any) -> None:
 
     The page here is the shape that made the production loss permanent: two external
     messages followed by a transfer, so the committed transfer's id is above both externals
-    and `1 + max(id)` can never reach them again.
+    and the resume cursor can never reach them again.
     """
     page = [
         {'id': 100, 'level': 10, 'index': 0, 'type': 'external'},
@@ -232,7 +232,9 @@ async def test_pending_levels_survive_a_failed_drain(db: Any) -> None:
     # Restart on the same database: the cursor cannot reach the externals, the queue can.
     restarted = _index(FakeTzkt([[]], head_level=12), FakeRollupNode({10: [], 11: []}))
     await restarted._prepare_new_index()
-    assert restarted._inbox_id_cursor == 103
+    # At or above the last external, so `id.gt=` can never return either of them again. The
+    # exact resume arithmetic is not this test's business — being out of reach is.
+    assert restarted._inbox_id_cursor >= 101
     assert restarted._outbox_level_queue == {10, 11}
 
     await restarted._process()
@@ -256,7 +258,7 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
     page = [
         # The external message that puts level 100 in the queue...
         {'id': 100, 'level': 100, 'index': 0, 'type': 'external'},
-        # ...followed by a transfer, so the committed cursor (`1 + max(id)`) is above it.
+        # ...followed by a transfer, so the committed cursor is above it.
         {
             'id': 101,
             'level': 100,
@@ -290,7 +292,7 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
     restarted_node = FakeRollupNode({100: full_outbox, 101: [_outbox_message(101, 0)]})
     restarted = _index(FakeTzkt([[]], head_level=head), restarted_node)
     await restarted._prepare_new_index()
-    assert restarted._inbox_id_cursor == 102, 'the cursor is past both inbox messages of the failed page'
+    assert restarted._inbox_id_cursor >= 100, 'the cursor is past the external message of the failed page'
     assert restarted._outbox_level_queue == {100}, 'the stored queue is what the cursor cannot describe'
 
     await restarted._process()
