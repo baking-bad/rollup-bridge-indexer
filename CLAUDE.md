@@ -2,110 +2,260 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## What this is
 
-Etherlink Bridge Indexer — a DipDup-based Python indexer that tracks bridge operations between Tezos (L1) and Etherlink (L2, an EVM-compatible smart rollup on Tezos). It reconciles events from both chains into unified `BridgeOperation` records.
+A DipDup (v8.6.1+, Python 3.12, `uv`) indexer that tracks bridge operations between Tezos (L1) and
+Etherlink / Tezos X (L2, a smart rollup on Tezos). It ingests both chains independently and
+reconciles the two legs of each transfer into unified `bridge_operation` rows. Postgres storage,
+Hasura on top (`camel_case: false`; the dev compose publishes it on `HASURA_PORT`, default 49180).
 
 ## Commands
 
+The Makefile lists every target. The ones whose behaviour is not obvious from the name:
+
 ```bash
-make test          # Run tests: PYTHONPATH=. uv run pytest tests/
-make lint          # Run all linters: black, ruff, mypy
-make black         # Format code with Black
-make ruff          # Lint with Ruff (auto-fix)
-make mypy          # Type check with mypy
-make run           # Run indexer: uv run dipdup -c . run
-make up            # Docker compose up (postgres + hasura)
-make down          # Docker compose down with volumes
-make wipe          # Wipe DipDup schema
-make init          # Initialize DipDup
+make run                        # BASE CONFIG ONLY — no network overlay, not what prod runs
+make prod-check [BOOT=1]        # the shippability sequence: lint + unit + docker smoke
+make test-pg                    # the unit suite on Postgres — see Testing for why it differs
+make check-config NET= ENV=     # validate a merged config without booting
+make test-indexer CASE=<name>   # block-bounded stand run; inspect-test CASE= gives its verdict
+make bench-matcher              # matcher cost instrument; make perf-db-down to clean up
 ```
 
-Run a single test: `PYTHONPATH=. uv run pytest tests/path/to/test_file.py::test_name`
+Run against a real network with `uv run dipdup -c . -c configs/<network>.yaml run`, env exported.
 
-Package manager is `uv`. Python 3.12 required.
+## Packaging: the package IS the repo root
 
-## Code Style
+`dipdup.yaml`, `handlers/`, `models/`, `hooks/`, `types/`, `configs/`, `sql/`, `abi/` live directly
+at the root. The committed self-symlink **`rollup_bridge_indexer -> .`** is what makes
+`import rollup_bridge_indexer.*` resolve (plus the editable install from `[build-system]`).
+Consequences you will trip over:
 
-- **Line length:** 140
-- **Quotes:** Single quotes (`skip-string-normalization = true` in Black)
-- **Imports:** Force single-line (ruff isort)
-- **Ruff extends:** B, C4, FA, G, I, PTH, Q, RET, RUF, TCH, UP
-- **Target:** Python 3.12
+- `package: rollup_bridge_indexer` in `dipdup.yaml` must stay **different** from `[project].name`
+  (`rollup-bridge-indexer`). When package name, pyproject name and cwd name all agree, DipDup's
+  `get_package_path()` resolves the package to `cwd` — and `dipdup init` then scaffolds an empty
+  skeleton in the wrong place instead of touching the real one. The mismatch is load-bearing, not
+  an oversight to tidy up.
+- Every tool must skip the symlink or it recurses into itself: `mypy exclude`, `ruff
+  extend-exclude`, `black extend-exclude`, `pytest norecursedirs`. Keep those in place.
+- Imports inside the package are absolute and fully qualified
+  (`from rollup_bridge_indexer.models import ...`), never relative.
+- In Docker, `DIPDUP_PACKAGE_PATH=/opt/app/rollup_bridge_indexer` points at the symlink on
+  purpose: DipDup derives the package *name* from that path's basename, and `/opt/app` would name
+  it `app`. `/opt/app` is also `chown`ed to the runtime user because `package.initialize()` writes
+  marker files (`py.typed`, `**/.keep`) on every command. `tests/e2e/smoke_test.sh` guards both.
+- CI builds with a **path** context, not the git context — the git context follows the self-symlink
+  and leaks `tests/**` into the image.
+
+## Configuration model
+
+`dipdup.yaml` is the base (database, hasura, sentry, datasources, `advanced.reindex`, and the
+`custom` block). `configs/<network>.yaml` is an overlay applied with `-c . -c configs/<net>.yaml`:
+`mainnet`, `ghostnet`, `quebecnet`, `rainbownet`, `shadownet`, `tezosx-shadownet`. Everything else — endpoints,
+ticketer addresses, first levels — comes from env vars, all of them `${…}` in the YAML. Three knobs
+exist only in code and appear in no config: `ALIAS_RECHECK_SECONDS`, and the stand's
+`ROLLUP_SYNC_FIRST_LEVEL` / `ROLLUP_SYNC_LAST_LEVEL` bounds for the rollup backfill.
+
+**DipDup merges `-c` files with a shallow top-level `dict.update`.** An overlay that defines
+`datasources` or `custom` replaces the *whole* base block. That is why `mainnet.yaml`,
+`shadownet.yaml` and `tezosx-shadownet.yaml` restate `etherlink_node.http` verbatim — including
+`ratelimit_rate: 900` per 60 s, which the node needs and which defaults to no throttling when the
+block is lost — plus `ws_url` and `etherlink_subsquid`. Losing one of these is silent at boot and
+shows up later as 503 storms or a broken EVM index.
+
+`custom.has_michelson_runtime` is **required, no default** (`handlers/alias.py` asserts it is a
+literal YAML bool). `false` = plain EVM-only Etherlink; `true` = a rollup with a Michelson runtime
+where the `RuntimeGateway` precompile answers `originOf`. Guessing is unsafe in both directions.
 
 ## Architecture
 
-### DipDup Framework
+### Ingestion: three handler families
 
-The indexer uses [DipDup](https://dipdup.io/) v8.5.1+. Configuration lives in `./dipdup.yaml` (base) with network-specific overlays in `./configs/` (mainnet, ghostnet, quebecnet, rainbownet, shadownet, tezosx-shadownet). DipDup manages the Tortoise ORM models, Hasura GraphQL metadata, and event subscription lifecycle.
+Naming convention: **`tezos/` = L1, `etherlink/` = L2 EVM, `tezos_x/` = L2 Michelson.**
 
-### Package layout (canonical DipDup, flattened)
+- `handlers/tezos/` — L1 via TzKT. `on_head` is the odd one out: it drives the rollup message
+  index below, not an L1 entity.
+- `handlers/etherlink/` — L2 EVM via Subsquid archive + EVM node. Deposits are not events but an
+  `evm.transactions` index filtered on the synthetic senders `0x…feed` and legacy `0x0`;
+  withdrawals come from the kernel precompiles `0xff…01` (native, also the source of
+  `FastWithdrawal`) and `0xff…02` (FA).
+- `handlers/tezos_x/` — L2 Michelson via a *second* TzKT, over the rollup's Michelson runtime.
+  `on_michelson_deposit_ophash` is production; `on_michelson_deposit` is the event-based variant,
+  kept alive deliberately for the `michelson_l2_deposit` stand case and for the day TzKT starts
+  serving implicit-source events. It is not dead code.
 
-The DipDup package **is the repo root** — `dipdup.yaml`, `handlers/`, `models/`, `hooks/`, `types/`, `configs/`, etc. live directly at the root (not in a subdirectory). The Python **package import name is `rollup_bridge_indexer`** (the `[project].name` distribution is the hyphenated `rollup-bridge-indexer`). Importability comes from the committed self-symlink **`rollup_bridge_indexer -> .`** at the root, so `import rollup_bridge_indexer.*` resolves; it is also editable-installed via `[build-system]`.
+### `handlers/rollup_message.py` — custom rollup inbox/outbox index
 
-`package` in `dipdup.yaml` (`rollup_bridge_indexer`) MUST differ from `[project].name` (`rollup-bridge-indexer`): DipDup's `get_package_path()` returns `cwd` when `package == pyproject-name == cwd-name`, which previously made `dipdup init` scaffold an empty skeleton at the wrong place. With distinct names and the package at the root, `dipdup -c . <cmd>` (and `make init/run/wipe`) resolve the package to the repo root correctly. mypy must keep `exclude = "rollup_bridge_indexer"` (skip the self-symlink, else infinite recursion); black/ruff exclude it too.
+Rollup messages are not a DipDup index kind, so this is a hand-rolled indexer with its own
+lifecycle (`new -> syncing -> realtime`), backfilled in `on_restart` **before** DipDup's own
+indexes start and pumped afterwards from `on_head`.
 
-**Docker packaging (`Dockerfile`):** DipDup derives the package *name* from the **basename of `DIPDUP_PACKAGE_PATH`**, and `package.initialize()` runs on **every** command, writing marker files (`py.typed`, `**/.keep`) at the package root. So in the image two things are load-bearing: (1) `DIPDUP_PACKAGE_PATH=/opt/app/rollup_bridge_indexer` points at the committed self-symlink (basename = real package name) — pointing at `/opt/app` would name the package `app` and break every `rollup_bridge_indexer.*` import; (2) `/opt/app` is `chown`ed to the runtime user so `initialize()` can write (the venv `COPY` only chowns *contents*, leaving the dir root-owned → `PermissionError`). Config files stay at `/opt/app` (WORKDIR), so the deployment compose's absolute `-c /opt/app/dipdup.yaml -c /opt/app/configs/<net>.yaml` still works. `tests/e2e/smoke_test.sh` (`make docker-test`, also a CI gate) guards all this by booting the indexer in the built image.
+- Inbox comes from the TzKT `v1/smart_rollups/inbox` endpoint, walked by an `id.gt=` cursor. When
+  no real row carries the cursor id, a level-0 sentinel row records it.
+- A fresh DB starts at `RollupMessageIndex.first_ticket_level` — the min first-activity level over
+  *every* whitelisted ticket, native included (`TicketService._lower_first_ticket_level`). An
+  FA-only minimum silently drops earlier XTZ deposits' inbox messages forever.
+- Outbox comes from the rollup node RPC per level. Levels are learned from `external` inbox
+  messages (and from a full outbox asking for its continuation) and held in `PendingOutboxLevels`,
+  mirrored into DipDup's `dipdup_meta` table — outside the package schema, so it costs no schema
+  hash change, but it also survives a reindex wipe and is therefore explicitly dropped when the
+  inbox table comes up empty. **Ordering is the contract:** the pending set is saved *before* the
+  rows that advance the cursor past those externals, and a level leaves the set only *after* its
+  outbox rows are committed.
+- The drain ceiling is the rollup node's own `global/block/head/level`, not the L1 head: a node
+  that stopped applying blocks still answers RPC but cannot resolve levels above what it applied.
+- The same module owns all **parameter hashing** — `uuid5(NAMESPACE_OID, orjson.dumps(dto,
+  OPT_SORT_KEYS))` over normalized DTOs — for inbox messages, L1 deposit transactions, outbox
+  messages (plain + fast) and L2 withdrawal events. Matching hashes is how L1 ops and L2 events
+  find each other.
 
-### Test layout (`tests/`)
+### `handlers/bridge_matcher.py` + `batch.py` — reconciliation
 
-Tests are split by purpose and kept out of the prod image (`.dockerignore` excludes `tests/**`):
-- `tests/unit/` — pytest suite (decoder, rollup, types); `pyproject.toml` pins `testpaths=["tests/unit"]`. `make test`.
-- `tests/e2e/` — production-readiness gate. `make prod-check [BOOT=1]` runs `run_all.sh` = the full sequence (black/ruff/mypy check + unit + docker smoke). The docker smoke (`smoke_test.sh` + `smoke.env`) is also `make docker-test`; its hermetic form is the CI publish gate. It builds the image, runs `package verify`, validates every deployed overlay, and audits that no test code/caches ship in the image.
-- `tests/stand/` — block-bounded, secret-free **per-case** test-indexer stand: each case is `tests/stand/cases/<name>/` (`config.yaml` + `window.env` + `verify.py` + `README.md`); shared committed `tezosx.env` (public endpoints/addresses) + `verify_lib.py`. Each `config.yaml` is standalone (resolves the package via the editable install, so it lives outside `configs/`) and is a copy, not an overlay — mirror prod-config fixes into it. `make test-indexer CASE=<name>` / `inspect-test CASE=<name>` / `check-test-config CASE=<name>` (load envs via `dipdup -e`). See `tests/stand/README.md`.
+Handlers never match. They write rows and set a boolean flag on `BridgeMatcherLocks`;
+`handlers/batch.py::batch` fires the matched handlers, then runs `run_matcher_steps()` under
+`BridgeMatcher.matcher_lock`. Each step returns immediately unless its flag is set, and clears it
+first. `on_restart` and `on_synchronized` set every flag — a full re-match pass.
 
-### Dual-Chain Event Processing
+`run_matcher_steps()` is the authority on which steps exist and in what order; read it rather than
+a list here. What the *order* encodes, and what a reordering would break:
 
-- **Tezos (L1) handlers** in `./handlers/tezos/`: deposit calls (`on_rollup_call`), withdrawal executions (`on_rollup_execute`), commitment cementing (`on_cement_commitment`), fast withdrawal claims, head tracking
-- **Tezos X (L2 Michelson) handlers** in `./handlers/tezos_x/`: Tezos-shaped handlers that record the **L2** leg of Tezos X Michelson (tz1-receiver) XTZ deposits — `on_michelson_deposit_ophash` (production, op-hash matched) and `on_michelson_deposit` (event/node-polling variant, stand-only). Convention: `tezos/` = L1, `etherlink/` = L2 EVM, `tezos_x/` = L2 Michelson
-- **Etherlink (L2) handlers** in `./handlers/etherlink/`: deposit events (`on_deposit`, `on_xtz_deposit`), withdrawal events (`on_withdraw`, `on_xtz_withdraw`), ERC-20 transfers (`on_transfer`). These resolve the EVM receiver/sender to a native Tezos origin via `resolve_l2_account` (see *L2 Account / Alias Resolution*)
+- **Deterministic keys before heuristics.** Every step matches on a parameter hash or on inbox /
+  outbox coordinates except one: EVM XTZ deposits carry no coordinates, so they are zipped on
+  `(ticket, L2 account, amount)` within a 140 s window (`LAYERS_TIMESTAMP_GAP_MAX`), with
+  mutez→wei scaling taken from the two tokens' decimals.
+- **That heuristic step is filtered to `runtime_kind=evm`** so it cannot preempt the op-hash step
+  that claims Michelson deposits. Without the filter the two runtimes steal each other's rows.
+- **A matched parameter hash is nulled on both sides** once consumed. That is what stops a hash
+  being claimed twice, and what keeps the candidate pools small.
 
-### Bridge Matcher (core reconciliation)
+`handlers/candidate_pool.py` (`CandidatePool`) is the shared primitive for the counterpart side of
+a step: one query, lazily issued on first `take`, rows keyed and claimed once each, queryset order
+as the tie-break, `None` keys never enter. It exists to keep steps from issuing one query per
+walked row — the N+1 that surfaces as the backlog grows. `warn_on_tie=False` only where a shared
+key is legitimate (two identical ops in one block share a parameter hash).
 
-`./handlers/bridge_matcher.py` is the central matching engine. It correlates L1 and L2 operations into unified `BridgeOperation` records through 8 ordered matching steps. Uses a **lock-based batching system** (`bridge_matcher_locks.py`): handlers set boolean flags, and the batch handler (`batch.py`) checks and clears them after each handler batch.
+### `handlers/michelson_deposit.py` — the op-hash bridge for tz1 deposits
 
-A ninth step — `BridgeMatcher.check_pending_michelson_deposits` (guarded by its own `BridgeMatcherLocks.pending_michelson_deposits` flag) — matches Tezos X L2 Michelson (tz1-receiver) XTZ deposits by reconstructing the L2 synthetic-op hash from L1 inbox data (derivation in `./handlers/michelson_deposit.py`, kernel-verified) because TzKT drops the kernel's implicit-source deposit event. This is the **production** mechanism with no planned removal. It was once a separate `./handlers/michelson_matcher.py` module to keep it cleanly deletable, but was **folded into `BridgeMatcher`** — the disjoint op-hash vs. value-based matching is now expressed as ordered steps sharing the matcher. The event-based alternative (used IF TzKT ever serves implicit-source events, not committed anywhere) is kept alive in `./handlers/tezos_x/on_michelson_deposit.py` + the `michelson_l2_deposit` stand case.
+TzKT does not index the kernel's implicit-source deposit event, so a tz1-receiver XTZ deposit has
+no observable inbox coordinates on the L2 side. Instead the L2 synthetic op hash is recomputed
+from L1:
 
-### L2 Account / Alias Resolution
+```
+op_hash = base58check('o', keccak256(rlp([amount_wei, receiver, inbox_level, inbox_msg_id]) ++ raw_rollup_address))
+```
 
-`./handlers/alias.py` resolves an EVM address to the native Tezos identity it stands for. It calls the `RuntimeGateway` precompile (`0xff…07`) `originOf(string,uint8)` view, which classifies an address as `unknown` (no record yet), `native` (a real account of its own runtime), or `alias` (an EVM stand-in for a native tz account in another runtime). Results are cached in the `l2_account` table — PK `runtime_address` (40-hex, no `0x`); `origin` (the native tz/KT1 address for an alias, else the address itself — group an account's runtime forms by this); `kind` (`OriginKind`); `home_runtime` (`RuntimeKind`, nullable). A classified row is terminal; an `unknown` row is re-resolved once a recheck cooldown elapses (`ALIAS_RECHECK_SECONDS`, default 24h) so an alias first seen before its native account existed is recovered.
+computed while storing the inbox message (`expected_l2_op_hash`) and compared against the observed
+L2 op hash by the matcher. The module is pure (no I/O) and also owns `parse_routing_info` /
+`l2_account_from_routing_info` (legacy 20B / 52B forms and versioned v1 RLP routing).
 
-EVM (`etherlink/`) handlers call `resolve_l2_account(ctx, address)`; tz-side Michelson receivers are native by construction and use `L2Account.get_or_create_for(addr, RuntimeKind.michelson)` instead (no precompile call). The `runtime_kind` discriminator (`RuntimeKind` = `evm` | `michelson`) on `l2_deposit` / `l2_withdrawal` / `bridge_operation` records which runtime an op belongs to; it replaced the old `o…`-prefix exclude and keeps the EVM value-based deposit zip from preempting the Michelson op-hash step.
+The derivation carries **no in-band version** — it is pinned to a kernel snapshot by golden vectors
+in `tests/unit/tezos/test_michelson_deposit.py`. A kernel change fails quiet, surfacing only as the
+"L2 Michelson deposit(s) without a matching inbox op-hash" warning.
 
-### Parameter Hash Matching
+### `handlers/alias.py` — L2 account identity
 
-L1 operations and L2 events are correlated via deterministic parameter hashes: `uuid5(NAMESPACE_OID, orjson.dumps(params, OPT_SORT_KEYS))`. Inbox messages match deposits; outbox messages match withdrawals.
+Calls the `RuntimeGateway` precompile `0xff…07` `originOf(string,uint8)` to classify an EVM address
+as `unknown` / `native` / `alias` (an EVM stand-in for a native tz account). Results cache in
+`l2_account` (PK `runtime_address`, 40-hex no `0x`; `origin` = the native address to group by;
+`kind`; `home_runtime`). Classified rows are terminal; `unknown` rows are re-resolved after
+`ALIAS_RECHECK_SECONDS` (24 h) so an alias first seen before its native account existed recovers.
+An undecodable answer raises `RuntimeGatewayUnsupportedError` rather than silently recording a
+native — but that takes L1 indexing down with it if `has_michelson_runtime` is wrong.
 
-### Rollup Message Index
+EVM handlers call `resolve_l2_account(ctx, addr)`; tz receivers are native by construction and use
+`L2Account.get_or_create_for(addr, RuntimeKind.michelson)` with no precompile call.
 
-`./handlers/rollup_message.py` is a custom indexer for rollup inbox/outbox messages (not natively supported by DipDup). Has its own sync lifecycle (new → syncing → realtime). Fetches inbox messages from TzKT API and outbox messages from the rollup node RPC.
+`OriginKind` (identity of an address) and `RuntimeKind` (runtime that processed an *operation*) are
+deliberately distinct. `runtime_kind` on `l2_deposit` / `l2_withdrawal` / `bridge_operation` is what
+keeps EVM and Michelson rows from colliding: they share the L2 block counter, and the same XTZ
+ticket has two L2 tokens (`xtz_evm`, 18 decimals/wei; `xtz_michelson`, 6 decimals/mutez).
 
-### Service Container
+### Tickets, DI, framework patches
 
-`./handlers/service_container.py` provides dependency injection. Instantiated during `on_restart`/`on_reindex` hooks, attached to `ctx.container`. Holds TicketService, RollupMessageIndex, OutboxMessageService, protocol constants, and datasource references.
+`handlers/ticket.py`: `ticket_hash` is `uint256(Web3.keccak(abi_encode(bytes22 forged ticketer,
+bytes forged ticket content)))`, matching the on-chain value. `TicketService` registers the native
+ticket (creating both L2 XTZ tokens) and the whitelisted FA tickets; `sql/on_reindex/00_xtz_asset.sql`
+seeds the `xtz` `tezos_token` row the native registration depends on.
 
-### Lifecycle Hooks (`./hooks/`)
+`handlers/service_container.py`: dependency injection. Built in `on_reindex` / `on_restart`,
+attached as `DipDupContext.container`, read via `get_container(ctx)`. Note that the protocol
+constants it carries are fetched from the Tezos node at startup, not hardcoded.
 
-- `on_reindex`: Runs seed SQL, registers ServiceContainer, registers native + FA tickets
-- `on_restart`: Registers ServiceContainer, syncs RollupMessageIndex, sets all matcher locks
-- `on_synchronized`: Sets all matcher locks for full re-matching
-- `on_index_rollback`: Executes rollback SQL + DipDup built-in rollback
+`handlers/dipdup_patches.py`: applied from `on_restart`, before datasources start. Currently one
+patch — `EvmNodeDatasource._handle_subscription` enqueues each head `LevelData` at most once. With
+`ws_url` set, an `evm.events` index and an `evm.transactions` index open two `newHeads`
+subscriptions on one connection, the node announces every head twice, and `_emitter_loop`'s
+`del self._level_data[...]` raises `KeyError` and kills the process on the first realtime block.
+The patch **matches the installed source byte-for-byte** and raises if upstream changed it — a
+deliberate fail-loud. Upstream: dipdup-io/dipdup#1328 (unmerged, absent from 8.6.1). Removal gate:
+`tests/unit/datasource/test_evm_node_duplicate_head.py` must pass with the patch gone.
 
-### Models
+Worth knowing when reading indexer state: with `ws_url` set, an `evm.events` index writes its
+`dipdup_index` row only when a matching log arrives, so its `level` / `updated_at` stop tracking
+the head. Read liveness from `dipdup_head[etherlink_node]` or from the `evm.transactions` index.
 
-All models in `./models/__init__.py`, enums in `./models/enum.py`. Key tables: `tezos_token`, `tezos_ticket`, `etherlink_token`, `l2_account`, `l1_deposit`, `l2_deposit`, `l1_withdrawal`, `l2_withdrawal`, `bridge_operation`, `bridge_deposit`, `bridge_withdrawal`, `rollup_inbox_message`, `rollup_outbox_message`. The L2 legs (`l2_deposit`/`l2_withdrawal`/`bridge_operation`) FK to `l2_account` and carry a `runtime_kind` discriminator. Alias-related enums: `OriginKind` (unknown/native/alias) and `RuntimeKind` (evm/michelson).
+### Models, hooks, generated types
 
-### Output Proof Decoder
+Models live in `models/__init__.py`, enums in `models/enum.py`.
 
-`./types/output_proof/` implements custom binary schema-based unpacking for rollup output proofs (Micheline expressions, inode trees, tree encodings).
+Lifecycle hooks are in `hooks/`. The one thing to know before editing them: raw SQL lives in
+`sql/<hook>/` and must stay portable, because the sqlite test stand runs the same seed.
 
-### Ticket Hashing
+`types/` is DipDup-generated from `abi/` and TzKT (`make init`), except `types/output_proof/`, a
+hand-written binary-schema decoder for rollup output proofs (Micheline expressions, inode trees,
+tree encodings) used to recover `(outbox_level, message_index)` from an execution's `output_proof`.
 
-Uses `Web3.keccak()` of ABI-encoded ticketer address + Micheline-forged ticket content to produce uint256 hashes matching on-chain `ticket_hash` values. See `./handlers/ticket.py`.
+`hasura/*.json` are extra Hasura metadata batches (relationships DipDup cannot derive).
 
-## Infrastructure
+## Testing
 
-- **Database:** PostgreSQL 17 (via docker-compose)
-- **GraphQL:** Hasura (port 49180 default, `camel_case: false`)
-- **Datasources:** TzKT, Tezos node, Etherlink EVM node (rate-limited 900 req/min), Etherlink Subsquid archive, rollup node RPC
-- **CI:** GitHub Actions builds and pushes Docker image to GHCR on branch push/tag
+Four suites with different contracts — `tests/CLAUDE.md` is the authority; read it before adding a
+test.
+
+- `tests/unit/` — the pytest suite (`make test`). **CI does not run it.** The only automated gate
+  on a push is the docker smoke test; the unit suite runs by hand, via `make test` or as part of
+  `make prod-check`. Decoders, rollup/commitment math, type
+  round-trips, and the matcher harness (`matcher/`: real models and real matcher steps over
+  in-memory sqlite). `make test-pg` runs the same suite on Postgres: sqlite and Postgres disagree
+  on NULL ordering, and the matcher's tie-breaks follow query order, so a rewrite can pass on one
+  and fail the other. Note that `pyproject.toml` sets `testpaths = ["tests"]` while `make test`
+  targets `tests/unit` — a bare `pytest` collects perf and stand modules that `make test` does not.
+- `tests/e2e/` — the shippability gate (`make prod-check`, `make docker-test`). `smoke.env` holds
+  dummy/public values only.
+- `tests/perf/` — matcher cost instruments, not a gate. The seeded backlog is a fixed point where
+  nothing matches, so a patch that stopped matching entirely would score *well*; always run the
+  unit matcher tests alongside. Postgres only, never two benchmarks at once.
+- `tests/stand/` — manual, block-bounded, secret-free repro harness against real testnet data into
+  a throwaway sqlite. Each case is `cases/<name>/` = `config.yaml` + `window.env` + `verify.py` +
+  `README.md`, and `<name>` must be a valid Python identifier. Case configs are **standalone
+  copies, not overlays** — a fix to a prod config has to be mirrored by hand into every affected
+  case. Bound the rollup backfill with `ROLLUP_SYNC_FIRST/LAST_LEVEL`: it starts from origination
+  and ignores the index's `last_level`.
+
+## Shipping changes
+
+- **PRs land as merge commits — never squashed.** The commit sequence is part of what a PR delivers
+  here (a harness that goes red, then the fix that turns it green), and a squash throws it away.
+  Master having single-parent commits is history, not the convention.
+- **Every push publishes an image; only `master` arms a deploy.**
+  `.github/workflows/build.yml` runs on pushes to `master` and on pull requests against it, and
+  the publish step is unconditional — a PR build lands in GHCR as `pr-<N>`, a master push as
+  `master`. Tags are in the metadata but are not a trigger. Publishing by itself deploys nothing:
+  the consequence lives in the deployment compose, which resolves `${TAG:-master}`, so a stack on
+  the default tag picks up whatever `master` last published the next time its task is recreated —
+  a host drain, a node reboot, any Swarm reschedule, no operator involved. Every publish is gated
+  on the hermetic docker smoke test first.
+- **Any change to `models/` costs a full reindex.** `advanced.reindex.schema_modified: exception`
+  makes DipDup refuse to start against a database whose schema hash no longer matches, so a new
+  field is not a deploy — it is a wipe and a rebuild. Measured on mainnet from scratch: **3 d 11 h**
+  end-to-end, of which the first 5 h 20 m is the rollup inbox backfill inside `on_restart`, before
+  `dipdup_index` has any rows at all. Prefer `dipdup_meta` for state that does not need to be
+  queryable.
+
+## Code style
+
+Line length 140; single quotes (Black `skip-string-normalization`); ruff isort with
+`force-single-line`; ruff extends `B, C4, FA, G, I, PTH, Q, RET, RUF, TCH, UP`; target py312.
+
+Comments here explain *why* a shape is load-bearing — merge semantics, ordering contracts, kernel
+invariants. When changing such code, update the reasoning rather than deleting it.
