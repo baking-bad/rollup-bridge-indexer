@@ -1,0 +1,470 @@
+<title>Where the Outbox Levels Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+
+<style>
+  :root {
+    --ground:      #E9EDF1;
+    --surface:     #FDFEFF;
+    --surface-2:   #F1F4F7;
+    --line:        #C9D3DC;
+    --line-soft:   #DDE4EA;
+    --ink:         #141A21;
+    --ink-2:       #3C4854;
+    --muted:       #66737F;
+
+    --durable:     #23507F;
+    --durable-bg:  #DDE7F2;
+    --volatile:    #9A5B0B;
+    --volatile-bg: #F6E7D2;
+    --defect:      #9C332C;
+    --defect-bg:   #F5DFDC;
+
+    --measure: 68ch;
+    --radius: 3px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #10151B;
+      --surface:     #171E26;
+      --surface-2:   #1D2630;
+      --line:        #33404D;
+      --line-soft:   #262F3A;
+      --ink:         #E6ECF2;
+      --ink-2:       #BAC6D2;
+      --muted:       #8695A3;
+
+      --durable:     #86B3E8;
+      --durable-bg:  #1B2B3E;
+      --volatile:    #E0A857;
+      --volatile-bg: #33260F;
+      --defect:      #E8908A;
+      --defect-bg:   #381F1D;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground:      #10151B;
+    --surface:     #171E26;
+    --surface-2:   #1D2630;
+    --line:        #33404D;
+    --line-soft:   #262F3A;
+    --ink:         #E6ECF2;
+    --ink-2:       #BAC6D2;
+    --muted:       #8695A3;
+
+    --durable:     #86B3E8;
+    --durable-bg:  #1B2B3E;
+    --volatile:    #E0A857;
+    --volatile-bg: #33260F;
+    --defect:      #E8908A;
+    --defect-bg:   #381F1D;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 400 16px/1.65 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: clamp(32px, 6vw, 72px) clamp(18px, 4vw, 40px) 96px;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(40px, 6vw, 64px);
+  }
+
+  .prose { max-width: var(--measure); display: flex; flex-direction: column; gap: 14px; }
+  .prose p { margin: 0; color: var(--ink-2); }
+
+  h1, h2, h3 { font-family: "IBM Plex Serif", ui-serif, Georgia, serif; margin: 0; text-wrap: balance; }
+  h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 600; letter-spacing: -0.015em; line-height: 1.12; }
+  h2 { font-size: clamp(21px, 3vw, 27px); font-weight: 600; letter-spacing: -0.01em; }
+  h3 { font-size: 17px; font-weight: 600; }
+
+  .eyebrow {
+    font: 500 11px/1 "IBM Plex Mono", ui-monospace, monospace;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .lede { font-size: clamp(17px, 2.2vw, 19px); color: var(--ink-2); }
+
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace; }
+  code {
+    font-size: 0.9em;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    padding: 0.06em 0.34em;
+  }
+
+  section { display: flex; flex-direction: column; gap: 22px; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 0; }
+
+  /* --- the pass --- */
+  .passframe { overflow-x: auto; padding-bottom: 6px; }
+  .pass {
+    min-width: 1160px;
+    display: grid;
+    grid-template-columns: 116px repeat(6, 1fr);
+    gap: 1px;
+    background: var(--line-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .pass > * { background: var(--surface); padding: 11px 12px; }
+
+  .lanehead {
+    font: 500 10px/1.3 "IBM Plex Mono", ui-monospace, monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    background: var(--surface-2);
+  }
+  .stephead { background: var(--surface-2); }
+  .stephead .n {
+    font: 600 10px/1 "IBM Plex Mono", ui-monospace, monospace;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+  .stephead .fn {
+    display: block;
+    margin-top: 5px;
+    font: 500 11px/1.4 "IBM Plex Mono", ui-monospace, monospace;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+
+  .cell { font-size: 12.5px; line-height: 1.45; color: var(--ink-2); min-height: 74px; }
+  .cell .mono { font-size: 11.5px; }
+  .cell.empty { color: var(--muted); }
+
+  .lane-mem { border-left: 2px solid var(--volatile); }
+  .lane-db  { border-left: 2px solid var(--durable); }
+
+  .tag {
+    display: inline-block;
+    font: 500 10px/1.5 "IBM Plex Mono", ui-monospace, monospace;
+    letter-spacing: 0.06em;
+    padding: 1px 6px;
+    border-radius: 2px;
+    margin-bottom: 5px;
+  }
+  .tag.write { background: var(--durable-bg); color: var(--durable); }
+  .tag.hold  { background: var(--volatile-bg); color: var(--volatile); }
+  .tag.net   { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line-soft); }
+
+  .cost {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--ink-2);
+    background: var(--surface-2);
+  }
+  .cost b { color: var(--ink); font-weight: 600; }
+
+  /* --- state table --- */
+  .tableframe { overflow-x: auto; }
+  /* `color` is explicit here on purpose: opened as a local file there is no doctype, and in
+     quirks mode a table does not inherit colour from its ancestors. */
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13.5px; color: var(--ink-2); }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th {
+    font: 500 10px/1.3 "IBM Plex Mono", ui-monospace, monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--line);
+  }
+  td:first-child { white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .where { font: 500 11px/1.5 "IBM Plex Mono", ui-monospace, monospace; }
+  .where.vol { color: var(--volatile); }
+  .where.dur { color: var(--durable); }
+
+  /* --- defects --- */
+  .defects { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .defect {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--defect);
+    border-radius: var(--radius);
+    padding: 18px 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .defect .at {
+    font: 500 10px/1 "IBM Plex Mono", ui-monospace, monospace;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--defect);
+  }
+  .defect p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--ink-2); }
+  .defect .fix {
+    font: 400 12px/1.6 "IBM Plex Mono", ui-monospace, monospace;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    padding: 9px 11px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .fix .del { color: var(--defect); }
+  .fix .add { color: var(--durable); }
+
+  .rule {
+    border-left: 2px solid var(--durable);
+    background: var(--surface);
+    padding: 16px 20px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    max-width: var(--measure);
+  }
+  .rule p { margin: 0; color: var(--ink); }
+
+  ul { margin: 0; padding-left: 20px; color: var(--ink-2); display: flex; flex-direction: column; gap: 8px; max-width: var(--measure); }
+  li::marker { color: var(--muted); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  footer { color: var(--muted); font-size: 12.5px; max-width: var(--measure); }
+  a { color: var(--durable); }
+</style>
+
+<div class="wrap">
+
+  <header class="prose">
+    <div class="eyebrow">handlers/rollup_message.py</div>
+    <h1>Where the outbox levels live</h1>
+    <p class="lede">One index walks two chains that answer separately. What it has learned from the
+    first and not yet done about the second is the only state a crash can silently destroy — and for
+    a long time that state existed in exactly one place: process memory.</p>
+  </header>
+
+  <hr>
+
+  <section>
+    <div class="prose">
+      <h2>Two sources, one cursor</h2>
+      <p>TzKT serves the <b>inbox</b> — the L1 messages addressed to the rollup. The rollup node
+      serves the <b>outbox</b> — the messages coming back out, one request per L1 level. Nothing
+      connects them but this index.</p>
+      <p>Walking the inbox is what discovers outbox work: every <code>external</code> message means
+      its level has outbox messages to fetch. So a pass always runs in that order — learn from TzKT,
+      then ask the node. And the resume cursor is not stored anywhere of its own; it is
+      <i>derived</i> from the inbox rows already committed, as <code>max(id)</code>.</p>
+      <p>That is the whole shape of the problem. Committing an inbox row advances the cursor past
+      the message that taught us about an outbox level. If the level has not been fetched by then,
+      nothing will ever ask again — and nothing reports it. The index says <code>realtime</code>,
+      <code>dipdup_head</code> sits at the chain head, and the row is simply absent.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="prose">
+      <h2>One pass</h2>
+      <p>Six steps. The two lanes are what is only in memory and what has reached the database; the
+      bottom row is what a process death at that moment costs.</p>
+    </div>
+
+    <div class="legend">
+      <span><i class="swatch" style="background: var(--volatile)"></i> volatile — gone on exit</span>
+      <span><i class="swatch" style="background: var(--durable)"></i> committed — survives</span>
+    </div>
+
+    <div class="passframe">
+      <div class="pass">
+        <div class="lanehead"></div>
+        <div class="stephead"><span class="n">01</span><span class="fn">_drain_outbox_levels</span></div>
+        <div class="stephead"><span class="n">02</span><span class="fn">_fetch_inbox_page</span></div>
+        <div class="stephead"><span class="n">03</span><span class="fn">_walk_inbox_page</span></div>
+        <div class="stephead"><span class="n">04</span><span class="fn">_commit_inbox_page</span></div>
+        <div class="stephead"><span class="n">05</span><span class="fn">_drain_outbox_levels</span></div>
+        <div class="stephead"><span class="n">06</span><span class="fn">_write_cursor_sentinel</span></div>
+
+        <div class="lanehead">In memory</div>
+        <div class="cell lane-mem"><span class="tag hold">holds</span><div>levels restored from the last run, drained lowest first</div></div>
+        <div class="cell lane-mem"><span class="tag net">network</span><div class="mono">id.gt=&lt;cursor&gt;<br>limit=10000</div></div>
+        <div class="cell lane-mem"><span class="tag hold">fills</span><div>externals → the level queue<br>transfers → the row batch</div></div>
+        <div class="cell lane-mem empty">batch drains into the write below</div>
+        <div class="cell lane-mem"><span class="tag net">network</span><div>one request per level, up to the node's applied level</div></div>
+        <div class="cell lane-mem empty">—</div>
+
+        <div class="lanehead">In the database</div>
+        <div class="cell lane-db"><span class="tag write">writes</span><div>outbox rows, then the shrunken queue</div></div>
+        <div class="cell lane-db empty">—</div>
+        <div class="cell lane-db empty">nothing — the walk touches no table</div>
+        <div class="cell lane-db"><span class="tag write">writes</span><div><b>the queue first</b>, then the inbox rows that move the cursor</div></div>
+        <div class="cell lane-db"><span class="tag write">writes</span><div>outbox rows, <b>then</b> the shrunken queue</div></div>
+        <div class="cell lane-db"><span class="tag write">writes</span><div>a level-0 row carrying the cursor id, when no real row does</div></div>
+
+        <div class="lanehead">Death here costs</div>
+        <div class="cost">one re-fetch — every level is still owed</div>
+        <div class="cost">nothing</div>
+        <div class="cost">nothing — <b>the page replays</b></div>
+        <div class="cost">the page replays, or the levels are owed in writing</div>
+        <div class="cost">one re-fetch of the levels not yet committed</div>
+        <div class="cost">the cursor is re-derived from the rows</div>
+      </div>
+    </div>
+
+    <div class="rule">
+      <p>The queue is written <b>before</b> the rows that move the cursor past the externals that
+      filled it, and cleared <b>after</b> the rows it produced are committed. Between those two
+      points a crash costs a re-fetch and never a message.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="prose">
+      <h2>What survives, and how</h2>
+      <p>Durability here is not one property but four different answers, and the defects all lived in
+      the gap between them.</p>
+    </div>
+
+    <div class="tableframe">
+      <table>
+        <thead>
+          <tr><th>State</th><th>Lives in</th><th>Recovered from</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>_inbox_id_cursor</code></td>
+            <td class="where dur">rows, indirectly</td>
+            <td><code>max(RollupInboxMessage.id)</code> — the rows are the record, the field is a copy</td>
+          </tr>
+          <tr>
+            <td><code>_outbox_level_queue</code></td>
+            <td class="where dur">dipdup_meta</td>
+            <td>one row, a sorted JSON array of levels. Outside the package schema, so storing it
+            costs no schema hash change and no reindex</td>
+          </tr>
+          <tr>
+            <td><code>_create_inbox_batch</code></td>
+            <td class="where vol">memory only</td>
+            <td>re-walking the page — the cursor has not moved yet</td>
+          </tr>
+          <tr>
+            <td><code>_create_outbox_batch</code></td>
+            <td class="where vol">memory only</td>
+            <td>re-draining the levels — they are still in the queue until their rows land</td>
+          </tr>
+          <tr>
+            <td>the level-0 sentinel row</td>
+            <td class="where dur">rows</td>
+            <td>carries the cursor when no real message has that id, so an empty window still
+            records progress</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="prose">
+      <h2>Three ways the picture was wrong</h2>
+      <p>Each one loses messages permanently and reports nothing. They sit at different points of
+      the same pass.</p>
+    </div>
+
+    <div class="defects">
+
+      <article class="defect">
+        <div class="at">at step 04 → 05</div>
+        <h3>The queue had nowhere to live</h3>
+        <p>The rows were committed first and the levels drained afterwards. A drain that died came
+        back with its cursor above the externals it had never served.</p>
+        <p>On 2026-08-20 a node stopped applying blocks while still answering RPC. <b>20 outbox
+        messages present on the node were absent from the database</b>, and their withdrawals could
+        not match. The level that failed was one of them; the rest had already been fetched into a
+        batch that was never flushed.</p>
+        <div class="fix"><span class="del">-  rows  →  drain</span>
+<span class="add">+  queue →  rows  →  drain →  queue</span></div>
+      </article>
+
+      <article class="defect">
+        <div class="at">at step 05</div>
+        <h3>The ceiling was the wrong chain</h3>
+        <p>The drain refused levels above the <b>L1 head</b> — but the request goes to the rollup
+        node, which applies L1 blocks on its own schedule and can lag arbitrarily while still
+        answering RPC. That is the fault itself.</p>
+        <p>The node's own <code>global/block/head/level</code> is exact: that level answers 200, the
+        next answers 500 <code>kind: temporary</code>. A level above it is now deferred and stays
+        owed, like a level the chain has not produced.</p>
+        <div class="fix"><span class="del">-  min(queue) &lt;= _realtime_head_level</span>
+<span class="add">+  min(queue) &lt;= node applied level</span></div>
+      </article>
+
+      <article class="defect">
+        <div class="at">at step 02</div>
+        <h3>One message skipped per restart</h3>
+        <p>The fetch filters <code>id.gt=</code>, so the cursor means <i>the last id consumed</i> —
+        which is what the in-run advance stored. Both places that derived it from persisted state
+        stored the <i>next id wanted</i> instead.</p>
+        <p>The message on that boundary was requested by neither run. Raw TzKT ids are contiguous, so
+        a restart mid-page lands on a real message in <b>88%</b> of cursor positions; a fresh
+        database lost the first message of its window every time.</p>
+        <div class="fix"><span class="del">-  cursor = 1 + max(id)</span>
+<span class="add">+  cursor = max(id)</span></div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="prose">
+      <h2>Why not one transaction</h2>
+      <p>The alternative is to commit the inbox rows and the outbox rows atomically and let the queue
+      stay a local variable. It does not pay here.</p>
+      <p>On the realtime path the writes are <i>already</i> atomic — the head index opens the
+      transaction around the handler, and the handler deliberately does not
+      (<span class="mono">"Handlers are not atomic, levels are"</span>). The only path that would
+      gain is the backfill, where system hooks run with <code>atomic=False</code> — and that is where
+      page-atomicity is unaffordable: one 10 000-message page spans <b>~1100 distinct L1 levels</b>,
+      so ~1100 sequential node requests would all have to succeed before anything commits, across
+      ~5 500 pages on mainnet.</p>
+      <p>That trades a data-loss bug for a liveness failure in the one operation that repairs data
+      loss — the reindex.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="prose">
+      <h2>Still not covered</h2>
+    </div>
+    <ul>
+      <li>The <code>dipdup_meta</code> write is untested against Postgres; the stand case and the unit
+      tests both run on sqlite.</li>
+      <li>A reorg rollback cannot revert the stored queue — <code>Meta</code> is a plain Tortoise
+      model and produces no <code>dipdup_model_update</code> rows. The cost is re-fetches, which the
+      outbox <code>ignore_conflicts</code> absorbs.</li>
+      <li>A reorg also leaves the in-memory cursors above reverted rows. That predates all of this
+      and is not addressed; the fix is to re-derive them in <code>on_index_rollback</code>.</li>
+      <li>That a <i>stopped</i> node reports its frozen applied level rather than an advancing one
+      follows from what the endpoint means, and was verified as an exact boundary on a healthy node —
+      but never observed on a broken one.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Verified by <span class="mono">tests/stand/cases/outbox_fetch_failure/</span> — six arms over a
+    real previewnet window against a fault-injecting proxy, exit contract 0 GREEN / 1 RED / 2 VOID —
+    and by the unit tests in <span class="mono">tests/unit/rollup/</span> for what a block-bounded
+    case cannot reach.
+  </footer>
+
+</div>

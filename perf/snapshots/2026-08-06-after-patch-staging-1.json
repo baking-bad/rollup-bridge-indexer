@@ -1,0 +1,134 @@
+{
+ "taken_at": "2026-08-06T18:53:06Z",
+ "window_min": 5.04,
+ "url": "https://etherlink-bridge-mainnet-staging.dipdup.net/v1/graphql",
+ "indexes": {
+  "etherlink_deposit_events": {
+   "level": 50403482,
+   "status": "realtime",
+   "per_min": 0.0
+  },
+  "etherlink_token_balance_update_events": {
+   "level": 21513470,
+   "status": "syncing",
+   "per_min": 5178.43114991146
+  },
+  "etherlink_withdrawal_events": {
+   "level": 38585447,
+   "status": "syncing",
+   "per_min": 211718.9977400096
+  },
+  "etherlink_xtz_deposit_transactions": {
+   "level": 31439096,
+   "status": "syncing",
+   "per_min": 243463.4533671137
+  },
+  "tezos_claim_fast_withdrawal_operations": {
+   "level": 12170949,
+   "status": "syncing",
+   "per_min": 37401.89711521099
+  },
+  "tezos_deposit_operations": {
+   "level": 10100224,
+   "status": "syncing",
+   "per_min": 9608.185412494264
+  },
+  "tezos_head": {
+   "level": 14387512,
+   "status": "realtime",
+   "per_min": 0.0
+  },
+  "tezos_rollup_cement": {
+   "level": 14387512,
+   "status": "realtime",
+   "per_min": 0.0
+  },
+  "tezos_withdrawal_operations": {
+   "level": 14387512,
+   "status": "realtime",
+   "per_min": 0.0
+  }
+ },
+ "rows": {
+  "l1d": {
+   "count": 16443,
+   "per_min": 69.05368587075863
+  },
+  "l2d": {
+   "count": 21047,
+   "per_min": 130.56702673264132
+  },
+  "l1w": {
+   "count": 49559,
+   "per_min": 137.71051147789223
+  },
+  "l2w": {
+   "count": 20766,
+   "per_min": 137.5120813460797
+  },
+  "bd": {
+   "count": 16443,
+   "per_min": 69.05368587075863
+  },
+  "bw": {
+   "count": 40439,
+   "per_min": 268.07910807872105
+  },
+  "bo": {
+   "count": 56882,
+   "per_min": 337.13279394947966
+  },
+  "la": {
+   "count": 3701,
+   "per_min": 3.968602636250496
+  },
+  "inbox": {
+   "count": 37290,
+   "per_min": 0.0
+  },
+  "outbox": {
+   "count": 51013,
+   "per_min": 137.71051147789223
+  }
+ },
+ "pools_start": {
+  "outer_tezos_withdrawals": 9144,
+  "outer_claimed_fast": 1056,
+  "outer_xtz_deposits": 3913,
+  "outer_etherlink_deposits": 399,
+  "outer_michelson_deposits": 0,
+  "outer_etherlink_withdrawals": 0,
+  "outer_tezos_deposits": 0,
+  "outer_inbox": 0,
+  "outer_outbox": 0,
+  "inner_bridge_withdrawals": 425,
+  "inner_bridge_deposits": 17
+ },
+ "pools_end": {
+  "outer_tezos_withdrawals": 9144,
+  "outer_claimed_fast": 1092,
+  "outer_xtz_deposits": 4235,
+  "outer_etherlink_deposits": 387,
+  "outer_michelson_deposits": 0,
+  "outer_etherlink_withdrawals": 0,
+  "outer_tezos_deposits": 0,
+  "outer_inbox": 0,
+  "outer_outbox": 0,
+  "inner_bridge_withdrawals": 1118,
+  "inner_bridge_deposits": 17
+ },
+ "derived": {
+  "aggregate_levels_per_min": 507371,
+  "rows_per_min": 812.0,
+  "outer_pool_total": 14858,
+  "inner_pool_total": 1135,
+  "throughput_per_backlog_row": 0.054649,
+  "pool_shares": {
+   "xtz_deposits": 0.285,
+   "tezos_withdrawals": 0.615,
+   "etherlink_deposits": 0.026,
+   "claimed_fast": 0.073
+  },
+  "inversion_factor": 13.1
+ }
+}

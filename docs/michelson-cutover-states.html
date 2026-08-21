@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Переход на L2 Michelson</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --bg:#EFF3F3; --surface:#FFFFFF; --surface-2:#F5F8F8;
+  --ink:#101C1B; --ink-2:#33443F; --muted:#546563; --line:#CFDAD8; --line-soft:#E2EAE9;
+  --accent:#0E6660; --accent-soft:#DCEBE9;
+  --ok:#256446; --ok-soft:#DAECE1;
+  --active:#7C5008; --active-soft:#F6E7C8;
+  --blocked:#8F2C1F; --blocked-soft:#F6DAD4;
+  --idle:#7A8B89; --idle-soft:#E7EDEC;
+  --shadow:0 1px 2px rgba(16,28,27,.06), 0 8px 24px -18px rgba(16,28,27,.30);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0C1413; --surface:#141F1E; --surface-2:#101A19;
+    --ink:#E4EDEB; --ink-2:#BCCBC8; --muted:#8FA19E; --line:#25332F; --line-soft:#1C2827;
+    --accent:#54B8AC; --accent-soft:#12302D;
+    --ok:#6FBF90; --ok-soft:#12281D;
+    --active:#D9A441; --active-soft:#2A2011;
+    --blocked:#E08272; --blocked-soft:#2C1512;
+    --idle:#7C8E8B; --idle-soft:#1A2423;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0C1413; --surface:#141F1E; --surface-2:#101A19;
+  --ink:#E4EDEB; --ink-2:#BCCBC8; --muted:#8FA19E; --line:#25332F; --line-soft:#1C2827;
+  --accent:#54B8AC; --accent-soft:#12302D;
+  --ok:#6FBF90; --ok-soft:#12281D;
+  --active:#D9A441; --active-soft:#2A2011;
+  --blocked:#E08272; --blocked-soft:#2C1512;
+  --idle:#7C8E8B; --idle-soft:#1A2423;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px; margin:0 auto; padding:40px 24px 80px}
+h1,h2,h3{font-family:Archivo,"Arial Narrow",system-ui,sans-serif; text-wrap:balance; margin:0}
+a{color:var(--accent)}
+a:focus-visible, button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+/* ---------- masthead ---------- */
+.mast{display:flex; flex-wrap:wrap; gap:20px 32px; align-items:flex-end; justify-content:space-between;
+  padding-bottom:22px; border-bottom:2px solid var(--ink); margin-bottom:24px}
+.kicker{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--accent); font-weight:600; margin-bottom:8px}
+h1{font-size:clamp(28px,4.2vw,42px); font-weight:700; letter-spacing:-.02em; line-height:1.05}
+.sub{color:var(--ink-2); max-width:60ch; margin:10px 0 0; font-size:14.5px}
+.clock{text-align:right; flex:0 0 auto}
+.clock .lbl{font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); font-weight:600; display:block}
+.clock .val{font-family:"IBM Plex Mono",monospace; font-size:21px; font-weight:600; display:block; margin:3px 0 2px;
+  font-variant-numeric:tabular-nums}
+
+/* ---------- fact cards ---------- */
+.facts{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-bottom:30px}
+.fact{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:13px 15px}
+.fact dt{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600; margin:0}
+.fact dd{margin:6px 0 0; font-family:"IBM Plex Mono",monospace; font-size:17px; font-weight:500; font-variant-numeric:tabular-nums}
+.fact .note{display:block; font-family:"IBM Plex Sans",sans-serif; font-size:12px; color:var(--muted);
+  font-weight:400; margin-top:5px; line-height:1.45}
+.pill{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase; padding:2px 8px; border-radius:999px;
+  background:var(--blocked-soft); color:var(--blocked); margin-top:6px}
+.pill[data-ok]{background:var(--ok-soft); color:var(--ok)}
+
+/* ---------- controls ---------- */
+.bar{display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; margin-bottom:20px}
+.legend{display:flex; flex-wrap:wrap; gap:6px}
+.chip{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:500;
+  padding:4px 10px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--ink-2)}
+.dot{width:8px; height:8px; border-radius:50%; background:var(--idle)}
+.chip[data-k="done"] .dot{background:var(--ok)} .chip[data-k="active"] .dot{background:var(--active)}
+.chip[data-k="blocked"] .dot{background:var(--blocked)}
+.hint{color:var(--muted); font-size:13px}
+button.reset{font:inherit; font-size:13px; padding:5px 12px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--line); background:var(--surface); color:var(--ink-2); margin-left:auto}
+button.reset:hover{border-color:var(--blocked); color:var(--blocked)}
+
+/* ---------- lanes ---------- */
+.lanes{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+@media (max-width:820px){ .lanes{grid-template-columns:1fr} }
+.lane-head{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px;
+  padding:0 0 9px; border-bottom:1px solid var(--line); margin-bottom:12px}
+.lane-head h2{font-size:17px; font-weight:700; letter-spacing:-.01em}
+.lane-head .path{font-size:12.5px; color:var(--ink-2)}
+.lane-head .host{margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--muted)}
+.track{display:flex; flex-direction:column; gap:10px}
+
+.state{display:grid; grid-template-columns:auto 1fr; gap:0 13px; width:100%; text-align:left;
+  font:inherit; color:inherit; cursor:pointer; background:var(--surface);
+  border:1px solid var(--line); border-left:4px solid var(--idle); border-radius:10px;
+  padding:13px 15px; box-shadow:var(--shadow); transition:border-color .12s, background .12s}
+.state:hover{border-color:var(--accent)}
+.state .id{font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600; color:var(--muted);
+  background:var(--idle-soft); border-radius:6px; padding:2px 7px; align-self:start; margin-top:1px}
+.state .title{font-family:Archivo,sans-serif; font-weight:600; font-size:15.5px; letter-spacing:-.005em; display:block}
+.state .body{grid-column:2}
+.state dl{margin:8px 0 0; display:grid; grid-template-columns:auto 1fr; gap:5px 10px; font-size:13px}
+.state dt{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:600; padding-top:2px}
+.state dd{margin:0; color:var(--ink-2)}
+code{font-family:"IBM Plex Mono",monospace; font-size:12.5px; background:var(--surface-2);
+  border:1px solid var(--line-soft); border-radius:4px; padding:0 4px}
+
+.state[data-k="done"]{border-left-color:var(--ok); background:var(--ok-soft)}
+.state[data-k="done"] .id{background:var(--surface); color:var(--ok)}
+.state[data-k="active"]{border-left-color:var(--active); background:var(--active-soft)}
+.state[data-k="active"] .id{background:var(--surface); color:var(--active)}
+.state[data-k="blocked"]{border-left-color:var(--blocked); background:var(--blocked-soft)}
+.state[data-k="blocked"] .id{background:var(--surface); color:var(--blocked)}
+
+/* ---------- shared gate ---------- */
+.gate{margin:18px 0; border:1px solid var(--line); border-top:3px solid var(--active);
+  border-radius:10px; background:var(--surface); box-shadow:var(--shadow);
+  display:grid; grid-template-columns:auto 1fr; gap:0 13px; width:100%; text-align:left;
+  font:inherit; color:inherit; cursor:pointer; padding:15px 17px; transition:border-color .12s, background .12s}
+.gate:hover{border-color:var(--accent)}
+.gate[data-k="done"]{background:var(--ok-soft); border-top-color:var(--ok)}
+.gate[data-k="active"]{background:var(--active-soft)}
+.gate[data-k="blocked"]{background:var(--blocked-soft); border-top-color:var(--blocked)}
+.gate .id{font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600; color:var(--active);
+  background:var(--surface); border:1px solid var(--line); border-radius:6px; padding:2px 7px; align-self:start; margin-top:2px}
+.gate h2{font-family:Archivo,sans-serif; font-size:17px; font-weight:700}
+.gate .who{font-size:12.5px; color:var(--muted); margin-top:2px}
+.gate ul{margin:9px 0 0; padding-left:18px; font-size:13.5px; color:var(--ink-2)}
+.gate li{margin-bottom:3px}
+
+/* ---------- convergence ---------- */
+.merge{margin-top:20px; padding:16px 20px; border-radius:10px;
+  background:var(--accent); color:#FFFFFF; display:flex; flex-wrap:wrap; gap:4px 14px; align-items:baseline}
+:root[data-theme="dark"] .merge{color:#06201D}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .merge{color:#06201D} }
+.merge h2{font-family:Archivo,sans-serif; font-size:17px; font-weight:700; color:inherit}
+.merge p{margin:0; font-size:13.5px; opacity:.92}
+
+/* ---------- sections ---------- */
+section{margin-top:42px}
+.sec-head{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; margin-bottom:15px}
+.sec-head h2{font-size:20px; font-weight:700; letter-spacing:-.01em}
+.sec-head .tag{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--muted); font-weight:600}
+.rule{flex:1 1 40px; height:1px; background:var(--line)}
+
+.rails{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px}
+.rail{background:var(--surface); border:1px solid var(--line); border-top:3px solid var(--blocked);
+  border-radius:10px; padding:15px 17px}
+.rail h3{font-family:Archivo,sans-serif; font-size:15px; font-weight:600; margin-bottom:6px}
+.rail p{margin:0; font-size:13.5px; color:var(--ink-2)}
+.rail .sig{display:block; margin-top:9px; padding-top:9px; border-top:1px dashed var(--line);
+  font-size:12.5px; color:var(--muted)}
+
+.checks{border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--surface)}
+.check{display:grid; grid-template-columns:auto 1fr auto; gap:6px 12px; align-items:baseline;
+  padding:12px 16px; border-bottom:1px solid var(--line-soft); font-size:13.5px}
+.check:last-child{border-bottom:0}
+.check .n{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted); font-weight:600}
+.check .verdict{font-size:12px; color:var(--muted); white-space:nowrap; font-style:italic}
+.check .verdict[data-v="ok"]{color:var(--ok); font-style:normal}
+@media (max-width:600px){ .check{grid-template-columns:auto 1fr} .check .verdict{grid-column:2} }
+
+.fork{background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--accent);
+  border-radius:10px; padding:16px 18px}
+.fork h3{font-family:Archivo,sans-serif; font-size:15px; font-weight:600; margin-bottom:8px}
+.fork p{margin:0 0 9px; font-size:13.5px; color:var(--ink-2)}
+.fork p:last-child{margin-bottom:0}
+.fork .opt{font-weight:600; color:var(--ink)}
+
+footer{margin-top:50px; padding-top:16px; border-top:1px solid var(--line);
+  font-size:12.5px; color:var(--muted); display:flex; flex-wrap:wrap; gap:6px 18px}
+
+@media (prefers-reduced-motion:reduce){ *{transition:none !important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <div>
+      <div class="kicker">Etherlink Bridge Indexer · L2 Michelson</div>
+      <h1>Карта состояний перехода</h1>
+      <p class="sub">Два стека идут разными путями через один и тот же внешний шлюз: стейджинг останавливается до перехода, мейннет живёт насквозь и потом откатывается. Финал у каждого свой — стейджинг доказывает, что депозит сшивается, мейннет доказывает, что индексация едет.</p>
+    </div>
+    <div class="clock">
+      <span class="lbl">Активация ядра · прошла</span>
+      <span class="val">2026-08-21 06:45:46 UTC</span>
+      <span class="lbl">09:45:46 МСК</span>
+    </div>
+  </header>
+
+  <dl class="facts">
+    <div class="fact">
+      <dt>Нулевой стейт · L1</dt>
+      <dd>14 592 223<span class="note">TzKT, 02:04 UTC. Данные починены, 9/9 индексов realtime.</span></dd>
+    </div>
+    <div class="fact">
+      <dt>Нулевой стейт · L2</dt>
+      <dd>51 466 388<span class="note">Голова EVM-ноды в тот же момент.</span></dd>
+    </div>
+    <div class="fact">
+      <dt>Первый михельсон-уровень</dt>
+      <dd>51 484 839<span class="note">Прочитан с цепочки: первый блок в L2-TzKT, метка 06:45:46 UTC. Это значение <code>L2_MICHELSON_FIRST_LEVEL</code>.</span></dd>
+    </div>
+    <div class="fact">
+      <dt>Источник L2-ноги</dt>
+      <dd style="font-size:14.5px">api.etherlink.tzkt.io</dd>
+      <span class="pill" data-ok="1">200 · идёт вровень</span>
+      <span class="note">В 06:43 отдавал 502, в 06:56 ответил. Счётчик блоков общий с EVM. <a href="#gate">Шлюз</a> открыт.</span>
+    </div>
+  </dl>
+
+  <div class="bar">
+    <div class="legend">
+      <span class="chip" data-k="idle"><span class="dot"></span>ожидает</span>
+      <span class="chip" data-k="active"><span class="dot"></span>в работе</span>
+      <span class="chip" data-k="done"><span class="dot"></span>готово</span>
+      <span class="chip" data-k="blocked"><span class="dot"></span>блокер</span>
+    </div>
+    <span class="hint">Клик по карточке — следующее состояние. Сохраняется в этом браузере.</span>
+    <button class="reset" type="button" id="reset">Сбросить всё</button>
+  </div>
+
+  <div class="lanes">
+    <div>
+      <div class="lane-head">
+        <h2>Мейннет</h2>
+        <span class="path">живём насквозь → откат → бекфилл</span>
+        <span class="host">bridge.indexer.etherlink.com</span>
+      </div>
+      <div class="track">
+
+        <button class="state" data-id="M0" data-k="done" type="button">
+          <span class="id">M0</span>
+          <span class="body">
+            <span class="title">Чисто на текущем блоке</span>
+            <dl>
+              <dt>Готово</dt><dd>Потерянные outbox-строки восстановлены, уровни 14580772 и 14580861 на месте.</dd>
+              <dt>Выход</dt><dd>Точка отката определена.</dd>
+            </dl>
+          </span>
+        </button>
+
+        <button class="state" data-id="M1" data-k="done" type="button">
+          <span class="id">M1</span>
+          <span class="body">
+            <span class="title">Точка отката зафиксирована</span>
+            <dl>
+              <dt>Готово</dt><dd>Ручной дамп <code>etherlink-bridge-indexer-preupgrade-2026-08-21</code>, 34 872 904 байта, 03:36:02 UTC. Отдельный ключ в R2, ротация его не трогает.</dd>
+              <dt>Хвост</dt><dd>Закрыт: боевой env вернули, бекапилка снова снимает дампы по расписанию. Ручной снапшот остаётся на своём ключе, ротация его не трогает.</dd>
+            </dl>
+          </span>
+        </button>
+
+        <button class="state" data-id="M2" data-k="done" type="button">
+          <span class="id">M2</span>
+          <span class="body">
+            <span class="title">Прошли активацию на старом конфиге</span>
+            <dl>
+              <dt>Что идёт</dt><dd>API живой, EVM индексируется. L1-ноги tz1-депозитов пишутся корректно и лежат в статусе <code>created</code>: их хеш считается независимо от конфига. Пропущенных депозитов пока ноль — настоящих tz1-депозитов на цепочке ещё не было.</dd>
+              <dt>Выход</dt><dd>Активация прошла в 06:45:46 UTC, индексер её пережил: через минуту L1 и голова EVM-ноды шли дальше. <a href="#gate">Шлюз</a> с тех пор открылся, так что дальше держит не он, а решение по выкату.</dd>
+              <dt>Фон</dt><dd>Процесс при этом регулярно падает и поднимается заново на своём давнем дефекте: транзиентная 500 от роллап-ноды на outbox-эндпоинте выходит из коллбэка. К переходу это отношения не имеет — вчера было по сотне с лишним рестартов в час. Каждый рестарт теряет очередь outbox-уровней безвозвратно.</dd>
+            </dl>
+          </span>
+        </button>
+
+      </div>
+    </div>
+
+    <div>
+      <div class="lane-head">
+        <h2>Стейджинг</h2>
+        <span class="path">стоп до перехода → старт на новом конфиге</span>
+        <span class="host">etherlink-bridge-mainnet-staging</span>
+      </div>
+      <div class="track">
+
+        <button class="state" data-id="S0" data-k="done" type="button">
+          <span class="id">S0</span>
+          <span class="body">
+            <span class="title">Чисто, но без бекапилки</span>
+            <dl>
+              <dt>Готово</dt><dd>Набор outbox-уровней совпадает с мейннетом побайтово. Отдельного бекапа у стека нет — снапшотом служит сама остановка.</dd>
+              <dt>Выход</dt><dd>Время остановки назначено.</dd>
+            </dl>
+          </span>
+        </button>
+
+        <button class="state" data-id="S1" data-k="done" type="button">
+          <span class="id">S1</span>
+          <span class="body">
+            <span class="title">Остановлен до активации</span>
+            <dl>
+              <dt>Условие</dt><dd>06:44 UTC, за 1 мин 46 с до активации — около 125 L2-блоков запаса. Гасится сервис индексера, база остаётся.</dd>
+              <dt>Выход</dt><dd>Реплик ноль в 06:44:33 UTC, последняя запись индексера — 06:44:46. Остановлен на L1&nbsp;14&nbsp;594&nbsp;972, L2&nbsp;51&nbsp;484&nbsp;752 — за 60&nbsp;с и ~70 L2-блоков до активации.</dd>
+            </dl>
+          </span>
+        </button>
+
+      </div>
+    </div>
+  </div>
+
+  <button class="gate" id="gate" data-id="G" data-k="done" type="button">
+    <span class="id">G</span>
+    <span>
+      <h2>Общий шлюз: зависимости готовы</h2>
+      <div class="who">Одно внешнее условие на обе ветки. Ни один стек не стартует на новом конфиге, пока все три пункта не сойдутся одновременно. Сошлись 21 августа около 06:56 UTC.</div>
+      <ul>
+        <li>Ноды с михельсон-рантаймом подняты — рантайм появляется не в момент активации, а после их рестарта. <strong>Есть:</strong> <code>originOf</code> на прекомпайле отдаёт разобранный кортеж на обеих нодах, до апгрейда там был пустой ответ.</li>
+        <li><code>api.etherlink.tzkt.io</code> отвечает 200, и его голова растёт. <strong>Есть.</strong> По флагу <code>synced</code> не судить: на секундных блоках он моргает сам по себе, признак здоровья — отставание головы от EVM в единицы блоков.</li>
+        <li>Его голова <strong>не ниже</strong> <code>L2_MICHELSON_FIRST_LEVEL</code>, и сам уровень взят с цепочки, а не из прогноза. <strong>Есть:</strong> первый блок 51&nbsp;484&nbsp;839, голова уже за ним.</li>
+      </ul>
+    </span>
+  </button>
+
+  <div class="lanes">
+    <div>
+      <div class="track">
+
+        <button class="state" data-id="M3" data-k="done" type="button">
+          <span class="id">M3</span>
+          <span class="body">
+            <span class="title">Откат и новый конфиг</span>
+            <dl>
+              <dt>Условие</dt><dd><a href="#preflight">Преполётный лист</a> пройден целиком. Репетиция на стейджинге закрыта — тот же образ, тот же конфиг, та же цепочка.</dd>
+              <dt>Готово к запуску</dt><dd>Env собран: рестор с датированного дампа плюс михельсоновые ключи, индексер и бекапилка выключены. Порядок — стек вниз, волюм снести, залить env, поднять базу, включить бекапилку, дождаться ресторa, включить индексер.</dd>
+              <dt>Выход</dt><dd>База восстановлена с датированного дампа, индексер поднят в 11:22:56. Десять индексов, <code>reindex</code> пуст, токен <code>xtz_michelson</code> в восстановленной базе на месте.</dd>
+            </dl>
+          </span>
+        </button>
+
+        <button class="state" data-id="M4" data-k="done" type="button">
+          <span class="id">M4</span>
+          <span class="body">
+            <span class="title">Бекфилл до головы</span>
+            <dl>
+              <dt>Что смотрим</dt><dd>Уровни растут у всех индексов. Пока михельсон-индекс бэкфиллит, весь стек читается как syncing — это норма, а не авария.</dd>
+              <dt>Риск</dt><dd>Дамп снят в 03:36 UTC, значит догонять около семи с половиной часов обеих цепочек. Прод сегодня падал по несколько раз в час на транзиентных 500 от роллап-ноды, и каждое падение роняет очередь outbox-уровней безвозвратно. Едем без фикса этой потери — решение принято осознанно.</dd>
+              <dt>Выход</dt><dd>Михельсон-индекс прошёл весь свой диапазон — в логе <code>Fetching operations from level 51484839 to 51508202</code> при переходе <code>new → syncing</code>, то есть с первого уровня, а не с головы. Девять остальных догнали от точки дампа. Все десять realtime.</dd>
+            </dl>
+          </span>
+        </button>
+
+        <button class="state" data-id="M5" data-k="done" type="button">
+          <span class="id">M5</span>
+          <span class="body">
+            <span class="title">Приёмка: индексация едет</span>
+            <dl>
+              <dt>Критерий</dt><dd>Уровни движутся, михельсон-индекс в realtime, в логе нет предупреждения о депозитах без совпадающего inbox-хеша.</dd>
+              <dt>Есть</dt><dd>Тот же депозит подхвачен прямо в ходе исторического бэкфилла и сматчен по op-hash: на L2-ноге проставлены координаты L1-сообщения — уровень 14&nbsp;597&nbsp;692, индекс 12.</dd>
+            </dl>
+          </span>
+        </button>
+
+      </div>
+    </div>
+
+    <div>
+      <div class="track">
+
+        <button class="state" data-id="S2" data-k="done" type="button">
+          <span class="id">S2</span>
+          <span class="body">
+            <span class="title">Запущен на новом конфиге</span>
+            <dl>
+              <dt>Условие</dt><dd>Образ тот же, что поедет в прод, иначе канарейка проверяет не то. <a href="#preflight">Преполётный лист</a> пройден.</dd>
+              <dt>Выход</dt><dd>Поднят 10:55 UTC на образе <code>pr-46</code>. Старт без вайпа, десятая строка <code>tezos_x_michelson_deposits</code> появилась, источник <code>tezos_x_michelson_tzkt</code> живой, <code>reindex</code> пуст.</dd>
+            </dl>
+          </span>
+        </button>
+
+        <button class="state" data-id="S3" data-k="done" type="button">
+          <span class="id">S3</span>
+          <span class="body">
+            <span class="title">Догнал голову</span>
+            <dl>
+              <dt>Что смотрим</dt><dd>Длительность догона от точки остановки — это и есть измерение окна для мейннета.</dd>
+              <dt>Выход</dt><dd>Четыре часа простоя — 21 000 L2-блоков и 2500 уровней L1 — догнаны за пару минут. Все десять индексов realtime на голове источника.</dd>
+            </dl>
+          </span>
+        </button>
+
+        <button class="state" data-id="S4" data-k="done" type="button">
+          <span class="id">S4</span>
+          <span class="body">
+            <span class="title">Приёмка: депозит сшит</span>
+            <dl>
+              <dt>Критерий</dt><dd>Тестовый tz1-депозит виден целиком: L1-нога, L2-нога, единый <code>bridge_operation</code> с <code>runtime_kind = michelson</code> и токеном <code>xtz_michelson</code>.</dd>
+              <dt>Есть</dt><dd>Депозит пришёл 21.08 в 11:20:02 — уровень 51&nbsp;507&nbsp;891, 1&nbsp;XTZ получателю <code>tz1UFH6EiW…</code>. Сшит: <code>bridge_operation</code> в статусе <code>FINISHED</code>, <code>is_completed</code>, <code>is_successful</code>. Ранние две операции депозитора отброшены как обратные потоки — как и задумано.</dd>
+            </dl>
+          </span>
+        </button>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="merge">
+    <h2>Финал: оба стека индексируют михельсон</h2>
+    <p>Обе ветки закрыты 21 августа. Первый настоящий tz1-депозит виден целиком на обоих стеках, разными путями пришедших к одному состоянию.</p>
+  </div>
+
+  <section>
+    <div class="sec-head"><h2>Чем ломается старт на новом конфиге</h2><span class="tag">по исходникам DipDup 8.6.1</span><span class="rule"></span></div>
+    <div class="rails">
+
+      <div class="rail">
+        <h3>TzKT недоступен на старте</h3>
+        <p>Датасорс дёргает <code>v1/protocols/current</code> при инициализации и через ~16 секунд ретраев бросает <code>DatasourceError</code> — раньше, чем открывается схема. Под рестарт-политикой это крашлуп: индексер не деградирует, а лежит целиком.</p>
+        <span class="sig">Падает громко и сразу — единственный из трёх, кто себя обозначает.</span>
+      </div>
+
+      <div class="rail">
+        <h3>Первый уровень выше головы TzKT</h3>
+        <p>Ошибки нет и лога нет. Индекс остаётся в статусе <code>new</code>, событие старта датасорсов не выставляется, вебсокет не открывается <strong>ни для одного</strong> источника — весь индексер перестаёт двигаться. Мониторинг при этом видит строки в статусе realtime, у которых просто стоят уровни.</p>
+        <span class="sig">Ловится <a href="#preflight">пунктом 04</a>.</span>
+      </div>
+
+      <div class="rail">
+        <h3>Блок datasources без повтора базового</h3>
+        <p>Оверлеи сливаются плоско, по верхнему уровню. Новый блок <code>datasources</code> в конфиге сети заменяет базовый целиком: уезжают архивный источник, ratelimit EVM-ноды и таймауты роллап-ноды.</p>
+        <span class="sig">Ловится <a href="#preflight">пунктами 03 и 05</a>.</span>
+      </div>
+
+    </div>
+  </section>
+
+  <section id="preflight">
+    <div class="sec-head"><h2>Преполётный лист</h2><span class="tag">пункты 01 и 02 пересняты на восстановленной базе — перед следующим стартом прогнать заново</span><span class="rule"></span></div>
+    <div class="checks">
+      <div class="check"><span class="n">01</span><span>Токен <code>xtz_michelson</code> есть в <code>etherlink_token</code> — без него первый же синтетический депозит падает на <code>DoesNotExist</code>.</span><span class="verdict" data-v="ok">есть на обоих</span></div>
+      <div class="check"><span class="n">02</span><span><code>dipdup_schema.reindex</code> пуст — значение, поставленное неудачным запуском, перевыбрасывается на каждом следующем старте.</span><span class="verdict" data-v="ok">пуст на обоих</span></div>
+      <div class="check"><span class="n">03</span><span><code>dipdup config export --unsafe</code> показывает семь источников (шесть базовых восстановлены плюс михельсоновский) и десять индексов, ни одна существующая секция не потерялась.</span><span class="verdict" data-v="ok">7 и 10, сходится</span></div>
+      <div class="check"><span class="n">04</span><span>Голова михельсонового TzKT не ниже <code>L2_MICHELSON_FIRST_LEVEL</code>, и уровень взят с цепочки, а не из прогноза.</span><span class="verdict" data-v="ok">51 484 839</span></div>
+      <div class="check"><span class="n">05</span><span>Michelson-блок добавлен <strong>только как дополнение</strong>: ни одна существующая секция индекса не тронута тем же деплоем.</span><span class="verdict" data-v="ok">дифф чист</span></div>
+      <div class="check"><span class="n">06</span><span>Роллап-нода отдаёт outbox-уровни, которые бэкфилл поставит в очередь: транзиент оттуда выходит из коллбэка и убивает процесс на старте.</span><span class="verdict" data-v="ok">три пробы по 0,6 с</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Развилка по мейннету</h2><span class="tag">выбран вариант A — откат и бекфилл</span><span class="rule"></span></div>
+    <div class="fork">
+      <h3>Откат нужен не для депозитов, а для одной таблицы</h3>
+      <p>Поздний конфиг воспроизведён на стенде: добавлен к уже наполненной базе, старт прошёл без вайпа, новый индекс забэкфиллил со своего прошлого первого уровня, и полученная L2-строка ретро-сматчилась с L1-ногой из прошлой фазы — операция стала законченной в той же строке. Хеш конфига поиндексный, поэтому добавление источника, контракта и индекса оставило хеши девяти существующих индексов неизменными.</p>
+      <p>Значит депозиты за окно восстанавливаются и без отката. Откат добавляет ровно одно: чинит строки <code>l2_account</code>, созданные <strong>во время окна</strong>. Новый адрес-алиас, впервые появившийся между активацией и конфигом, записывается как <code>native</code> и больше никогда не переспрашивается — классифицированная строка терминальна.</p>
+      <p><span class="opt">Вариант A</span> — откат и бекфилл: чинит всё разом, стоит времени догона. <strong>Выбран он.</strong><br>
+         <span class="opt">Вариант B</span> — без отката: сбросить <code>kind</code> в <code>unknown</code> по окну создания, дальше перепроверка спросит прекомпайл сама.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>Нулевой стейт снят 21 августа 2026, 02:04 UTC.</span>
+    <span>Шкала уровней у михельсона и EVM общая: михельсоновый TzKT начинается с 51&nbsp;484&nbsp;839 с меткой активации и идёт вровень с <code>eth_blockNumber</code>.</span>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  var ORDER = ['idle','active','done','blocked'];
+  var LABEL = {idle:'ожидает', active:'в работе', done:'готово', blocked:'блокер'};
+  var KEY = 'michelson-cutover-states-v2';
+  var DEFAULTS = {M0:'done', M1:'done', M2:'done', M3:'done', M4:'done', M5:'done',
+                  S0:'done', S1:'done', S2:'done', S3:'done', S4:'done', G:'done'};
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+
+  var cells = Array.prototype.slice.call(document.querySelectorAll('.state, .gate'));
+
+  function label(el){
+    var t = el.querySelector('.title') || el.querySelector('h2');
+    el.setAttribute('aria-label', t.textContent + ' — состояние: ' + LABEL[el.getAttribute('data-k')]);
+  }
+
+  cells.forEach(function(el){
+    var id = el.getAttribute('data-id');
+    if (saved[id]) el.setAttribute('data-k', saved[id]);
+    label(el);
+    el.addEventListener('click', function(){
+      var next = ORDER[(ORDER.indexOf(el.getAttribute('data-k')) + 1) % ORDER.length];
+      el.setAttribute('data-k', next);
+      label(el);
+      saved[id] = next;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+    });
+  });
+
+  document.getElementById('reset').addEventListener('click', function(){
+    if (!window.confirm('Сбросить все отметки прогресса?')) return;
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    cells.forEach(function(el){
+      el.setAttribute('data-k', DEFAULTS[el.getAttribute('data-id')] || 'idle');
+      label(el);
+    });
+    saved = {};
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Node change impact · mainnet-staging backfill</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1d212b;--ink:#e6e9ef;--mut:#9aa3b2;--line:#2a2f3a;
+        --old:#e0563f;--new:#3fb27f;--accent:#5b8def;--warn:#e0b13f}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:38px 22px 80px}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--mut);margin:0 0 26px;font-size:14px}
+  h2{font-size:18px;margin:34px 0 12px;border-left:3px solid var(--accent);padding-left:10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:14px 0}
+  .hero{display:flex;gap:14px;flex-wrap:wrap;margin:18px 0 4px}
+  .kpi{flex:1;min-width:150px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .kpi .n{font-size:30px;font-weight:700;line-height:1}
+  .kpi .l{color:var(--mut);font-size:12.5px;margin-top:7px}
+  .up{color:var(--new)}.down{color:var(--old)}
+  table{width:100%;border-collapse:collapse;margin:6px 0;font-size:14px}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  thead th{color:var(--mut);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.03em}
+  tbody tr:hover{background:#1b1f29}
+  .bar{height:9px;border-radius:5px;background:linear-gradient(90deg,var(--accent),var(--new));display:inline-block;vertical-align:middle}
+  .barbg{display:inline-block;width:160px;height:9px;border-radius:5px;background:#262b36;vertical-align:middle;overflow:hidden}
+  .barbg>span{display:block;height:100%;background:linear-gradient(90deg,#3a6fd8,#3fb27f)}
+  code{background:#0c0e12;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:13px;color:#cdd6e6}
+  .tag{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:20px;border:1px solid var(--line);color:var(--mut)}
+  .good{color:var(--new);border-color:#27513f}.bad{color:var(--old);border-color:#5a2c24}.q{color:var(--warn);border-color:#5a4a22}
+  ul{margin:8px 0 0;padding-left:20px}li{margin:5px 0}
+  .muted{color:var(--mut)}.small{font-size:13px}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:680px){.split{grid-template-columns:1fr}}
+  .callout{border-left:3px solid var(--warn);background:#1c1a12;border-radius:0 10px 10px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Влияние смены ноды на бэкафилл mainnet-staging</h1>
+  <p class="sub">Etherlink Bridge Indexer · 2026-06-05 · та же БД и образ, перезапуск на другой Swarm-ноде · единственное изменение — хост-нода (код/конфиг без изменений)</p>
+
+  <div class="hero">
+    <div class="kpi"><div class="n up">×3.2–4.5</div><div class="l">агрегатная пропускная способность (3 окна)</div></div>
+    <div class="kpi"><div class="n">4 571 → 15–20k</div><div class="l">уровней/мин (old → new)</div></div>
+    <div class="kpi"><div class="n up">недели → ~6–7 дней</div><div class="l">ETA полного синка</div></div>
+    <div class="kpi"><div class="n good">жив</div><div class="l"><code>updated_at</code> свежие, не зомби</div></div>
+  </div>
+
+  <h2>Поиндексно: old vs new (уровней/мин)</h2>
+  <div class="panel">
+  <table>
+    <thead><tr><th>Индекс</th><th>old (sharm)</th><th>new #1</th><th>new #2</th><th>относит. рост</th></tr></thead>
+    <tbody>
+      <tr><td>etherlink_token_balance_update</td><td>1 335</td><td>4 455</td><td>7 706</td><td><span class="barbg"><span style="width:46%"></span></span></td></tr>
+      <tr><td>etherlink_withdrawal_events</td><td>552</td><td>3 543</td><td>6 593</td><td><span class="barbg"><span style="width:40%"></span></span></td></tr>
+      <tr><td>etherlink_xtz_deposit_transactions</td><td>2 212</td><td>2 681</td><td>2 290</td><td><span class="barbg"><span style="width:14%"></span></span></td></tr>
+      <tr><td>tezos_withdrawal_operations</td><td>321</td><td>2 312</td><td>2 625</td><td><span class="barbg"><span style="width:14%"></span></span></td></tr>
+      <tr><td>tezos_claim_fast_withdrawal</td><td>100</td><td>1 199</td><td>998</td><td><span class="barbg"><span style="width:6%"></span></span></td></tr>
+      <tr><td>tezos_deposit_operations <span class="tag bad">самый медленный</span></td><td>52</td><td>425</td><td>326</td><td><span class="barbg"><span style="width:2%"></span></span></td></tr>
+      <tr style="font-weight:700"><td>АГРЕГАТ</td><td>4 571</td><td>14 617</td><td>20 537</td><td><span class="up">×3.2→×4.5</span></td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">Окна: old T0→T2 = 64.9 мин · new #1 = 66.7 мин · new #2 = 77.2 мин. Бары — доля индекса в агрегате на новой ноде.</p>
+  </div>
+
+  <h2>⚠️ Честная интерпретация (важно)</h2>
+  <div class="panel callout">
+    <p style="margin-top:0"><b>Реальный прирост — агрегат ×3.2–4.5, а НЕ per-index ×7–12.</b> Большие per-index числа — это <b>перераспределение контеншна</b>, не ускорение железа:</p>
+    <ul>
+      <li>На <code>sharm</code> один индекс <code>xtz_deposit</code> съедал <b>48%</b> всего loop'а (2 212 из 4 571), остальные голодали.</li>
+      <li>На новой ноде работа размазалась ⇒ «×12 у tezos_claim» = «перестал голодать», не «×12 быстрее».</li>
+      <li><code>tezos_deposit_operations</code> (~375/мин) остаётся самым медленным полюсом и на новой ноде.</li>
+    </ul>
+  </div>
+
+  <h2>Почему ×3–4.5 — это НЕ single-core clock</h2>
+  <div class="panel">
+    <p style="margin-top:0">Clock между любыми двумя машинами ≈ ×1.5–2. ×3–4.5 требует другого механизма. Датасорс исключён: сырой архив Subsquid отдаёт <b>4–5.3 млн уровней/мин</b> (реплицировал точный <code>iter_transactions</code>) — индексер утилизирует ~0.1%. Значит затык <b>in-process</b>, и его усилила старая нода. Кандидаты (не подтверждены):</p>
+    <div class="split">
+      <div class="panel" style="margin:0;background:var(--panel2)">
+        <span class="tag q">кандидат</span> <b>CPU-контеншн на старой ноде</b>
+        <p class="small muted" style="margin:6px 0 0">Event loop = ≤1 ядро; на забитой <code>sharm</code> CFS отдавал долю ядра. Не виден как <code>steal</code> (=0) или <code>iowait</code>.</p>
+      </div>
+      <div class="panel" style="margin:0;background:var(--panel2)">
+        <span class="tag q">кандидат</span> <b>Латентность fsync БД</b>
+        <p class="small muted" style="margin:6px 0 0"><code>iowait≈0</code> = диск не насыщен по bandwidth, но НЕ про латентность одного коммита. dipdup <code>await</code>-ит коммиты последовательно ⇒ медленный fsync блокирует loop.</p>
+      </div>
+      <div class="panel" style="margin:0;background:var(--panel2)">
+        <span class="tag q">кандидат</span> <b>Memory-pressure / swap</b>
+        <p class="small muted" style="margin:6px 0 0">Старая нода под нехваткой RAM ⇒ своп индексера/постгреса. Не проверено.</p>
+      </div>
+      <div class="panel" style="margin:0;background:var(--panel2)">
+        <span class="tag bad">конфаунд</span> <b>Рестарт</b>
+        <p class="small muted" style="margin:6px 0 0">Новая нода = ещё и свежий процесс. «Нода vs деградировавший процесс» этим переездом НЕ разделить.</p>
+      </div>
+    </div>
+  </div>
+
+  <h2>Что меряли по нодам (Prometheus, снимок)</h2>
+  <div class="panel">
+    <ul style="margin-top:0">
+      <li><b>steal ≈ 0</b> везде → не гипервизор-steal.</li>
+      <li><b>iowait ≈ 0–2%</b> везде → ни одна нода не упёрта в bandwidth диска.</li>
+      <li><b>нет cgroup CPU-cap</b> (<code>cpu_quota</code>/cfs_throttled отсутствуют) → «тротлинг» не от лимита.</li>
+      <li>Per-container CPU из этого Grafana <b>не достать</b> (cAdvisor без swarm-лейблов) → нужен <code>docker stats</code> на ноде.</li>
+    </ul>
+  </div>
+
+  <h2>Как доразделить БД-ресурс vs индексер-ресурс</h2>
+  <div class="panel">
+    <ol style="margin:0;padding-left:20px">
+      <li><b>CPU% контейнера индексера под синком</b> (<code>docker stats</code>): ~100% ядра = compute/matcher-bound; низкий CPU при медленном = ждёт коммиты БД (DB-latency-bound).</li>
+      <li><b>Postgres:</b> <code>pg_stat_database.blk_write_time</code> + commit-rate; много IO/Lock-wait → БД.</li>
+      <li><b>Снять конфаунд рестарта:</b> перезапустить процесс БЕЗ переезда — если тоже ускоряет, дело не в ноде.</li>
+    </ol>
+  </div>
+
+  <p class="sub" style="margin-top:30px">Полная выжимка фактов: <code>STAGING_PERF_GROUNDTRUTH.md</code> · память: <code>project_indexer-host-resource-throttling</code></p>
+</div>
+</body>
+</html>

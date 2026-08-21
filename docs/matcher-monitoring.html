@@ -1,0 +1,194 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мониторинг матчинга — #305 и #312</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght@400;900&family=Golos+Text:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+ --bg:#0c0c0c; --ink:#f2f2ef; --dim:#8a8a86; --faint:#5c5c58;
+ --line:#262624; --line2:#1a1a18;
+ --accent:#ff6a00;
+ --t-h1:68px; --t-h2:30px; --t-body:20px; --t-mono:14px;
+ --s1:10px; --s2:20px; --s3:30px; --s4:40px; --s5:60px; --s6:76px;
+ --mono:'IBM Plex Mono',monospace; --sans:'Golos Text',sans-serif; --black:'Geologica',sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:var(--t-body);
+ background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);
+ background-size:42px 42px;background-position:-1px -1px}
+.wrap{max-width:1300px;margin:0 auto;padding:0 var(--s4);background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+header{padding:var(--s6) 0 var(--s4);border-bottom:2px solid var(--ink)}
+.kick{font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 24px}
+.kick::before{content:"// ";color:var(--faint)}
+h1{font-family:var(--black);font-weight:900;font-size:var(--t-h1);line-height:.96;margin:0;letter-spacing:-.02em;text-transform:uppercase}
+.lede{color:var(--dim);max-width:900px;margin:var(--s2) 0 0;font-size:var(--t-body)}
+.lede b{color:var(--ink);font-weight:600}
+section{padding:var(--s4) 0;border-bottom:1px solid var(--line)}
+.row{display:grid;grid-template-columns:190px 1fr;gap:34px}
+.sl{font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}.sl::before{content:"§ ";color:var(--accent)}
+h2{font-size:var(--t-h2);margin:0 0 5px;text-transform:uppercase;letter-spacing:-.01em;font-weight:700}
+.h2sub{font-family:var(--mono);font-size:var(--t-mono);color:var(--faint);margin:0 0 26px}
+p.body{margin:0 0 16px;max-width:880px}p.body:last-child{margin-bottom:0}
+p.body b{font-weight:600}
+code{font-family:var(--mono);font-size:16px;color:var(--ink);background:var(--line2);padding:2px 6px}
+.panel{border:1px solid var(--line);position:relative;margin-bottom:24px}
+.panel::after{content:"";position:absolute;top:14px;right:15px;width:38px;height:7px;background:repeating-linear-gradient(90deg,var(--line) 0 4px,transparent 4px 8px)}
+.pbar{font-family:var(--mono);font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:14px 22px;border-bottom:1px solid var(--line)}.pbar b{color:var(--ink)}
+.step{display:grid;grid-template-columns:62px 1fr;gap:20px;padding:20px 22px;border-top:1px solid var(--line2)}.step:first-of-type{border-top:none}
+.n{font-family:var(--black);font-weight:900;font-size:32px;line-height:1}.n.a{color:var(--accent)}.n.b{color:var(--ink)}.n.g{color:var(--faint)}
+.sh{margin:0;font-weight:600;font-size:19px;display:flex;align-items:center;flex-wrap:wrap}
+.sh .b{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:.08em;margin-left:14px;padding:3px 10px}.sh .b.a{background:var(--accent);color:#000;font-weight:600}.sh .b.b{border:1px solid var(--line);color:var(--dim)}
+.sd{color:var(--dim);margin:6px 0 0;font-size:17px}.sd code{font-size:15px}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);border-top:2px solid var(--ink)}
+.f{padding:20px 22px 20px 22px;border-right:1px solid var(--line)}.f:last-child{border:none}
+.fk{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:0 0 10px}
+.fv{font-family:var(--black);font-weight:900;font-size:26px;margin:0;line-height:1.05}.fv small{font-family:var(--sans);font-weight:400;font-size:15px;color:var(--dim);display:block;margin-top:6px;letter-spacing:0}
+pre.q{font-family:var(--mono);font-size:15px;line-height:1.65;color:var(--ink);background:var(--line2);border:1px solid var(--line);padding:18px 22px;margin:0 0 10px;white-space:pre-wrap;word-break:break-word}
+pre.q .c{color:var(--faint)}
+.qread{font-size:17px;color:var(--dim);margin:0 0 26px;max-width:880px}.qread b{color:var(--ink);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:17px}
+th,td{text-align:left;padding:15px 18px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--ink)}
+tr:last-child td{border-bottom:none}
+table.cov th:not(:first-child),table.cov td:not(:first-child){text-align:center;width:170px;border-left:1px solid var(--line2)}
+table.cov td:first-child{color:var(--ink)}
+.v{font-family:var(--mono);font-size:14px;letter-spacing:.04em;text-transform:uppercase;display:inline-block;padding:3px 12px}
+.v.yes{color:var(--ink);border:1px solid var(--line)} .v.part{color:var(--dim)} .v.no{color:var(--faint)}.v.no::before{content:"— "} .v.only{background:var(--accent);color:#000;font-weight:600}
+table.tri td:first-child{font-family:var(--mono);font-size:15px;color:var(--ink);width:340px}
+table.tri td{color:var(--dim)}table.tri td b{color:var(--ink);font-weight:600}
+footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);font-size:14px;line-height:1.7}footer .s{color:var(--dim)}
+@media(max-width:680px){:root{--t-h1:44px}.row{grid-template-columns:1fr}.facts{grid-template-columns:1fr}table.cov th:not(:first-child),table.cov td:not(:first-child){width:auto}}
+</style></head><body><div class="wrap">
+
+<header>
+ <p class="kick">etherlink bridge indexer · uptime kuma · prod mainnet</p>
+ <h1>Мониторинг матчинга<br>#305 · #312</h1>
+ <p class="lede">Два монитора каждые 5 минут проверяют один инвариант данных: <b>ни одна операция моста не живёт без связки, которую ставит матчер, дольше часа</b>. Это единственная защита от отказа «всё индексируется, но не матчится» — все остальные мониторы такой отказ не видят. #305 держит депозиты, #312 — выводы. Документ описывает задеплоенную конфигурацию (сверена с Kuma дословно) и относится только к mainnet prod; порядок действий при срабатывании — в разделе «триаж».</p>
+</header>
+
+<section><div class="row">
+ <div class="sl">дыра</div>
+ <div>
+  <h2>Регрессия матчинга невидима процессным мониторам</h2>
+  <p class="h2sub">четыре элемента приложения — и один из них без собственного сигнала</p>
+  <p class="body">Функционально индексер делает четыре вещи: индексирует L1 (Tezos), индексирует L2 (Etherlink), <b>матчит</b> ноги обеих сторон в единые операции моста и отдаёт результат через API (Hasura). Первые два элемента — процессы: их здоровье видно по свежести голов и по потоку операций, и именно это проверяет ONLINE-монитор #187. Четвёртый проверяется любым запросом к эндпоинту.</p>
+  <p class="body">Матчинг — не процесс, а <b>результат</b>: строки уже проиндексированы, вопрос лишь в том, связал ли их движок. Деплой, в котором матчинг сломан регрессией — шаг выпал из batch-цикла, лок перестал взводиться, изменилась схема, — оставляет #187 зелёным: блоки приходят, операции пишутся, API отвечает. Единственный след живёт в данных: у операций не появляется вторая нога, и потребители API (мостовой UI, эксплорер) бесконечно показывают депозиты «в пути». #305 и #312 созданы закрыть ровно эту дыру: они смотрят не на процесс, а на сами данные.</p>
+  <p class="body">Напрашивающаяся альтернатива — алертить по статусу («есть операция в <code>CREATED</code> дольше часа») — не работает: у вывода <code>CREATED</code> означает сразу две вещи — и «матчер ещё не связал» (авария), и «связан, легитимно ждёт ~2 недели исполнения на L1» (норма; сейчас так ждут 765 выводов). Поэтому сигналом выбрано поле-связка, а не статус — об этом следующий раздел.</p>
+ </div>
+</div></section>
+
+<section><div class="row">
+ <div class="sl">механика</div>
+ <div>
+  <h2>Сигнал — поле, которое ставит только матчер</h2>
+  <p class="h2sub">путь операции по коду · handlers/bridge_matcher.py</p>
+  <p class="body">У депозита якорь — строка <code>bridge_deposit</code>, которую матчер создаёт из L1-ноги; связка — поле <code>l2_transaction_id</code>. У вывода якорь — L2-нога <code>l2_withdrawal</code>; связка — <code>outbox_message_id</code> в её <code>bridge_withdrawal</code>. Оба поля заполняются <b>только матчером</b> и любым из его путей (FA по координатам inbox, XTZ по счёту-сумме-окну, Michelson по восстановленному op-hash) — один признак покрывает все пути без пути-специфичных проверок.</p>
+  <div class="panel">
+   <div class="pbar">ДЕПОЗИТ · L1 → L2 · зона #305 = шаги 1–3</div>
+   <div class="step"><div class="n a">1</div><div>
+     <p class="sh">L1-депозит проиндексирован<span class="b b">tezos-индексы</span></p>
+     <p class="sd">Матчер создаёт <code>bridge_deposit</code> с пустой связкой (<code>l2_transaction_id = NULL</code>) и операцию в статусе <code>CREATED</code>. С этого момента идёт отсчёт возраста по времени цепочки.</p></div></div>
+   <div class="step"><div class="n a">2</div><div>
+     <p class="sh">Привязано inbox-сообщение ролапа<span class="b b">rollup message index</span></p>
+     <p class="sd">По хэшу параметров и уровню; координаты inbox — то, по чему ищется L2-нога. Если inbox-индекс встал, матчинг слепнет — за этим отдельно смотрит #313.</p></div></div>
+   <div class="step"><div class="n a">3</div><div>
+     <p class="sh">Матчер нашёл L2-ногу и поставил связку<span class="b a">это ждёт #305 · норма ≤30 c</span></p>
+     <p class="sd"><code>l2_transaction_id</code> заполнен, статус → <code>FINISHED</code>. Измерено: p99 = 22 c, максимум 29 c от L1-операции до связки.</p></div></div>
+  </div>
+  <div class="panel">
+   <div class="pbar">ВЫВОД · L2 → L1 · зона #312 = шаги 1–2, шаг 3 — вне зоны</div>
+   <div class="step"><div class="n a">1</div><div>
+     <p class="sh">L2-burn проиндексирован<span class="b b">evm-индексы</span></p>
+     <p class="sd">Матчер создаёт <code>bridge_withdrawal</code> с пустой связкой (<code>outbox_message_id = NULL</code>) и операцию в статусе <code>CREATED</code>.</p></div></div>
+   <div class="step"><div class="n a">2</div><div>
+     <p class="sh">Привязан ответ ролапа — outbox-сообщение<span class="b a">это ждёт #312 · норма ≤5 мин</span></p>
+     <p class="sd">По хэшу параметров; <code>outbox_message_id</code> заполнен. Измерено: p99 = 42 c, максимум ~5 мин. Работа матчера по выводу на этом закончена.</p></div></div>
+   <div class="step"><div class="n g">3</div><div>
+     <p class="sh">Ожидание цемента и исполнение на L1<span class="b b">не мониторится — протокол</span></p>
+     <p class="sd">~2 недели до цементирования, затем <code>execute</code> на L1 и статус <code>FINISHED</code>. Это скорость протокола, а не индексера; сейчас здесь легитимно ждут 765 выводов — потому зона #312 заканчивается на шаге 2.</p></div></div>
+  </div>
+  <p class="body">Оба монитора спрашивают одно: <b>есть ли операция, которая вышла из своей зоны по возрасту, но связки так и не получила</b>. Порог — 1 час при измеренной норме в десятки секунд: запас минимум ×12 от худшего измеренного случая, поэтому в штатной работе мониторы не звенят вовсе.</p>
+ </div>
+</div></section>
+
+<section><div class="row">
+ <div class="sl">правило</div>
+ <div>
+  <h2>Дословно: запрос, критерий и почему границы такие</h2>
+  <p class="h2sub">POST /v1/graphql · критерий JSONata должен дать true · опрос 300 c · 2 ретрая</p>
+  <pre class="q"><span class="c">── #305 Bridge Matcher Mainnet · тело запроса ──────────────────────────</span>
+{ unmatched: bridge_deposit(
+    where: {l2_transaction_id: {_is_null: true}},
+    order_by: {l1_transaction: {timestamp: desc}}, limit: 100)
+  { l1_transaction { timestamp } } }
+<span class="c">── критерий (JSONata, ожидается true) ──────────────────────────────────</span>
+$count(data.unmatched[
+  $millis() - $toMillis(l1_transaction.timestamp) > 60*60*1000 and
+  $millis() - $toMillis(l1_transaction.timestamp) < 7*24*60*60*1000
+]) = 0</pre>
+  <p class="qread">Читается так: среди 100 свежайших депозитов без L2-ноги <b>нет ни одного, чья L1-операция случилась от часа до недели назад</b>. Есть хотя бы один — монитор Down.</p>
+  <pre class="q"><span class="c">── #312 Bridge Withdrawal Matcher Mainnet · тело запроса ───────────────</span>
+{ stuck: l2_withdrawal(
+    where: {_not: {bridge_withdrawals: {outbox_message_id: {_is_null: false}}}},
+    order_by: {timestamp: desc}, limit: 100)
+  { timestamp } }
+<span class="c">── критерий (JSONata, ожидается true) ──────────────────────────────────</span>
+$count(data.stuck[
+  $millis() - $toMillis(timestamp) > 60*60*1000 and
+  $millis() - $toMillis(timestamp) < 7*24*60*60*1000
+]) = 0</pre>
+  <p class="qread">Читается так: <b>нет ни одного L2-вывода возрастом от часа до недели, у которого ни одна строка <code>bridge_withdrawal</code> не привязана к outbox-сообщению</b>. Условие через <code>_not</code> покрывает оба отказа сразу: строка-связка не создана вовсе или создана, но outbox не привязан.</p>
+  <p class="body"><b>Возраст считается по времени цепочки, не по времени записи.</b> Окно по <code>created_at</code> ломается на каждом бэкфиле и реиндексе: исторический хвост записывается заново, старые операции выглядят «свежими», и монитор краснеет днями на данных многомесячной давности. Время цепочки (<code>l1_transaction.timestamp</code> у депозита, <code>timestamp</code> burn-а у вывода) от переиндексации не меняется.</p>
+  <p class="body"><b>Нижняя граница 1 час</b> — из измерений выше: запас ×12 и больше от худшего случая, ложных срабатываний от штатной работы нет, а деградация видна не позже чем через час. <b>Верхняя граница 7 дней</b> — из-за постоянного осадка: на проде живут 500 депозитов, у которых L2-ноги не будет никогда (ядро ролапа отвергло депозит; все 500 — в терминальном статусе <code>FAILED_INBOX_MATCHING_TIMEOUT</code>, новейший по времени цепочки — 2026-02-14). Критерий статус не проверяет, поэтому без верхней отсечки монитор был бы красным всегда — то есть бесполезным. Окно делает базовую линию нулевой: сейчас в зоне #305 — 0 операций, в зоне #312 — 0, и у выводов осадка нет вовсе (все 28 211 связаны).</p>
+  <p class="body">У окна две известные цены. Операция, застрявшая дольше недели, выпадает из окна и монитор гаснет — но к этому моменту он звенел ~7 суток подряд, пропустить это сложно. И свежий отвергнутый ядром депозит честно продержит #305 красным до 7 суток, хотя матчер исправен, — за всю историю наблюдений таких не случалось, а случись — на такой депозит всё равно нужно смотреть глазами: для пользователя он потерян.</p>
+  <p class="body"><b>Задержка обнаружения.</b> Критерий по построению срабатывает через час после первой пострадавшей операции; опрос каждые 300 c и 2 ретрая добавляют ещё ~10–15 мин до статуса Down. И главное: мониторы питаются <b>реальным трафиком</b> — сломанный матчер при нулевом потоке операций не звенит, сигнал появится с первым же депозитом или выводом после поломки. На мейннете операции идут ежедневно, так что на практике это обнаружение день в день.</p>
+ </div>
+</div></section>
+
+<section><div class="row">
+ <div class="sl">триаж</div>
+ <div>
+  <h2>Down читается в сочетании с #187 и #313</h2>
+  <p class="h2sub">сообщение «JSON query does not pass (comparing false == true)» = эндпоинт ответил, данные не прошли критерий — это сигнал о данных, не о сети</p>
+  <table class="tri">
+   <thead><tr><th>картина</th><th>наиболее вероятная причина → что делать</th></tr></thead>
+   <tbody>
+    <tr><td>#305 Down + #187 Down</td><td><b>Индексер отстаёт или встал целиком</b> — догоняющий бэкфил или зависание; связка не ставится потому, что не проиндексирована сама нога. Разбираться с #187 (свежесть <code>dipdup_index.updated_at</code>, логи), матчер ни при чём. Так выглядели оба реальных инцидента: 20–21.06 (~5 ч) и 24.06 (~8 мин), оба самовосстановились на догоне.</td></tr>
+    <tr><td>#305 Down + #313 Down, #187 Up</td><td><b>Встал rollup-inbox индекс</b> — депозитам не к чему привязываться. Смотреть RollupMessageIndex и rollup node.</td></tr>
+    <tr><td>#305 Down, остальные Up</td><td><b>Регрессия матчинга депозитов, отставание только L2-ноги или отвергнутый ядром депозит.</b> Выполнить запрос #305 руками, взять timestamp застрявших, найти операции на обеих сторонах и понять, какой ноги/шага не хватает.</td></tr>
+    <tr><td>#312 Down, #305 Up</td><td><b>Сторона выводов</b>: не приходят outbox-сообщения (rollup node RPC) или сломаны withdrawal-шаги матчера. Проверить рост <code>rollup_outbox_message</code>, затем запрос #312 руками.</td></tr>
+    <tr><td>#305 Down + #312 Down, #187 Up</td><td><b>Общий отказ движка матчера</b> — batch-цикл или локи; типичная картина регрессии после деплоя. Сверить с последним деплоем, смотреть логи матчера.</td></tr>
+    <tr><td>ошибка соединения вместо «comparing false == true»</td><td><b>Недоступен API (Hasura)</b> — четвёртый элемент; одновременно покраснеют все GraphQL-мониторы этого инстанса.</td></tr>
+   </tbody>
+  </table>
+ </div>
+</div></section>
+
+<section><div class="row">
+ <div class="sl">покрытие</div>
+ <div>
+  <h2>Колонка «матчинг» без них пуста</h2>
+  <p class="h2sub">что какой монитор видит · оранжевое — покрытие, которое даёт только эта пара</p>
+  <table class="cov">
+   <thead><tr><th>элемент приложения</th><th>#187 online</th><th>#305 депозиты</th><th>#312 выводы</th><th>#313 inbox</th></tr></thead>
+   <tbody>
+    <tr><td>Индексация L1 (Tezos)</td><td><span class="v yes">да</span></td><td><span class="v no">нет</span></td><td><span class="v no">нет</span></td><td><span class="v no">нет</span></td></tr>
+    <tr><td>Индексация L2 (Etherlink)</td><td><span class="v part">процесс</span></td><td><span class="v yes">да</span></td><td><span class="v no">нет</span></td><td><span class="v no">нет</span></td></tr>
+    <tr><td>Rollup-каналы (inbox / outbox)</td><td><span class="v no">нет</span></td><td><span class="v part">косвенно</span></td><td><span class="v part">косвенно</span></td><td><span class="v yes">да</span></td></tr>
+    <tr><td>Матчинг депозитов</td><td><span class="v no">нет</span></td><td><span class="v only">только он</span></td><td><span class="v no">нет</span></td><td><span class="v no">нет</span></td></tr>
+    <tr><td>Матчинг выводов</td><td><span class="v no">нет</span></td><td><span class="v no">нет</span></td><td><span class="v only">только он</span></td><td><span class="v no">нет</span></td></tr>
+    <tr><td>API (Hasura)</td><td><span class="v yes">да</span></td><td><span class="v yes">да</span></td><td><span class="v yes">да</span></td><td><span class="v yes">да</span></td></tr>
+   </tbody>
+  </table>
+  <p class="body" style="margin-top:26px">Асимметрии таблицы — следствие выбора якоря, и они намеренные. #305 якорится на L1-строках: если L1-индексация встала, новые <code>bridge_deposit</code> не создаются, зоне нечем наполняться и монитор остаётся зелёным — остановку L1 ловит #187. Зато содержимое L2-ноги депозитов #305 проверяет глубже, чем #187: тот видит только «процесс жив и головы свежи», а #305 — что конкретные депозиты реально получили свою L2-строку. Зеркально у #312: остановка L2-индексации для него невидима (нет burn-ов — нет кандидатов), это тоже зона #187.</p>
+  <p class="body">Чего эта пара <b>не покрывает</b>, даже в своей колонке: она проверяет <b>наличие</b> связки, а не её корректность — операция, сшитая с чужой ногой, для мониторов неотличима от правильной; проверка качества матчей — это разовые сверки данных, не алертинг. И вся пара существует только на mainnet prod: staging и обе shadownet-сборки мониторинга матчинга не имеют.</p>
+  <p class="body">Итог для владельца проекта: пара #305/#312 — это не дубликат ONLINE-мониторинга, а единственный сигнал о третьем элементе приложения, том самом, ради которого индексер существует (его продукт — сматченные операции моста). Побочно она добавляет полезную избыточность по L2-ноге и rollup-каналам. Стоимость владения — ноль: конфигурация статична, секретов не требует (Hasura читается анонимно), базовая линия — ноль срабатываний в штатной работе.</p>
+ </div>
+</div></section>
+
+<footer>
+ <span class="s">SRC:</span> конфигурация мониторов — Kuma uptime.piltover.baking-bad.org/edit/305 и /edit/312, сверена дословно 2026-07-08 · логика матчера — handlers/bridge_matcher.py · счётчики (500 / 0 / 0 / 765 / 28 211) — прод Hasura etherlink-bridge-mainnet.dipdup.net, 2026-07-08 · латентности (p99 22 c / 42 c, max 29 c / ~5 мин) — измерены по выборкам 1000 операций за ~3 недели, июнь 2026<br>
+ <span class="s">RE-VERIFY:</span> пороги — при смене характера трафика или скорости матчинга; таблицу покрытия — при новых путях матчинга (Michelson-депозиты на мейннете) и новых мониторах; документ описывает только mainnet prod<br>
+ <span class="s">NOTE:</span> заменяет matcher-monitoring-fsm.html — тот описывал проект другого правила (отсечка по FAILED_*-статусам вместо окна 7 дней), который в Kuma задеплоен не был
+</footer>
+
+</div></body></html>

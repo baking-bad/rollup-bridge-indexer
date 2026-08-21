@@ -1,0 +1,237 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>L2 EVM vs Michelson — conflict analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+ --bg:#0c0c0c; --ink:#f2f2ef; --dim:#8a8a86; --faint:#5c5c58;
+ --line:#262624; --line2:#1a1a18;
+ --accent:#5b8dff;            /* signal accent = Michelson row (the foreign class in an EVM-shaped table) */
+ --warn:#ff9d4d;              /* active bug / hazard */
+ --ok:#57b974;                /* clean / EVM-only */
+ --t-h1:54px; --t-idx:80px; --t-h2:24px; --t-body:16px; --t-mono:12px;
+ --s1:8px; --s2:16px; --s3:24px; --s4:32px; --s5:48px; --s6:60px;
+ --mono:'IBM Plex Mono',monospace; --sans:'Archivo',sans-serif; --black:'Archivo Black',sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:var(--t-body);
+ background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);
+ background-size:34px 34px;background-position:-1px -1px}
+.wrap{max-width:1040px;margin:0 auto;padding:0 var(--s4);background:var(--bg);box-shadow:0 0 0 1px var(--line)}
+header{padding:var(--s6) 0 var(--s4);border-bottom:2px solid var(--ink);display:grid;grid-template-columns:1fr auto;align-items:end;gap:var(--s3)}
+.kick{font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 20px}
+.kick::before{content:"// ";color:var(--faint)}
+h1{font-family:var(--black);font-size:var(--t-h1);line-height:.96;margin:0;letter-spacing:-.02em;text-transform:uppercase}
+.idx{font-family:var(--black);font-size:var(--t-idx);color:var(--accent);line-height:.74;letter-spacing:-.04em}
+.lede{grid-column:1/-1;color:var(--dim);max-width:760px;margin:var(--s2) 0 0;font-size:var(--t-body)}
+.lede b{color:var(--ink);font-weight:600}
+.legend{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.tag{padding:13px 0;font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.04em;display:flex;gap:11px;align-items:center;text-transform:uppercase}
+.tag:first-child{border-right:1px solid var(--line);padding-right:18px}.tag:last-child{padding-left:18px}
+.sq{width:13px;height:13px;flex:none}.sq.a{background:var(--accent)}.sq.b{background:var(--ink)}
+.tag .m{color:var(--dim);text-transform:none;letter-spacing:0;font-size:11.5px}
+section{padding:var(--s4) 0;border-bottom:1px solid var(--line)}
+.row{display:grid;grid-template-columns:150px 1fr;gap:28px}
+.sl{font-family:var(--mono);font-size:var(--t-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}.sl::before{content:"§ ";color:var(--accent)}
+h2{font-size:var(--t-h2);margin:0 0 4px;text-transform:uppercase;letter-spacing:-.01em;font-weight:700}
+.h2sub{font-family:var(--mono);font-size:var(--t-mono);color:var(--faint);margin:0 0 22px}
+.panel{border:1px solid var(--line);position:relative}
+.panel+.panel{margin-top:var(--s3)}
+.pbar{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);padding:11px 18px;border-bottom:1px solid var(--line)}.pbar b{color:var(--ink)}
+.step{display:grid;grid-template-columns:46px 1fr;gap:16px;padding:16px 18px;border-top:1px solid var(--line2)}.step:first-of-type{border-top:none}
+.n{font-family:var(--black);font-size:24px;line-height:1}.n.a{color:var(--accent)}.n.b{color:var(--ink)}.n.x{color:var(--faint)}.n.w{color:var(--warn)}
+.sh{margin:0;font-weight:600;font-size:15.5px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.sh .b{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-left:8px;padding:2px 8px}
+.sh .b.a{background:var(--accent);color:#000;font-weight:600}.sh .b.b{border:1px solid var(--ink)}.sh .b.x{border:1px solid var(--line);color:var(--dim)}.sh .b.w{background:var(--warn);color:#000;font-weight:600}.sh .b.ok{border:1px solid var(--ok);color:var(--ok)}
+.sd{color:var(--dim);margin:5px 0 0;font-size:14px}.sd code,.fine code,td code{font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--line2);padding:1px 5px}
+.sd b{color:var(--ink)}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);margin-top:0;border-top:2px solid var(--ink)}
+.f{padding:16px 18px;border-right:1px solid var(--line)}.f:last-child{border:none}
+.fk{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin:0 0 8px}
+.fv{font-family:var(--black);font-size:21px;margin:0;line-height:1.05}.fv small{font-family:var(--sans);font-weight:400;font-size:12.5px;color:var(--dim);display:block;margin-top:5px;letter-spacing:0}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--ink)}
+th:not(:first-child),td:not(:first-child){border-left:1px solid var(--line2)}
+td:first-child{color:var(--ink)}tr:last-child td{border-bottom:none}
+table.wide td:first-child{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+td .mc{font-family:var(--mono);font-size:12.5px}
+td .mca{font-family:var(--mono);font-size:12.5px;color:var(--accent)}
+.ax{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.ax.run{border-color:var(--warn);color:var(--warn)} .ax.ben{border-color:var(--accent);color:var(--accent)} .ax.unit{border-color:#c98bff;color:#c98bff} .ax.lvl{border-color:#6fd0d8;color:#6fd0d8}
+.v{font-family:var(--mono);font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;display:inline-block;padding:2px 9px}
+.v.poll{color:#000;background:var(--warn);font-weight:600} .v.clean{color:var(--ok);border:1px solid var(--ok)} .v.shared{color:var(--accent);border:1px solid var(--accent)} .v.neutral{color:var(--faint);border:1px solid var(--line)}
+.qs{margin:0;padding:0;list-style:none;counter-reset:q}
+.qs li{counter-increment:q;display:grid;grid-template-columns:46px 1fr;gap:16px;padding:13px 0;border-top:1px solid var(--line2);color:var(--dim);font-size:14.5px}
+.qs li::before{content:"R" counter(q);font-family:var(--black);font-size:18px;color:var(--accent);line-height:1.2}
+.qs li b{color:var(--ink)}
+.fine{color:var(--dim);font-size:14px;margin:14px 0 0;max-width:820px}
+.fine b{color:var(--ink)}
+.axgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:0;border-top:2px solid var(--ink)}
+.axcard{padding:18px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.axcard:nth-child(2n){border-right:none}
+.axcard .ah{font-family:var(--black);font-size:17px;margin:0 0 2px;text-transform:uppercase;letter-spacing:-.01em}
+.axcard .aq{font-family:var(--mono);font-size:11px;color:var(--faint);margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em}
+.axcard p{color:var(--dim);font-size:13.5px;margin:8px 0 0}
+.axcard .owns{font-size:12.5px;margin-top:10px;color:var(--ink)}
+footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);font-size:11.5px;line-height:1.7}footer .s{color:var(--dim)}
+@media(max-width:720px){:root{--t-h1:36px}header{grid-template-columns:1fr}.idx{display:none}.row{grid-template-columns:1fr}.facts,.axgrid{grid-template-columns:1fr}.legend{grid-template-columns:1fr}.tag:first-child{border-right:none;border-bottom:1px solid var(--line);padding-right:0}.tag:last-child{padding-left:0}.axcard{border-right:none}}
+</style></head><body><div class="wrap">
+
+<header>
+ <div><p class="kick">rollup-bridge-indexer · L2 data-model analysis · 2026-06-17</p><h1>EVM &amp; Michelson<br>collide in L2</h1></div>
+ <div class="idx">×4</div>
+ <p class="lede">The indexer was designed for <b>one</b> L2 runtime — EVM. Tezos X added a second, <b>Michelson</b>, and its XTZ deposits were written into the EVM-shaped tables "by analogy". The result is not one problem but <b>four independent axes</b> of collision. Row class is <b>convention, not data</b> — on 2026-06-11 that already cost 12 wrong matches in production. This is a fresh pass over <b>every</b> L2 model, the conflict map, and the re-derived fix.</p>
+</header>
+
+<div class="legend">
+ <span class="tag"><span class="sq a"></span>Michelson row<span class="m">— synthetic Tezlink op: base58 "o…" hash, tz-addresses, native mutez (6-dec), Tezlink level</span></span>
+ <span class="tag"><span class="sq b"></span>EVM row<span class="m">— the table's native shape: hex hashes, H160, wei (18-dec), EVM block number</span></span>
+</div>
+
+<!-- ============ §01 the four axes ============ -->
+<section><div class="row">
+ <div class="sl">01 · reframe</div>
+ <div>
+  <h2>It isn't one "kind" — it's four axes</h2>
+  <p class="h2sub">the word "kind" was doing triple duty · each axis is independent and owns a different failure</p>
+  <p class="fine" style="margin-top:0">The trap is treating EVM-vs-Michelson as a single switch. A deposit to a tz1 user's <b>EVM alias</b> is <code>runtime=evm</code> (hex hash, wei, EVM matcher) yet <code>beneficiary=tz</code>. One column cannot carry both. Untangled, the surface is four orthogonal questions:</p>
+  <div class="axgrid">
+   <div class="axcard"><p class="ah" style="color:var(--warn)">A · Runtime</p><p class="aq">how was the row produced?</p><p><code>evm</code> vs <code>michelson</code>. Today inferred by <b>convention</b>: <code>transaction_hash.startswith('o')</code> (×2) and <code>inbox_…__isnull</code>.</p><p class="owns">Owns → <b>the matcher bug.</b></p></div>
+   <div class="axcard"><p class="ah" style="color:var(--accent)">B · Beneficiary</p><p class="aq">who owns the funds?</p><p><code>evm-eoa</code> / <code>tz-native</code> / <code>evm-alias-of-tz</code>. The alias machinery (Initialized-event registry) is <b>not built yet</b>.</p><p class="owns">Owns → <b>address format + alias/UI.</b></p></div>
+   <div class="axcard"><p class="ah" style="color:#c98bff">C · Asset / units</p><p class="aq">what asset, at what scale?</p><p>EVM is native <b>wei (18-dec)</b>; Michelson is native <b>mutez (6-dec)</b>. Today forced to one wei column via <code>×10¹²</code>.</p><p class="owns">Owns → <b>decimals + amount string-magic.</b></p></div>
+   <div class="axcard"><p class="ah" style="color:#6fd0d8">D · Level space</p><p class="aq">which chain's block number?</p><p>EVM block (~388k) vs Tezlink level (~562k) from a <b>different chain</b> — incomparable, yet sorted together.</p><p class="owns">Owns → <b>the ordering hazard.</b></p></div>
+  </div>
+ </div>
+</div></section>
+
+<!-- ============ §02 field inventory ============ -->
+<section><div class="row">
+ <div class="sl">02 · the polluted table</div>
+ <div>
+  <h2>One table, two field semantics</h2>
+  <p class="h2sub">models/__init__.py · EtherlinkDepositOperation → l2_deposit · the only genuinely mixed table</p>
+  <div class="panel">
+   <div class="pbar">INVENTORY · <b>field by field</b> · what actually lives in each column · tagged by axis</div>
+   <table class="wide">
+    <thead><tr><th>column</th><th>EVM row</th><th>Michelson row</th><th>axis</th></tr></thead>
+    <tbody>
+     <tr><td>transaction_hash</td><td><span class="mc">bare 64-hex</span></td><td><span class="mca">base58 "o…", 51 chars</span></td><td><span class="ax run">A</span></td></tr>
+     <tr><td>transaction_index</td><td><span class="mc">tx index in block</span></td><td><span class="mca">Tezos account counter</span> — ordering only</td><td><span class="ax run">A</span></td></tr>
+     <tr><td>log_index</td><td><span class="mc">event log index</span></td><td><span class="mca">always NULL</span></td><td><span class="ax run">A</span></td></tr>
+     <tr><td>address · l2_account</td><td><span class="mc">hex-40, no 0x</span></td><td><span class="mca">base58 "tz1…"</span></td><td><span class="ax ben">B</span></td></tr>
+     <tr><td>amount</td><td><span class="mc">wei</span></td><td><span class="mca">mutez × 10¹²</span> — converted on write</td><td><span class="ax unit">C</span></td></tr>
+     <tr><td>l2_token</td><td><span class="mc">"xtz", decimals=18</span></td><td><span class="mca">same row</span>, though native is mutez (6)</td><td><span class="ax unit">C</span></td></tr>
+     <tr><td>level</td><td><span class="mc">EVM block №</span></td><td><span class="mca">Tezlink level</span> — different chain</td><td><span class="ax lvl">D</span></td></tr>
+     <tr><td>inbox_message_level/index</td><td><span class="mc">set from event</span></td><td><span class="mca">NULL until op-hash backfill</span></td><td><span class="ax run">A</span></td></tr>
+    </tbody>
+   </table>
+  </div>
+  <p class="fine">Row class is never stored — it is <b>derived</b>: <code>startswith('o')</code> (michelson_matcher.py:44, bridge_matcher.py:170), <code>inbox_…__isnull</code> (bridge_matcher.py:117). Units cross the boundary by string magic in <b>5 places</b>: <code>amount[:-12]</code>, <code>× 1e12</code>, <code>× WEI_PER_MUTEZ</code>. Verified in code 2026-06-15/17.</p>
+ </div>
+</div></section>
+
+<!-- ============ §03 model coverage matrix ============ -->
+<section><div class="row">
+ <div class="sl">03 · all L2 models</div>
+ <div>
+  <h2>Where the pollution actually reaches</h2>
+  <p class="h2sub">the conflict is asymmetric · only l2_deposit is truly mixed · shared read-models inherit it</p>
+  <div class="panel">
+   <div class="pbar">COVERAGE · <b>every L2 model</b> · who writes it · status</div>
+   <table>
+    <thead><tr><th>model / table</th><th>written by</th><th>status</th><th>axes present</th></tr></thead>
+    <tbody>
+     <tr><td>EtherlinkDepositOperation<br><span class="mc">l2_deposit</span></td><td>EVM <b>and</b> Michelson handlers</td><td><span class="v poll">polluted</span></td><td><span class="ax run">A</span> <span class="ax ben">B</span> <span class="ax unit">C</span> <span class="ax lvl">D</span></td></tr>
+     <tr><td>EtherlinkWithdrawOperation<br><span class="mc">l2_withdrawal</span></td><td>EVM handlers only</td><td><span class="v clean">EVM-clean</span></td><td><span class="ax run">A*</span></td></tr>
+     <tr><td>EtherlinkToken<br><span class="mc">etherlink_token</span></td><td>shared via "xtz" pseudo-token</td><td><span class="v shared">shared</span></td><td><span class="ax unit">C</span></td></tr>
+     <tr><td>BridgeOperation<br><span class="mc">bridge_operation</span></td><td>matcher (read-model)</td><td><span class="v shared">inherits</span></td><td><span class="ax run">A</span> <span class="ax ben">B</span></td></tr>
+     <tr><td>EtherlinkTokenHolder<br><span class="mc">l2_token_holder</span></td><td>EVM Transfer events only</td><td><span class="v clean">EVM-clean</span></td><td>—</td></tr>
+     <tr><td>TezosTicket<br><span class="mc">tezos_ticket</span></td><td>shared · one native XTZ ticket</td><td><span class="v shared">shared</span></td><td><span class="ax unit">C</span></td></tr>
+     <tr><td>BridgeDeposit / Withdraw<br><span class="mc">bridge_deposit/_withdrawal</span></td><td>matcher · FK joins</td><td><span class="v neutral">structural</span></td><td>—</td></tr>
+     <tr><td>Rollup In/Outbox Message<br><span class="mc">rollup_*_message</span></td><td>L1-side index</td><td><span class="v neutral">neutral</span></td><td>—</td></tr>
+    </tbody>
+   </table>
+  </div>
+  <div class="facts">
+   <div class="f"><p class="fk">truly mixed tables</p><p class="fv">1 / 8<small>only l2_deposit; the rest are clean, shared, or neutral</small></p></div>
+   <div class="f"><p class="fk">Michelson write surface</p><p class="fv">deposits only<small>no Michelson withdrawal / transfer / holder path exists</small></p></div>
+   <div class="f"><p class="fk">convention-based discriminators</p><p class="fv">3<small>"o…" prefix ×2 + isnull guard</small></p></div>
+  </div>
+  <p class="fine"><span class="ax run">A*</span> l2_withdrawal is EVM-only today (NAC withdrawals arrive as EVM-alias rows — still <code>runtime=evm</code>); it gets <code>l2_kind</code> for symmetry, where it stays constant <code>evm</code>. The alias machinery that axis B needs (<code>Initialized</code> registry, decided but <b>unbuilt</b>) is a separate scope block.</p>
+ </div>
+</div></section>
+
+<!-- ============ §04 incident ============ -->
+<section><div class="row">
+ <div class="sl">04 · evidence</div>
+ <div>
+  <h2>What axis A already cost</h2>
+  <p class="h2sub">tezosx-shadownet · 2026-06-11 · fix 9b36cc5</p>
+  <div class="panel">
+   <div class="pbar">FLOW · <b>how 12 deposits got the wrong L1 leg</b></div>
+   <div class="step"><div class="n a">1</div><div>
+     <p class="sh">Michelson handler inserts a row with no inbox-coords<span class="b a">michelson</span></p>
+     <p class="sd">Coords are backfilled later by the op-hash matcher — until then the row sits with <code>NULL</code> coords.</p></div></div>
+   <div class="step"><div class="n b">2</div><div>
+     <p class="sh">The coords step grabs the foreign row<span class="b b">generic step</span></p>
+     <p class="sd">Tortoise renders <code>None</code>-coords as <code>LEFT JOIN … IS NULL</code> → a coord-less row matches <b>any</b> bridge deposit with no inbox link, newest first.</p></div></div>
+   <div class="step"><div class="n b">3</div><div>
+     <p class="sh">The value-zip step outruns the deterministic op-hash<span class="b b">generic step</span></p>
+     <p class="sd">A heuristic (ticket + receiver + amount + 140s window) claims "o…" rows that have an exact key, and links them first.</p></div></div>
+   <div class="step"><div class="n w">4</div><div>
+     <p class="sh">12/12 deposits linked wrong, marked finished<span class="b w">outcome</span></p>
+     <p class="sd">The fix was two more <b>convention</b> guards on top of the existing ones. Every new matcher step must remember every row class — that is the root cause, not the symptom.</p></div></div>
+  </div>
+ </div>
+</div></section>
+
+<!-- ============ §05 recommendation ============ -->
+<section><div class="row">
+ <div class="sl">05 · the fix</div>
+ <div>
+  <h2>Make each axis data, not convention</h2>
+  <p class="h2sub">re-derived per axis · one schema pass · backfill = full reindex while data is test-net only</p>
+  <div class="panel">
+   <div class="pbar">RESOLUTION · <b>A → D</b> + cross-cutting</div>
+   <div class="step"><div class="n w">A</div><div>
+     <p class="sh">Explicit <code>l2_kind</code> on l2_deposit, l2_withdrawal &amp; bridge_operation<span class="b w">runtime</span></p>
+     <p class="sd"><code>Enum(evm | michelson)</code>, set by the handler. All 3 convention discriminators (<code>startswith('o')</code>, <code>isnull</code>) become one honest filter + a <b>disjoint-pools test</b>. On <code>bridge_operation</code> too, so UI / Hasura / Kuma filter runtime without a join. Withdrawal column is constant <code>evm</code> today — kept for symmetry.</p></div></div>
+   <div class="step"><div class="n a">B</div><div>
+     <p class="sh"><code>l2_account</code> → FK to a normalized <code>L2Account</code> table<span class="b a">beneficiary</span></p>
+     <p class="sd">The row stores <b>both</b> the on-chain address (matcher keys on it) and the resolved native <b>origin</b>, under distinct names, plus <code>kind ∈ {EVM, TZ, EVM_ALIAS}</code>. Origin = <code>native_tz</code> for an alias, else the address itself — a <b>read</b> concern, not a write. One-row retroactive enrichment via JOIN; the table doubles as the decided alias registry. <b>Sequenced:</b> store the tz1 string now for the deposit fix; introduce the FK in block 2 with the alias indexing that feeds it.</p></div></div>
+   <div class="step"><div class="n a" style="color:#c98bff">C</div><div>
+     <p class="sh">Split XTZ into two token rows; derive scale from <code>decimals</code><span class="b a" style="background:#c98bff">asset/units</span></p>
+     <p class="sd">A wei/18-dec row (EVM) and a mutez/6-dec row (Tezlink); store <b>native</b> units, consumers normalize via <code>token.decimals</code> — the path FA tokens already use. Cost, accepted: <code>EtherlinkToken.ticket</code> <b>OneToOne→ForeignKey</b> (one L1 ticket, two L2 rows), exempt XTZ from the <code>on_deposit.py:27</code> one-ticket-one-token guard, and <code>SUM</code> across both rows for "total XTZ". The op-hash <code>×10¹²</code> stays — the kernel hashes wei regardless.</p></div></div>
+   <div class="step"><div class="n a" style="color:#6fd0d8">D</div><div>
+     <p class="sh">Default-order by <code>timestamp</code>, not <code>level</code><span class="b a" style="background:#6fd0d8">level space</span></p>
+     <p class="sd"><code>Meta.ordering = ('-timestamp', '-transaction_index')</code>. Block wall-clock is comparable across both chains; <code>level</code> stays as native per-row metadata, only ever compared within one <code>l2_kind</code>. Removes the only real hazard — the default sort that floats Michelson rows above EVM rows as falsely "newest".</p></div></div>
+   <div class="step"><div class="n x">+</div><div>
+     <p class="sh">Cross-cutting, bundled in this pass<span class="b x">hygiene</span></p>
+     <p class="sd">Rename <code>EtherlinkDepositOperation → L2DepositOperation</code>, <code>EtherlinkToken → L2Token</code>, and the matcher locks — the names stop lying immediately and the migration churn lands once. <b>Backfill = full reindex from the ground</b>: all Tezos X data is test-net and re-syncable, so handlers repopulate every new column / FK / token-split correctly with no backfill script.</p></div></div>
+  </div>
+  <p class="fine">Why not a separate <code>MichelsonDepositOperation</code> table? The Michelson write surface is <b>deposits only and will not grow</b> (no FA on Michelson; withdrawals are EVM via NAC). A split pays a polymorphic-FK price across every consumer for a single stream. The discriminator closes the actual (matcher) bug, and <code>l2_kind</code> remains a clean cut-line if a split is ever justified later.</p>
+ </div>
+</div></section>
+
+<!-- ============ §06 open / sequencing ============ -->
+<section><div class="row">
+ <div class="sl">06 · before mainnet</div>
+ <div>
+  <h2>Sequencing &amp; what still needs eyes</h2>
+  <p class="h2sub">the cheap-migration window closes at the mainnet upgrade (~25 Jun) — after that, real data migrates</p>
+  <ul class="qs">
+   <li><span><b>Now (this pass):</b> A (l2_kind, all 3 tables) + C (token split) + D (timestamp ordering) + renames, landed together, verified by reindex-from-ground on the test stands.</span></li>
+   <li><span><b>Block 2 (with alias work):</b> B's <code>L2Account</code> FK + the <code>Initialized</code> registry that enriches it. Until then, <code>l2_account</code> holds the raw tz1 / hex string.</span></li>
+   <li><span><b>Re-verify:</b> exact tz-address max length for the field (tz1/tz2/tz3 + KT1 → 36) and the op-hash <code>×10¹²</code> against a fresh mainnet-shaped sample before the window closes.</span></li>
+   <li><span><b>Kuma:</b> matcher monitor #305 is paused until Michelson matching ships — the <code>bridge_operation.l2_kind</code> filter is what unpauses it cleanly.</span></li>
+  </ul>
+ </div>
+</div></section>
+
+<footer>
+ <span class="s">RE-VERIFY:</span> tz-address field width (tz/KT1 = 36) · op-hash ×10¹² vs fresh sample · TzKT implicit-source-event status (upstream promised nothing) · row counts per network before reindex<br>
+ <span class="s">SRC:</span> models/__init__.py:104,236,244 · handlers/bridge_matcher.py:117,170,179-185 · michelson_matcher.py:44 · handlers/etherlink/on_deposit.py:27 · handlers/tezos_x/on_michelson_deposit_ophash.py:57 · KB tezos-x-bridge/{flows/deposits.md:86,173, decisions/deposit-model-design.md, decisions/alias-indexing-strategy.md, scope/l2-michelson-deposits.md} · incident 9b36cc5 · verified in code 2026-06-17
+</footer>
+
+</div></body></html>

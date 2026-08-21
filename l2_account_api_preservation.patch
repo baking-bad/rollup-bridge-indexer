@@ -1,0 +1,258 @@
+From b4e342471930c65ba0f4cfe025300ba8cb4e3029 Mon Sep 17 00:00:00 2001
+From: Wizard1209 <wizard1209@gmail.com>
+Date: Wed, 17 Jun 2026 11:38:22 -0300
+Subject: [PATCH] refactor(models): preserve l2_account GraphQL field, FK
+ relation -> account
+
+The A2 FK rename moved the column l2_account -> l2_account_id, a breaking
+GraphQL shape change. Restore the old API: name the FK column l2_account
+again (source_field) and call the relation field `account` instead, so the
+relation name no longer collides with the column name (the collision broke
+refresh_from_db before). Mirrors the existing ticket/ticket_hash pattern.
+
+Result: GraphQL exposes the scalar `l2_account` exactly as before (string ==
+origin), plus a new `account` object relation to L2Account (alias/kind).
+Raw FK accessor is account_id; matcher and handlers updated accordingly.
+Verified: l2_account column holds the origin value, matching unchanged.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ handlers/bridge_matcher.py                      | 14 +++++++-------
+ handlers/etherlink/on_deposit.py                |  2 +-
+ handlers/etherlink/on_withdraw.py               |  2 +-
+ handlers/etherlink/on_xtz_deposit.py            |  2 +-
+ handlers/etherlink/on_xtz_withdraw.py           |  2 +-
+ handlers/tezos/on_rollup_call.py                |  2 +-
+ handlers/tezos_x/on_michelson_deposit.py        |  2 +-
+ handlers/tezos_x/on_michelson_deposit_ophash.py |  2 +-
+ models/__init__.py                              | 12 ++++++++----
+ tests/unit/matcher/factories.py                 |  6 +++---
+ 10 files changed, 25 insertions(+), 21 deletions(-)
+
+diff --git a/handlers/bridge_matcher.py b/handlers/bridge_matcher.py
+index 65a0163..27199a0 100644
+--- a/handlers/bridge_matcher.py
++++ b/handlers/bridge_matcher.py
+@@ -43,7 +43,7 @@ class BridgeMatcher:
+                 id=bridge_deposit.id,
+                 type=BridgeOperationType.deposit,
+                 l1_account=l1_deposit.l1_account,
+-                l2_account_id=l1_deposit.l2_account_id,
++                account_id=l1_deposit.account_id,
+                 created_at=l1_deposit.timestamp,
+                 updated_at=l1_deposit.timestamp,
+                 status=BridgeOperationStatus.created,
+@@ -225,7 +225,7 @@ class BridgeMatcher:
+                     l1_transaction__ticket=l2_deposit.l2_token.ticket,
+                     l1_transaction__timestamp__lte=l2_deposit.timestamp,
+                     l1_transaction__timestamp__gte=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX,
+-                    l1_transaction__l2_account_id=l2_deposit.l2_account_id,
++                    l1_transaction__account_id=l2_deposit.account_id,
+                     l1_transaction__amount=l2_deposit.amount[:-12],
+                 )
+                 .order_by('l1_transaction__timestamp')
+@@ -263,7 +263,7 @@ class BridgeMatcher:
+                 id=bridge_withdrawal.id,
+                 type=BridgeOperationType.withdrawal,
+                 l1_account=l2_withdrawal.l1_account,
+-                l2_account_id=l2_withdrawal.l2_account_id,
++                account_id=l2_withdrawal.account_id,
+                 created_at=l2_withdrawal.timestamp,
+                 updated_at=l2_withdrawal.timestamp,
+                 status=BridgeOperationStatus.created,
+@@ -377,10 +377,10 @@ class BridgeMatcher:
+             if (
+                 l1_payout_parameters['withdrawal']['ticketer'] == l2_withdrawal.l1_ticket_owner
+                 and l1_payout_parameters['withdrawal']['payload'] == l2_withdrawal.fast_payload.hex()
+-                # `l2_caller` is the raw EVM caller the kernel emits. l2_account_id == origin,
++                # `l2_caller` is the raw EVM caller the kernel emits. account_id == origin,
+                 # which equals the raw address while alias checking is off. TODO(A4): once
+-                # aliases resolve, compare against l2_withdrawal.l2_account.address instead.
+-                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account_id
++                # aliases resolve, compare against l2_withdrawal.account.address instead.
++                and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.account_id
+                 and int(datetime.fromisoformat(l1_payout_parameters['withdrawal']['timestamp']).timestamp())
+                 == int(l2_withdrawal.timestamp.timestamp())
+                 and int(l1_payout_parameters['withdrawal']['full_amount']) * int(1e12) == int(l2_withdrawal.amount)
+@@ -420,7 +420,7 @@ class BridgeMatcher:
+                     type=BridgeOperationType.withdrawal,
+                     kind=BridgeOperationKind.fast_withdrawal_service_provider,
+                     l1_account=l1_payout_parameters['service_provider'],
+-                    l2_account_id=l2_withdrawal.l2_account_id,
++                    account_id=l2_withdrawal.account_id,
+                     created_at=l2_withdrawal.timestamp,
+                     updated_at=l1_payout.timestamp,
+                     status=BridgeOperationStatus.created,
+diff --git a/handlers/etherlink/on_deposit.py b/handlers/etherlink/on_deposit.py
+index 0b9e1ee..8481c7a 100644
+--- a/handlers/etherlink/on_deposit.py
++++ b/handlers/etherlink/on_deposit.py
+@@ -73,7 +73,7 @@ async def on_deposit(
+         log_index=event.data.log_index,
+         transaction_hash=event.data.transaction_hash[-64:],
+         transaction_index=event.data.transaction_index,
+-        l2_account=l2_account,
++        account=l2_account,
+         l2_token=etherlink_token,
+         ticket_id=event.payload.ticket_hash,
+         ticket_owner=event.payload.ticket_owner[-40:],
+diff --git a/handlers/etherlink/on_withdraw.py b/handlers/etherlink/on_withdraw.py
+index 123c29f..e871760 100644
+--- a/handlers/etherlink/on_withdraw.py
++++ b/handlers/etherlink/on_withdraw.py
+@@ -37,7 +37,7 @@ async def on_withdraw(
+         log_index=event.data.log_index,
+         transaction_hash=event.data.transaction_hash[-64:],
+         transaction_index=event.data.transaction_index,
+-        l2_account=l2_account,
++        account=l2_account,
+         l1_account=event.payload.receiver,
+         l2_token=etherlink_token,
+         ticket_id=event.payload.ticket_hash,
+diff --git a/handlers/etherlink/on_xtz_deposit.py b/handlers/etherlink/on_xtz_deposit.py
+index 6325db4..9a6ef78 100644
+--- a/handlers/etherlink/on_xtz_deposit.py
++++ b/handlers/etherlink/on_xtz_deposit.py
+@@ -51,7 +51,7 @@ async def on_xtz_deposit(
+         address=transaction.from_[-40:],
+         transaction_hash=transaction.hash[-64:],
+         transaction_index=transaction.transaction_index,
+-        l2_account=l2_account,
++        account=l2_account,
+         l2_token=etherlink_token,
+         ticket=tezos_ticket,
+         ticket_owner=etherlink_token.id,
+diff --git a/handlers/etherlink/on_xtz_withdraw.py b/handlers/etherlink/on_xtz_withdraw.py
+index 0ca8b4f..4e29baa 100644
+--- a/handlers/etherlink/on_xtz_withdraw.py
++++ b/handlers/etherlink/on_xtz_withdraw.py
+@@ -41,7 +41,7 @@ async def on_xtz_withdraw(
+         log_index=event.data.log_index,
+         transaction_hash=event.data.transaction_hash[-64:],
+         transaction_index=event.data.transaction_index,
+-        l2_account=l2_account,
++        account=l2_account,
+         l1_account=event.payload.receiver,
+         l2_token=etherlink_token,
+         ticket_id=etherlink_token.ticket.hash,
+diff --git a/handlers/tezos/on_rollup_call.py b/handlers/tezos/on_rollup_call.py
+index 5885ef5..990c293 100644
+--- a/handlers/tezos/on_rollup_call.py
++++ b/handlers/tezos/on_rollup_call.py
+@@ -43,7 +43,7 @@ async def on_rollup_call(
+         sender=default.data.sender_address,
+         target=default.data.target_address,
+         l1_account=default.data.initiator_address,
+-        l2_account=l2_account,
++        account=l2_account,
+         ticket=ticket,
+         amount=parameter.ticket.amount,
+         parameters_hash=await TransactionParametersHash(default).from_transaction(),
+diff --git a/handlers/tezos_x/on_michelson_deposit.py b/handlers/tezos_x/on_michelson_deposit.py
+index 7d85685..c51cbc8 100644
+--- a/handlers/tezos_x/on_michelson_deposit.py
++++ b/handlers/tezos_x/on_michelson_deposit.py
+@@ -86,7 +86,7 @@ async def on_michelson_deposit(
+         transaction_hash=op.hash,
+         transaction_index=op.counter,  # ordering key only; the match is by inbox coords
+         log_index=None,
+-        l2_account=l2_account,
++        account=l2_account,
+         l2_token=etherlink_token,
+         ticket=tezos_ticket,
+         ticket_owner=etherlink_token.id,
+diff --git a/handlers/tezos_x/on_michelson_deposit_ophash.py b/handlers/tezos_x/on_michelson_deposit_ophash.py
+index 969bf8b..0eaaf70 100644
+--- a/handlers/tezos_x/on_michelson_deposit_ophash.py
++++ b/handlers/tezos_x/on_michelson_deposit_ophash.py
+@@ -55,7 +55,7 @@ async def on_michelson_deposit_ophash(
+         transaction_hash=op.hash,  # the op-hash — the deterministic match key
+         transaction_index=op.counter,  # ordering key only
+         log_index=None,
+-        l2_account=l2_account,
++        account=l2_account,
+         l2_token=etherlink_token,
+         ticket=tezos_ticket,
+         ticket_owner=etherlink_token.id,
+diff --git a/models/__init__.py b/models/__init__.py
+index a933502..401d738 100644
+--- a/models/__init__.py
++++ b/models/__init__.py
+@@ -216,8 +216,9 @@ class TezosDepositOperation(AbstractTezosOperation):
+         model = 'models.TezosDepositOperation'
+ 
+     l1_account = fields.CharField(max_length=36)
+-    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
++    account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+         model_name=L2Account.Meta.model,
++        source_field='l2_account',
+         to_field='origin',
+         related_name='l1_deposits',
+     )
+@@ -272,8 +273,9 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
+             'inbox_message_index',
+         )
+ 
+-    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
++    account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+         model_name=L2Account.Meta.model,
++        source_field='l2_account',
+         to_field='origin',
+         related_name='l2_deposits',
+     )
+@@ -305,8 +307,9 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
+ 
+         ordering = ('-level', '-transaction_index', '-log_index')
+ 
+-    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
++    account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+         model_name=L2Account.Meta.model,
++        source_field='l2_account',
+         to_field='origin',
+         related_name='l2_withdrawals',
+     )
+@@ -347,8 +350,9 @@ class BridgeOperation(AbstractBridgeOperation):
+         ordering = ('-created_at',)
+ 
+     l1_account = fields.CharField(max_length=36, db_index=True)
+-    l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
++    account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
+         model_name=L2Account.Meta.model,
++        source_field='l2_account',
+         to_field='origin',
+         related_name='bridge_operations',
+     )
+diff --git a/tests/unit/matcher/factories.py b/tests/unit/matcher/factories.py
+index 67b0c46..665e562 100644
+--- a/tests/unit/matcher/factories.py
++++ b/tests/unit/matcher/factories.py
+@@ -67,7 +67,7 @@ async def l1_deposit(
+         sender='tz1initiatorXXXXXXXXXXXXXXXXXXXXXXXX',
+         target=ROLLUP,
+         l1_account='tz1initiatorXXXXXXXXXXXXXXXXXXXXXXXX',
+-        l2_account=await _l2_account(l2_account),
++        account=await _l2_account(l2_account),
+         ticket=ticket,
+         amount=amount,
+         parameters_hash=parameters_hash,
+@@ -118,7 +118,7 @@ async def evm_l2_deposit(
+         transaction_hash='ef' * 32,
+         transaction_index=0,
+         log_index=0,
+-        l2_account=await _l2_account(l2_account),
++        account=await _l2_account(l2_account),
+         l2_token=l2_token,
+         ticket=l2_token.ticket,
+         ticket_owner=l2_token.id,
+@@ -146,7 +146,7 @@ async def michelson_l2_deposit(
+         transaction_hash=op_hash,
+         transaction_index=1,
+         log_index=None,
+-        l2_account=await _l2_account(l2_account),
++        account=await _l2_account(l2_account),
+         l2_token=token,
+         ticket=xtz.ticket,  # same native ticket as the EVM handle, already loaded
+         ticket_owner=token.id,
+-- 
+2.43.0
+

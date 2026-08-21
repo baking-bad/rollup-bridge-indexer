@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Жизненный цикл реиндекса</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght@900&family=Golos+Text:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0c0c; --grid:#1a1a1a; --ink:#e8e6e2; --dim:#888; --dimmer:#5a5a5a;
+    --accent:#ff6a00; --ok:#3ecf6a; --flag:#ff3b30;
+    --c0:#3a3a40; --c1:#7c4715; --c2:#a84c06; --c3:#ff6a00; --c4:#3ecf6a;
+    --card:#121212; --edge:#232323;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:var(--bg);color:var(--ink)}
+  body{
+    font-family:'Golos Text',sans-serif;font-size:13px;line-height:1.5;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size:48px 48px;
+    padding:56px 24px 72px;
+    overflow-x:hidden;
+  }
+  main{max-width:1160px;margin:0 auto}
+  code,.mono{font-family:'IBM Plex Mono',monospace}
+
+  /* ---------- header ---------- */
+  .kicker{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--accent);margin-bottom:14px;
+  }
+  h1{
+    font-family:'Geologica',sans-serif;font-weight:900;font-size:46px;line-height:1.05;
+    letter-spacing:-.01em;margin-bottom:14px;
+  }
+  .sub{max-width:760px;color:var(--dim);font-size:14px}
+  .sub b{color:var(--ink);font-weight:600}
+
+  /* ---------- diagram frame ---------- */
+  .diagram{margin-top:52px}
+
+  /* top callouts for narrow segments + tail */
+  .topzone{position:relative;height:62px}
+  .topzone .lbl{
+    position:absolute;top:0;font-family:'IBM Plex Mono',monospace;font-size:11px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--ink);white-space:nowrap;
+  }
+  .topzone .lbl .n{font-family:'Geologica',sans-serif;font-weight:900;font-size:12px}
+  .topzone .lbl .t{color:var(--dim)}
+  .lbl-0{left:0}           .lbl-0 .n{color:#b9b9c4}
+  .lbl-1{left:19%}         .lbl-1 .n{color:var(--c1);filter:brightness(1.6)}
+  .lbl-4{right:0}          .lbl-4 .n{color:var(--c4)}
+  .topzone svg{position:absolute;left:0;bottom:0;width:100%;height:42px;display:block;overflow:visible}
+  .topzone path{fill:none;stroke:#3d3d3d;stroke-width:1;vector-effect:non-scaling-stroke}
+  .topzone circle{fill:#3d3d3d}
+
+  /* ---------- ribbon ---------- */
+  .ribbon{display:flex;gap:2px;height:78px}
+  .seg{position:relative;overflow:hidden}
+  .seg-0{width:6%;background:var(--c0)}
+  .seg-1{width:1%;background:var(--c1)}
+  .seg-2{width:60%;background:var(--c2)}
+  .seg-3{width:30%;background:var(--c3)}
+  .seg-4{
+    width:3%;
+    background:repeating-linear-gradient(-45deg, var(--c4) 0 4px, transparent 4px 9px);
+    -webkit-mask-image:linear-gradient(90deg,#000 0%,transparent 96%);
+            mask-image:linear-gradient(90deg,#000 0%,transparent 96%);
+  }
+  .seg-in{
+    position:absolute;inset:0;padding:10px 16px 9px;
+    display:flex;flex-direction:column;justify-content:space-between;color:#1a0d00;
+  }
+  .seg-in .row1{display:flex;align-items:baseline;gap:10px}
+  .seg-in .num{font-family:'Geologica',sans-serif;font-weight:900;font-size:30px;line-height:1;opacity:.55}
+  .seg-in .name{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500;
+    letter-spacing:.2em;text-transform:uppercase;
+  }
+  .seg-in .dur{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;opacity:.75}
+
+  /* ---------- leader lines ribbon → cards ---------- */
+  .leaders{display:block;width:100%;height:64px}
+  .leaders path{fill:none;stroke:#3d3d3d;stroke-width:1;vector-effect:non-scaling-stroke}
+  .leaders circle{fill:#3d3d3d}
+
+  /* ---------- cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  .card{
+    background:var(--card);border:1px solid var(--edge);border-top:3px solid;
+    padding:14px 14px 16px;display:flex;flex-direction:column;gap:10px;
+  }
+  .card-0{border-top-color:var(--c0)}
+  .card-1{border-top-color:var(--c1)}
+  .card-2{border-top-color:var(--c2)}
+  .card-3{border-top-color:var(--c3)}
+  .card-4{border-top-color:var(--c4)}
+  .card .head{display:flex;align-items:baseline;gap:8px}
+  .card .head .num{font-family:'Geologica',sans-serif;font-weight:900;font-size:22px;line-height:1}
+  .card-0 .num{color:#9c9ca8}.card-1 .num{color:#c98134}.card-2 .num{color:#e97722}
+  .card-3 .num{color:var(--accent)}.card-4 .num{color:var(--ok)}
+  .card .head .name{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;
+    letter-spacing:.18em;text-transform:uppercase;
+  }
+  .card .head .dur{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dimmer);white-space:nowrap}
+  .f{font-size:12px;color:#c9c7c2}
+  .f .k{
+    display:block;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--dimmer);margin-bottom:2px;
+  }
+  .f code{font-size:11px;color:var(--ink);background:#1b1b1b;padding:0 3px;border-radius:2px}
+  .speed{
+    font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500;color:var(--ink);
+    border-left:2px solid var(--edge);padding-left:8px;
+  }
+  .card-2 .speed,.card-3 .speed{border-left-color:var(--accent)}
+  .card-4 .speed{border-left-color:var(--ok)}
+  .speed small{display:block;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--dimmer)}
+  .ok,.flag{font-size:12px;padding-left:16px;position:relative}
+  .ok{color:#8fd9a8}.flag{color:#f09490}
+  .ok::before{content:"✓";position:absolute;left:0;color:var(--ok);font-weight:600}
+  .flag::before{content:"■";position:absolute;left:0;top:1px;color:var(--flag);font-size:9px}
+  .ok code,.flag code{background:transparent;padding:0;color:inherit}
+  .eta{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--dim);margin-top:auto;padding-top:6px;border-top:1px dashed #242424}
+  .eta b{color:var(--ink);font-weight:500}
+
+  /* ---------- footer band ---------- */
+  .band{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:26px}
+  .band > div{border:1px solid var(--edge);background:var(--card);padding:12px 16px;font-size:12.5px;color:#c9c7c2}
+  .band .bt{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;
+    text-transform:uppercase;display:block;margin-bottom:4px;
+  }
+  .band-ok{border-left:3px solid var(--ok)}   .band-ok .bt{color:var(--ok)}
+  .band-flag{border-left:3px solid var(--flag)}.band-flag .bt{color:var(--flag)}
+  .band code{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink);background:#1b1b1b;padding:0 3px;border-radius:2px}
+
+  .legend{
+    margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;
+    letter-spacing:.1em;color:var(--dimmer);text-transform:uppercase;
+  }
+  .legend .ok-m{color:var(--ok)} .legend .fl-m{color:var(--flag)}
+  .legend .sep{margin:0 10px;color:#333}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="kicker">Etherlink Bridge Indexer · полный реиндекс</div>
+    <h1>Жизненный цикл реиндекса</h1>
+    <p class="sub">Пять стадий от пустой базы до головы чейна. Ширина сегмента — <b>доля времени</b>;
+    длительности под сегментами — пример mainnet-валидации 06-2026 (всего <b>3&nbsp;сут&nbsp;11&nbsp;ч</b>).
+    Полюс — самый медленный индекс, его остаток задаёт ETA.</p>
+  </header>
+
+  <section class="diagram">
+
+    <!-- callouts above ribbon: narrow stages 0–1 and the infinite tail -->
+    <div class="topzone">
+      <div class="lbl lbl-0"><span class="n">0</span> · ТИШИНА <span class="t">· ~5.3 ч</span></div>
+      <div class="lbl lbl-1"><span class="n">1</span> · РАЗЛЁТ <span class="t">· ~1 ч</span></div>
+      <div class="lbl lbl-4"><span class="n">4</span> · РЕАЛТАЙМ <span class="t">· ∞</span></div>
+      <svg viewBox="0 0 1000 42" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M30,40 L30,2"/>
+        <path d="M65,40 L190,6"/>
+        <path d="M985,40 L985,2"/>
+        <circle cx="30" cy="40" r="2.6"/>
+        <circle cx="65" cy="40" r="2.6"/>
+        <circle cx="985" cy="40" r="2.6"/>
+      </svg>
+    </div>
+
+    <!-- the ribbon -->
+    <div class="ribbon" role="img" aria-label="Пропорциональная лента стадий: тишина 6%, разлёт 1%, толпа 60%, спринт 30%, реалтайм — бесконечный хвост">
+      <div class="seg seg-0" title="0 · Тишина"></div>
+      <div class="seg seg-1" title="1 · Разлёт"></div>
+      <div class="seg seg-2">
+        <div class="seg-in">
+          <div class="row1"><span class="num">2</span><span class="name">Толпа</span></div>
+          <div class="dur">~2 сут · 60%</div>
+        </div>
+      </div>
+      <div class="seg seg-3">
+        <div class="seg-in">
+          <div class="row1"><span class="num">3</span><span class="name">Спринт</span></div>
+          <div class="dur">~1 сут · 30%</div>
+        </div>
+      </div>
+      <div class="seg seg-4" title="4 · Реалтайм"></div>
+    </div>
+
+    <!-- leader lines from segments to cards -->
+    <svg class="leaders" viewBox="0 0 1000 64" preserveAspectRatio="none" aria-hidden="true">
+      <circle cx="30"  cy="3" r="2.6"/>
+      <circle cx="65"  cy="3" r="2.6"/>
+      <circle cx="370" cy="3" r="2.6"/>
+      <circle cx="820" cy="3" r="2.6"/>
+      <circle cx="985" cy="3" r="2.6"/>
+      <path d="M30,3  V46 H95  V64"/>
+      <path d="M65,3  V34 H298 V64"/>
+      <path d="M370,3 V22 H500 V64"/>
+      <path d="M820,3 V22 H702 V64"/>
+      <path d="M985,3 V34 H905 V64"/>
+    </svg>
+
+    <!-- annotation cards -->
+    <div class="cards">
+
+      <article class="card card-0">
+        <div class="head"><span class="num">0</span><span class="name">Тишина</span><span class="dur">~5.3 ч · 6%</span></div>
+        <p class="f"><span class="k">Признак</span><code>dipdup_index</code> пуст — выглядит как «индексер лежит», публичный API слеп.</p>
+        <p class="f"><span class="k">Кто едет</span>on_restart бэкфиллит inbox с TzKT; жизнь видна только по SQL: <code>max(level)</code> в <code>rollup_inbox_message</code> растёт.</p>
+        <p class="speed">~425 lvl/s<small>скан L1</small></p>
+        <p class="ok">пустой dipdup_index и «пустая» Hasura — норм</p>
+        <p class="flag">inbox не растёт между двумя SQL-пробами через 10 мин</p>
+        <p class="eta">ETA ≈ <b>(13.99M − max(level)) / 425</b></p>
+      </article>
+
+      <article class="card card-1">
+        <div class="head"><span class="num">1</span><span class="name">Разлёт</span><span class="dur">~0.5–1 ч · 1%</span></div>
+        <p class="f"><span class="k">Признак</span>уровни скачут миллионами — 9 индексов спавнятся разом.</p>
+        <p class="f"><span class="k">Кто едет</span>L2 летит сквозь пустые зоны (Subsquid отдаёт только непустые блоки); часть долетает до головы за полчаса.</p>
+        <p class="speed">до ~200k lvl/min<small>L2 · L1 ~17k</small></p>
+        <p class="ok"><code>status=realtime</code> при замороженном level — норм</p>
+      </article>
+
+      <article class="card card-2">
+        <div class="head"><span class="num">2</span><span class="name">Толпа</span><span class="dur">~2 сут · 60%</span></div>
+        <p class="f"><span class="k">Признак</span>медленный ровный рост полюса, «еле шевелится»; отстающие (token_balance) голодают.</p>
+        <p class="f"><span class="k">Полюс</span><code>tezos_deposit_operations</code>; все живые индексы делят одну петлю событий и одно соединение с БД.</p>
+        <p class="speed">~470 lvl/min<small>пол · штраф толпы ×4–16</small></p>
+        <p class="ok">плато L1 на 10–15 мин, затем скачок +50–150 уровней</p>
+        <p class="eta">ETA ≈ <b>остаток полюса / ~1.5k lvl/min</b> (консервативно — / 470)</p>
+      </article>
+
+      <article class="card card-3">
+        <div class="head"><span class="num">3</span><span class="name">Спринт</span><span class="dur">~1 сут · 30%</span></div>
+        <p class="f"><span class="k">Признак</span>тот же полюс резко ускоряется ×4 без каких-либо действий; лента dipdup_index быстро зеленеет.</p>
+        <p class="f"><span class="k">Кто едет</span>индексы финишируют один за другим, толпа рассасывается.</p>
+        <p class="speed">≥2000 lvl/min<small>полюс</small></p>
+        <p class="eta">ETA ≈ <b>остаток полюса / 2000</b></p>
+      </article>
+
+      <article class="card card-4">
+        <div class="head"><span class="num">4</span><span class="name">Реалтайм</span><span class="dur">∞</span></div>
+        <p class="f"><span class="k">Признак</span>лаг ~0, все приклеены к голове.</p>
+        <p class="f"><span class="k">Скорость</span>= темп чейна, не потолок индексера.</p>
+        <p class="speed">0.86 lvl/s<small>L2 · L1 0.165 lvl/s</small></p>
+        <p class="ok">evm-индексы мигают syncing↔realtime в 15–20 уровнях от головы</p>
+        <p class="ok">строка <code>etherlink_subsquid</code> в dipdup_head хронически stale с 1970-timestamp</p>
+      </article>
+
+    </div>
+
+    <!-- global signals: false alarm vs red flag -->
+    <div class="band">
+      <div class="band-ok">
+        <span class="bt">✓ Страшно, но норм — на любой стадии</span>
+        Отрицательный или скачущий прогресс-бар «N levels left» — артефакт Subsquid, не поломка.
+      </div>
+      <div class="band-flag">
+        <span class="bt">■ Красный флаг — на любой стадии</span>
+        <code>updated_at</code> <b>всех</b> индексов старше ~15 мин = клин петли (ретрай-шторм 404/503).
+        Один отставший индекс — норм.
+      </div>
+    </div>
+
+    <p class="legend">
+      <span class="ok-m">✓</span> страшно, но норм<span class="sep">·</span>
+      <span class="fl-m">■</span> красный флаг<span class="sep">·</span>
+      ширина сегмента ≈ доля времени<span class="sep">·</span>
+      mainnet 06-2026: 3 сут 11 ч
+    </p>
+
+  </section>
+</main>
+</body>
+</html>

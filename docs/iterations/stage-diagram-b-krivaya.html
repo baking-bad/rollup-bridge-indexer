@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Жизненный цикл реиндекса</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght@600;900&family=Golos+Text:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0c0c; --grid:#151515; --ink:#e8e4de; --sub:#b4b0aa; --mut:#888; --dim:#666;
+    --accent:#ff6a00; --ok:#3ecf6a; --bad:#ff3b30;
+    --s0:#93a2c7; --s1:#f5b878; --s2:#ff6a00; --s3:#ffd166; --s4:#3ecf6a;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--bg);
+    background-image:linear-gradient(var(--grid) 1px, transparent 1px),
+                     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size:44px 44px;
+    color:var(--ink);
+    font-family:'Golos Text',sans-serif;
+    padding:48px 24px 72px;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:1160px; margin:0 auto}
+  .lbl{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.22em;
+    text-transform:uppercase; color:var(--mut);
+  }
+  .lbl b{color:var(--accent); font-weight:500}
+  h1{
+    font-family:'Geologica',sans-serif; font-weight:900; font-size:46px;
+    letter-spacing:-.01em; margin:10px 0 12px; line-height:1.05;
+  }
+  .sub{max-width:820px; font-size:15px; line-height:1.55; color:var(--sub); margin-bottom:36px}
+  .sub em{font-style:normal; color:var(--ink); font-weight:500}
+
+  figure{margin:0}
+  svg{display:block; width:100%; height:auto}
+  .mono{font-family:'IBM Plex Mono',monospace}
+
+  /* stage cards */
+  .cards{display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-top:2px}
+  .card{
+    background:#111213; border:1px solid #222; border-radius:6px;
+    border-top:3px solid var(--sc); padding:12px 13px 13px;
+    font-size:12.5px; line-height:1.5; color:var(--sub);
+    transition:border-color .15s;
+  }
+  .card:hover{border-color:#3a3a3a; border-top-color:var(--sc)}
+  .chead{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
+  .cnum{
+    font-family:'Geologica',sans-serif; font-weight:900; font-size:13px;
+    letter-spacing:.06em; text-transform:uppercase; color:var(--sc);
+  }
+  .cshare{font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--dim)}
+  .card p{margin-bottom:7px}
+  .card code{
+    font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink);
+    background:#1a1a1a; padding:0 4px; border-radius:3px; white-space:nowrap;
+  }
+  .ok-line{color:var(--ok); font-size:12px}
+  .ok-line .m{font-family:'IBM Plex Mono',monospace; margin-right:4px}
+  .bad-line{color:var(--bad); font-size:12px}
+  .bad-line .m{font-family:'IBM Plex Mono',monospace; font-size:9px; margin-right:5px; vertical-align:1px}
+  .eta{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--mut);
+    border-top:1px dashed #2a2a2a; padding-top:7px; margin-top:9px;
+  }
+  .eta b{color:var(--ink); font-weight:500; white-space:nowrap}
+
+  /* global flag strips */
+  .flags{margin-top:26px; display:flex; flex-direction:column; gap:10px}
+  .flag{
+    border:1px solid #222; border-radius:6px; padding:10px 14px;
+    font-size:13px; line-height:1.5; color:var(--sub); background:#101010;
+    display:flex; gap:11px; align-items:baseline;
+  }
+  .flag .m{font-family:'IBM Plex Mono',monospace; flex:none}
+  .flag.red{border-left:3px solid var(--bad)}
+  .flag.red .m{color:var(--bad); font-size:10px}
+  .flag.ok{border-left:3px solid var(--ok)}
+  .flag.ok .m{color:var(--ok)}
+  .flag b{color:var(--ink); font-weight:500}
+  .flag code{font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--ink);
+    background:#1a1a1a; padding:0 4px; border-radius:3px}
+
+  /* hover linking: dim non-active zones */
+  svg.dimming .zone, svg.dimming .seg, svg.dimming .conn, svg.dimming .cvlab{opacity:.22; transition:opacity .15s}
+  svg.dimming .zone.hot, svg.dimming .seg.hot, svg.dimming .conn.hot, svg.dimming .cvlab.hot{opacity:1}
+  .zone,.seg,.conn,.cvlab{transition:opacity .15s}
+
+  @media (max-width:1000px){
+    .cards{grid-template-columns:repeat(2,1fr)}
+    .conn-g{display:none}
+  }
+  @media (max-width:560px){ .cards{grid-template-columns:1fr} h1{font-size:34px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="lbl">Etherlink Bridge Indexer · полный реиндекс · <b>валидация mainnet 06-2026: 3 сут 11 ч</b></div>
+  <h1>Жизненный цикл реиндекса</h1>
+  <p class="sub">
+    Пять стадий на пропорциональной ленте времени; над ней — скорость полюсного индекса
+    в логарифмической шкале. <em>Форма этой кривой — отпечаток пальца здорового реиндекса:</em>
+    найди свою стадию на ленте и сравни свою кривую с эталоном.
+  </p>
+
+  <figure>
+  <svg id="dia" viewBox="0 0 1160 396" role="img"
+       aria-label="Кривая скорости полюсного индекса над пропорциональной лентой пяти стадий реиндекса">
+    <defs>
+      <linearGradient id="g0" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#93a2c7" stop-opacity=".32"/><stop offset="1" stop-color="#93a2c7" stop-opacity=".03"/>
+      </linearGradient>
+      <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#f5b878" stop-opacity=".38"/><stop offset="1" stop-color="#f5b878" stop-opacity=".03"/>
+      </linearGradient>
+      <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ff6a00" stop-opacity=".34"/><stop offset="1" stop-color="#ff6a00" stop-opacity=".03"/>
+      </linearGradient>
+      <linearGradient id="g3" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffd166" stop-opacity=".32"/><stop offset="1" stop-color="#ffd166" stop-opacity=".03"/>
+      </linearGradient>
+      <linearGradient id="g4" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#3ecf6a" stop-opacity=".30"/><stop offset="1" stop-color="#3ecf6a" stop-opacity=".03"/>
+      </linearGradient>
+      <clipPath id="area">
+        <path d="M 64 47.1 L 120.4 47.1 C 123.4 47.1 123.4 58.5 126.4 58.5 L 130.3 58.5
+                 C 136 58.5 134.5 159.8 141.3 159.8 L 719.3 159.8 C 727 159.8 727.5 118.9 735.3 118.9
+                 L 1014.3 118.9 C 1024 118.9 1021 268.5 1034.3 268.5 L 1136 268.5
+                 L 1136 288 L 64 288 Z"/>
+      </clipPath>
+    </defs>
+
+    <!-- y axis: log gridlines -->
+    <text class="mono" x="64" y="16" font-size="10" letter-spacing="1.6" fill="#777">СКОРОСТЬ ПОЛЮСНОГО ИНДЕКСА · LVL/MIN · LOG-ШКАЛА</text>
+    <g stroke="#1d1d1d" stroke-width="1">
+      <line x1="64" y1="73.5"  x2="1144" y2="73.5"/>
+      <line x1="64" y1="138.5" x2="1144" y2="138.5"/>
+      <line x1="64" y1="203.5" x2="1144" y2="203.5"/>
+      <line x1="64" y1="268.5" x2="1144" y2="268.5"/>
+    </g>
+    <g class="mono" font-size="10" fill="#666" text-anchor="end">
+      <text x="56" y="77">10k</text>
+      <text x="56" y="142">1k</text>
+      <text x="56" y="207">100</text>
+      <text x="56" y="272">10</text>
+    </g>
+
+    <!-- stage boundary guides -->
+    <g stroke="#242424" stroke-width="1" stroke-dasharray="3 4">
+      <line x1="123.4"  y1="30" x2="123.4"  y2="346"/>
+      <line x1="133.3"  y1="30" x2="133.3"  y2="346"/>
+      <line x1="727.3"  y1="30" x2="727.3"  y2="346"/>
+      <line x1="1024.3" y1="30" x2="1024.3" y2="346"/>
+    </g>
+
+    <!-- zones under the curve, clipped by the area path -->
+    <g clip-path="url(#area)">
+      <rect class="zone" data-st="0" x="64"     y="28" width="59.4"  height="260" fill="url(#g0)"/>
+      <rect class="zone" data-st="1" x="123.4"  y="28" width="9.9"   height="260" fill="url(#g1)"/>
+      <rect class="zone" data-st="2" x="133.3"  y="28" width="594"   height="260" fill="url(#g2)"/>
+      <rect class="zone" data-st="3" x="727.3"  y="28" width="297"   height="260" fill="url(#g3)"/>
+      <rect class="zone" data-st="4" x="1024.3" y="28" width="111.7" height="260" fill="url(#g4)"/>
+    </g>
+
+    <!-- the fingerprint curve -->
+    <path d="M 64 47.1 L 120.4 47.1 C 123.4 47.1 123.4 58.5 126.4 58.5 L 130.3 58.5
+             C 136 58.5 134.5 159.8 141.3 159.8 L 719.3 159.8 C 727 159.8 727.5 118.9 735.3 118.9
+             L 1014.3 118.9 C 1024 118.9 1021 268.5 1034.3 268.5 L 1078 268.5"
+          fill="none" stroke="#f2ede6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <line x1="1078" y1="268.5" x2="1130" y2="268.5" stroke="#f2ede6" stroke-width="2.5" stroke-dasharray="2 6" stroke-linecap="round"/>
+    <path d="M 1131 263.5 L 1139 268.5 L 1131 273.5" fill="none" stroke="#f2ede6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+
+    <!-- baseline -->
+    <line x1="64" y1="288" x2="1144" y2="288" stroke="#2c2c2c" stroke-width="1"/>
+
+    <!-- speed labels on the curve (one number per stage) -->
+    <g class="mono" font-size="11">
+      <text class="cvlab" data-st="0" x="92" y="36" text-anchor="middle" fill="#e8e4de">425 lvl/s</text>
+      <g class="cvlab" data-st="1">
+        <line x1="129.5" y1="54" x2="139" y2="45" stroke="#555" stroke-width="1"/>
+        <text x="143" y="48" fill="#e8e4de">17k lvl/min</text>
+      </g>
+      <text class="cvlab" data-st="2" x="430" y="150" text-anchor="middle">
+        <tspan fill="#e8e4de">470 lvl/min</tspan><tspan fill="#8a8a8a"> · полюс: tezos_deposit_operations</tspan>
+      </text>
+      <text class="cvlab" data-st="3" x="875" y="109" text-anchor="middle">
+        <tspan fill="#e8e4de">&#8805;2000 lvl/min</tspan><tspan fill="#8a8a8a"> · &#215;4 без действий</tspan>
+      </text>
+      <text class="cvlab" data-st="4" x="1138" y="283" text-anchor="end" font-size="10">
+        <tspan fill="#8a8a8a">темп чейна L1 · </tspan><tspan fill="#bfe8cb">10 lvl/min</tspan>
+      </text>
+    </g>
+
+    <!-- proportional time ribbon (the x axis) -->
+    <g>
+      <rect class="seg" data-st="0" x="65"     y="302" width="57.4"  height="44" rx="3" fill="#93a2c7"/>
+      <rect class="seg" data-st="1" x="124.4"  y="302" width="7.9"   height="44" rx="2" fill="#f5b878"/>
+      <rect class="seg" data-st="2" x="134.3"  y="302" width="592"   height="44" rx="3" fill="#ff6a00"/>
+      <rect class="seg" data-st="3" x="728.3"  y="302" width="295"   height="44" rx="3" fill="#ffd166"/>
+      <rect class="seg" data-st="4" x="1025.3" y="302" width="117.7" height="44" rx="3" fill="#3ecf6a"/>
+    </g>
+    <g fill="#0c0c0c">
+      <text x="93.7" y="322" text-anchor="middle" font-family="Geologica" font-weight="900" font-size="15">0</text>
+      <text class="mono" x="93.7" y="337" text-anchor="middle" font-size="9.5">~5.3 ч</text>
+
+      <text x="150" y="328" font-family="Geologica" font-weight="900" font-size="13" letter-spacing="1">2 · ТОЛПА</text>
+      <text class="mono" x="712" y="328" text-anchor="end" font-size="10">~2 сут</text>
+
+      <text x="744" y="328" font-family="Geologica" font-weight="900" font-size="13" letter-spacing="1">3 · СПРИНТ</text>
+      <text class="mono" x="1009" y="328" text-anchor="end" font-size="10">~1 сут</text>
+
+      <text x="1040" y="321" font-family="Geologica" font-weight="900" font-size="11" letter-spacing=".5">4 · РЕАЛТАЙМ</text>
+      <text class="mono" x="1040" y="337" font-size="9.5">&#8734; · лаг ~0</text>
+    </g>
+
+    <!-- leader lines: segment -> its card (narrow stages stay readable in the cards) -->
+    <g class="conn-g" fill="none" stroke-width="1.5">
+      <g class="conn" data-st="0" stroke="#93a2c7" opacity=".75">
+        <path d="M 93.7 348 V 358 L 110.4 380 V 390"/><circle cx="93.7" cy="348" r="2" fill="#93a2c7" stroke="none"/>
+      </g>
+      <g class="conn" data-st="1" stroke="#f5b878" opacity=".75">
+        <path d="M 128.3 348 V 358 L 345.2 380 V 390"/><circle cx="128.3" cy="348" r="2" fill="#f5b878" stroke="none"/>
+      </g>
+      <g class="conn" data-st="2" stroke="#ff6a00" opacity=".75">
+        <path d="M 430.3 348 V 358 L 580 380 V 390"/><circle cx="430.3" cy="348" r="2" fill="#ff6a00" stroke="none"/>
+      </g>
+      <g class="conn" data-st="3" stroke="#ffd166" opacity=".75">
+        <path d="M 875.8 348 V 358 L 814.8 380 V 390"/><circle cx="875.8" cy="348" r="2" fill="#ffd166" stroke="none"/>
+      </g>
+      <g class="conn" data-st="4" stroke="#3ecf6a" opacity=".75">
+        <path d="M 1084.2 348 V 358 L 1049.6 380 V 390"/><circle cx="1084.2" cy="348" r="2" fill="#3ecf6a" stroke="none"/>
+      </g>
+    </g>
+  </svg>
+  </figure>
+
+  <!-- stage annotations -->
+  <div class="cards" id="cards">
+
+    <div class="card" data-st="0" style="--sc:var(--s0)">
+      <div class="chead"><span class="cnum">0 · Тишина</span><span class="cshare">&#8776;6 %</span></div>
+      <p><code>dipdup_index</code> пуст, публичный API слеп — а <code>on_restart</code> бэкфиллит inbox с TzKT. Жизнь видна только по SQL: <code>max(level)</code> в <code>rollup_inbox_message</code> растёт.</p>
+      <p class="ok-line"><span class="m">&#10003;</span>«пустая» Hasura — норм</p>
+      <p class="bad-line"><span class="m">&#9632;</span>inbox не растёт между пробами через 10 мин — застряли</p>
+      <div class="eta">ETA <b>(13.99M &#8722; max(level)) / 425</b></div>
+    </div>
+
+    <div class="card" data-st="1" style="--sc:var(--s1)">
+      <div class="chead"><span class="cnum">1 · Разлёт</span><span class="cshare">&#8776;1 %</span></div>
+      <p>9 индексов спавнятся; L2 летят сквозь пустые зоны (Subsquid отдаёт только непустые блоки) — часть у головы за полчаса, уровни скачут миллионами.</p>
+      <p class="ok-line"><span class="m">&#10003;</span>status=realtime с замороженным level — норм</p>
+    </div>
+
+    <div class="card" data-st="2" style="--sc:var(--s2)">
+      <div class="chead"><span class="cnum">2 · Толпа</span><span class="cshare">&#8776;60 %</span></div>
+      <p>Самая долгая. Все живые индексы делят одну петлю событий и одно соединение с БД: полюс «еле шевелится», отстающие (<code>token_balance</code>) голодают.</p>
+      <p class="ok-line"><span class="m">&#10003;</span>плато 10–15 мин, потом скачок +50–150 lvl — норм</p>
+      <div class="eta">ETA <b>остаток / 1.5k</b> (центр) &#183; <b>/ 470</b> (осторожно)</div>
+    </div>
+
+    <div class="card" data-st="3" style="--sc:var(--s3)">
+      <div class="chead"><span class="cnum">3 · Спринт</span><span class="cshare">&#8776;30 %</span></div>
+      <p>Индексы финишируют один за другим, толпа рассасывается — тот же полюс ускоряется &#215;4 без каких-либо действий. Лента <code>dipdup_index</code> быстро зеленеет.</p>
+      <div class="eta">ETA <b>остаток / 2000</b></div>
+    </div>
+
+    <div class="card" data-st="4" style="--sc:var(--s4)">
+      <div class="chead"><span class="cnum">4 · Реалтайм</span><span class="cshare">&#8734;</span></div>
+      <p>Все приклеены к голове; скорость = темп чейна, а не потолок индексера.</p>
+      <p class="ok-line"><span class="m">&#10003;</span>evm-индексы мигают syncing&#8596;realtime в 15–20 lvl от головы — норм</p>
+      <p class="ok-line"><span class="m">&#10003;</span>head <code>etherlink_subsquid</code> stale c 1970 — норм</p>
+    </div>
+
+  </div>
+
+  <!-- cross-stage signals -->
+  <div class="flags">
+    <div class="flag red"><span class="m">&#9632;</span>
+      <span><b>Красный флаг в любой стадии:</b> <code>updated_at</code> <b>всех</b> индексов старше ~15 мин — клин петли (ретрай-шторм 404/503). Один отстающий индекс — не повод.</span>
+    </div>
+    <div class="flag ok"><span class="m">&#10003;</span>
+      <span><b>Страшно, но норм — в любой стадии:</b> прогресс-бар «N levels left» отрицательный или скачет — артефакт Subsquid, на реальный ход не смотрит.</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // hover a card -> spotlight its zone / ribbon segment / speed label / leader line
+  const svg = document.getElementById('dia');
+  document.querySelectorAll('#cards .card').forEach(card => {
+    const st = card.dataset.st;
+    card.addEventListener('mouseenter', () => {
+      svg.classList.add('dimming');
+      svg.querySelectorAll('[data-st="' + st + '"]').forEach(el => el.classList.add('hot'));
+    });
+    card.addEventListener('mouseleave', () => {
+      svg.classList.remove('dimming');
+      svg.querySelectorAll('.hot').forEach(el => el.classList.remove('hot'));
+    });
+  });
+</script>
+</body>
+</html>

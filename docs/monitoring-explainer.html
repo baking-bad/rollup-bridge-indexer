@@ -164,7 +164,7 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
     <tr><td>EVM-нода realtime · поллинг</td><td>все индексы <code>etherlink_*</code></td><td>свежесть <code>updated_at</code> любого из них</td><td><span class="tag live">block-driven</span></td></tr>
     <tr><td>EVM-нода realtime · websocket</td><td><code>dipdup_head[etherlink_node]</code>, <code>xtz_deposit_transactions</code></td><td>свежесть их <code>updated_at</code>; индексы событий здесь замерзают</td><td><span class="tag live">block-driven</span> <span class="tag freeze">+ op-driven</span></td></tr>
     <tr><td>Subsquid-архив</td><td><code>dipdup_head[etherlink_subsquid]</code></td><td>—  в realtime молчит</td><td><span class="tag arch">archive</span></td></tr>
-    <tr><td>Rollup-нода RPC</td><td><code>rollup_inbox/outbox_message</code></td><td>косвенно (см. #313)</td><td><span class="tag freeze">pull-loop</span></td></tr>
+    <tr><td>Rollup-нода RPC</td><td><code>rollup_inbox/outbox_message</code></td><td>напрямую — <code>/health</code> ноды в <code>#140/#267/#302</code>; по БД косвенно (см. <code>#313</code>)</td><td><span class="tag freeze">pull-loop</span></td></tr>
    </tbody>
   </table>
  </div>
@@ -180,7 +180,7 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
    <tbody>
     <tr><td><span class="lvl on">ONLINE</span></td><td><code>#187 #249 #268 #304</code></td><td><b>Приём мёртв</b> — блоки перестали приземляться. Трассируй к каналу через декодер ниже.</td></tr>
     <tr><td><span class="lvl match">MATCHING</span></td><td><code>#305 #312 #313</code></td><td><b>Данные текут, но не сшиваются</b> в <code>bridge_operation</code> — матчер отстаёт или залип.</td></tr>
-    <tr><td><span class="lvl src">DATASOURCES</span></td><td><code>#306–#317</code>, <code>#140/#267/#302</code>, <code>#326/#160</code></td><td><b>Внешняя зависимость лежит</b> — обычно это <b>причина</b> красного ONLINE, а не отдельная беда.</td></tr>
+    <tr><td><span class="lvl src">DATASOURCES</span></td><td><code>#306–#317</code>, <code>#140/#267/#302</code>, <code>#326/#160</code></td><td><b>Внешняя зависимость лежит</b> — обычно это <b>причина</b> красного ONLINE, а не отдельная беда. Роллап-нода <code>#140/#267/#302</code> — единственная, чей красный надо чинить <b>до</b> того, как покраснеет ONLINE.</td></tr>
    </tbody>
   </table>
   <div class="note">Уровни задуманы <b>разной громкости</b>: DATASOURCE- и MATCHING-красный не должны будить так же, как ONLINE-down. Это и есть лечение «моргало всеми цветами всю ночь» — громкий сигнал остаётся только за «индексер реально не принимает данные».</div>
@@ -227,7 +227,8 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
     <tr><td><span class="lvl on">ONLINE</span> red · всё протухло · статус <code>realtime</code>, но <code>updated_at</code> замер</td><td>Event-loop индексера завис</td><td><b>Процесс жив, но не крутится</b> (напр. EVM 503-hang). Пересоздать swarm-task (Services → Update), не рестарт контейнера.</td></tr>
     <tr><td><span class="lvl match">MATCHING</span> red <code>#305/#312</code> · ONLINE зелёный</td><td>Матчер (single event-loop)</td><td><b>Приём в порядке, матчер отстаёт</b> при догоне. Проверить лаг синка; обычно рассасывается.</td></tr>
     <tr><td><span class="lvl match">MATCHING</span> red <code>#313</code></td><td>Rollup inbox pull-loop</td><td><b>Inbox-сообщения не растут.</b> Проверить rollup-ноду сети <code>#140/#267/#302</code>.</td></tr>
-    <tr><td><span class="lvl src">DATASOURCES</span> red · ONLINE зелёный</td><td>Upstream деградировал</td><td><b>Индексер переживает на ретраях</b> — наблюдать. Тревога тихая; действовать, только если следом краснеет ONLINE.</td></tr>
+    <tr><td><span class="lvl src">DATASOURCES</span> red <code>#140/#267/#302</code></td><td>Rollup-нода перестала применять блоки</td><td><b>Действовать сразу, не дожидаясь ONLINE.</b> Индексер не переживает это на ретраях: <code>500</code> на outbox-уровне выше <code>processed_level</code> выходит из коллбэка и убивает процесс — краш-луп с рестартом каждые ~15 с. Перезапустить ноду. <span class="mid">(2026-08-20)</span></td></tr>
+    <tr><td><span class="lvl src">DATASOURCES</span> red · ONLINE зелёный</td><td>Upstream деградировал</td><td><b>Индексер переживает на ретраях</b> — наблюдать. Тревога тихая; действовать, только если следом краснеет ONLINE. Исключение — роллап-нода, строка выше.</td></tr>
    </tbody>
   </table>
  </div>
@@ -276,7 +277,7 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
     <tr><td><code>#87</code></td><td><span class="lvl src">SRC</span></td><td><code>cryptoslam.api.tzkt.io</code> — L1 staging</td><td class="ok">✓</td></tr>
     <tr><td><code>#326</code></td><td><span class="lvl src">SRC</span></td><td><code>rpc.tzkt.io/rolling</code> — L1 node mainnet</td><td class="ok">✓</td></tr>
     <tr><td><code>#160</code></td><td><span class="lvl src">SRC</span></td><td><code>node-rpc.mainnet.tzkt.io</code> — L1 archive node</td><td class="ok">✓</td></tr>
-    <tr><td><code>#140 #267<br>#302</code></td><td><span class="lvl src">SRC</span></td><td><code>*-smart.tzkt.io/health</code> — rollup-ноды mainnet / shadownet / previewnet</td><td class="ok">✓</td></tr>
+    <tr><td><code>#140 #267<br>#302</code></td><td><span class="lvl src">SRC</span></td><td><code>*-smart.tzkt.io/health</code> — rollup-ноды mainnet / shadownet / previewnet: <code>healthy</code> + <code>l1.connection</code> + <code>blocks_late &lt; 60</code> + свежесть <code>last_seen_head</code> &lt; 10 мин</td><td class="ok">4 терма; <code>active_workers</code> — <b>не</b> сигнал, он пуст и на живой ноде</td></tr>
     <tr><td><code>#303</code></td><td><span class="lvl src">SRC</span></td><td><code>evm-mainnet.baking-bad.org</code></td><td class="ok">запасная EVM-нода mainnet (backup к #306)</td></tr>
     <tr><td><code>#270</code></td><td><span class="lvl src">SRC</span></td><td><code>evm-shadownet.baking-bad.org</code></td><td class="ok">✓ основная EVM-нода shadownet (заменила Zeeve)</td></tr>
    </tbody>
@@ -286,7 +287,7 @@ footer{padding:var(--s4) 0 var(--s5);color:var(--faint);font-family:var(--mono);
 </div></section>
 
 <footer>
- <span class="s">RE-VERIFY:</span> env — источник правды по датасорсам; инвентарь сверен с Kuma 2026-08-20. Пороги: ONLINE freshness N = 1 ч, op-lag убран 2026-07-12, два EVM-терма свёрнуты в максимум по EVM-строкам 2026-08-19. Открыто: #310/#316/#317 (датасорсы previewnet) стоят на паузе; `ws_url` добавлен в конфиги всех сетей, но до раскатки стеков в режиме websocket работает только shadownet.<br>
+ <span class="s">RE-VERIFY:</span> env — источник правды по датасорсам; инвентарь сверен с Kuma 2026-08-20. Пороги: ONLINE freshness N = 1 ч, op-lag убран 2026-07-12, два EVM-терма свёрнуты в максимум по EVM-строкам 2026-08-19, роллап-мониторы ужесточены до 4 термов 2026-08-20 — свежести <code>last_seen_head</code> одной мало: нода продолжает принимать головы L1 ещё около часа после того, как перестала применять блоки, и решает терм <code>blocks_late</code>. Открыто: #310/#316/#317 (датасорсы previewnet) стоят на паузе; `ws_url` добавлен в конфиги всех сетей, но до раскатки стеков в режиме websocket работает только shadownet.<br>
  <span class="s">SRC:</span> deployment-env <code>.env.&lt;net&gt;</code> · Kuma uptime.piltover.baking-bad.org (#187–#326) · DipDup <code>index.py:124</code> · инциденты из памяти проекта · собрано 2026-07-14
 </footer>
 

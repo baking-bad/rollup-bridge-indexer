@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Жизненный цикл реиндекса</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght@800;900&family=Golos+Text:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0c0c; --grid:#1a1a1a; --acc:#ff6a00; --ok:#3ecf6a; --bad:#ff3b30;
+    --ink:#e8e4de; --mut:#888; --dim:#666;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),
+                     linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:44px 44px;
+    color:var(--ink);
+    font-family:'Golos Text',sans-serif;
+    padding:48px 24px 64px;
+  }
+  .page{max-width:1140px;margin:0 auto}
+  h1{font-family:Geologica,sans-serif;font-weight:900;font-size:38px;letter-spacing:-.01em;line-height:1.05}
+  .sub{margin-top:10px;font-size:14px;color:var(--mut);max-width:760px;line-height:1.5}
+  .sub b{color:#bbb;font-weight:500}
+  .stamp{margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--dim);
+         text-transform:uppercase;letter-spacing:.14em}
+
+  .board-wrap{margin-top:36px;overflow-x:auto}
+  .board{width:1140px;position:relative}
+
+  /* ── shared 2-col grid: 220px labels + 920px track ─────────────── */
+  .row{display:flex}
+  .lbl{width:220px;flex:none;padding-right:14px;text-align:right;
+       font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--mut)}
+  .trk{width:920px;flex:none;position:relative}
+
+  /* ── stage-boundary verticals across ribbon+lanes ──────────────── */
+  .bounds{position:absolute;left:220px;top:64px;width:920px;height:358px;pointer-events:none;z-index:3}
+  .bline{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed #2e2b28}
+
+  /* ── callouts for narrow stages 0 & 1 ──────────────────────────── */
+  .callouts{height:64px}
+  .elbow{position:absolute;border-left:1px solid #3d3a36;border-top:1px solid #3d3a36}
+  .co{position:absolute;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#9a948d;white-space:nowrap}
+  .co b{color:#ddd;font-weight:500;letter-spacing:.08em}
+  .co .n{color:var(--acc);font-weight:500}
+
+  /* ── ribbon ────────────────────────────────────────────────────── */
+  .ribbon{height:72px}
+  .seg{position:absolute;top:0;height:72px;overflow:hidden;transition:filter .15s}
+  .seg:hover{filter:brightness(1.18)}
+  .seg .inner{padding:9px 10px}
+  .seg .name{font-family:Geologica,sans-serif;font-weight:800;font-size:11.5px;
+             text-transform:uppercase;letter-spacing:.07em;white-space:nowrap}
+  .seg .dur{font-family:'IBM Plex Mono',monospace;font-size:10px;margin-top:4px;white-space:nowrap}
+  .seg .sig{font-size:11px;margin-top:5px;white-space:nowrap;opacity:.85}
+  .s0{left:0;width:50px;background:#211d18;border:1px solid #2e2a24;
+      display:flex;align-items:center;justify-content:center}
+  .s0 .zero{font-family:Geologica,sans-serif;font-weight:900;font-size:24px;color:#5e564b}
+  .s1{left:50px;width:8px;background:var(--acc)}
+  .s2{left:58px;width:501px;background:#552e0c;color:#ffc79a}
+  .s2 .dur{color:#d99a5e}
+  .s3{left:559px;width:251px;background:#a5540e;color:#fff1e2}
+  .s3 .dur{color:#ffd2a6}
+  .s4{left:810px;width:110px;background:#10301e;border:1px solid #235c39;color:#8fe2ac;
+      -webkit-mask-image:linear-gradient(90deg,#000 78%,transparent);
+      mask-image:linear-gradient(90deg,#000 78%,transparent)}
+  .s4 .name{font-size:10px}
+  .s4 .dur{color:#57b478}
+  .s4 .inf{position:absolute;right:26px;bottom:4px;font-family:Geologica,sans-serif;
+           font-weight:900;font-size:22px;color:#2f8a52}
+
+  /* ── lanes ─────────────────────────────────────────────────────── */
+  .lanes{margin-top:10px}
+  .lane{height:46px;align-items:stretch;border-radius:4px}
+  .lane:hover{background:rgba(255,255,255,.025)}
+  .lane .lbl{display:flex;align-items:center;justify-content:flex-end;gap:7px}
+  .lane.pole{background:rgba(255,106,0,.05)}
+  .lane.pole:hover{background:rgba(255,106,0,.08)}
+  .lane.pole .lbl{color:#eee}
+  .badge{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.12em;color:var(--acc);
+         border:1px solid rgba(255,106,0,.55);border-radius:3px;padding:2px 5px;line-height:1}
+  .bar{position:absolute;top:8px;height:16px;border-radius:3px}
+  .bar.run{background:var(--acc)}
+  .bar.live{background:var(--ok);
+            -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);
+            mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}
+  .bar.frozen{background:rgba(62,207,106,.09);
+      background-image:repeating-linear-gradient(45deg,rgba(62,207,106,.4) 0 3px,transparent 3px 8px);
+      border:1px solid rgba(62,207,106,.35)}
+  .done{position:absolute;top:10px;font-family:'IBM Plex Mono',monospace;font-size:10px;
+        color:var(--ok);white-space:nowrap}
+  .note{position:absolute;top:29px;font-family:'IBM Plex Mono',monospace;font-size:10px;
+        color:#79736c;white-space:nowrap}
+  .note.spd{color:#e0904a}
+
+  /* ── legend + footnotes ────────────────────────────────────────── */
+  .legend{margin-top:26px;padding-left:220px;display:flex;gap:26px;flex-wrap:wrap;
+          font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#a49e96}
+  .legend .it{display:flex;align-items:center;gap:8px;white-space:nowrap}
+  .sw{width:22px;height:11px;border-radius:2px;flex:none}
+  .sw.run{background:var(--acc)}
+  .sw.live{background:var(--ok)}
+  .sw.frozen{background:rgba(62,207,106,.09);
+      background-image:repeating-linear-gradient(45deg,rgba(62,207,106,.4) 0 3px,transparent 3px 7px);
+      border:1px solid rgba(62,207,106,.35)}
+  .sw.fin{background:none;border:none;color:var(--ok);width:auto;height:auto;font-size:11px}
+
+  .flags{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:28px;max-width:1140px}
+  .flags h2{font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:500;
+            text-transform:uppercase;letter-spacing:.16em;margin-bottom:10px}
+  .flags .okh{color:var(--ok)} .flags .badh{color:var(--bad)}
+  .flags ul{list-style:none}
+  .flags li{font-size:12.5px;color:#b3ada6;line-height:1.5;padding-left:20px;position:relative;margin-bottom:7px}
+  .flags li::before{position:absolute;left:0;font-family:'IBM Plex Mono',monospace}
+  .flags .ok li::before{content:'✓';color:var(--ok)}
+  .flags .bad li::before{content:'■';color:var(--bad);font-size:10px;top:2px}
+  .flags code{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#cfc9c1;
+              background:#181614;padding:1px 4px;border-radius:3px}
+  @media (max-width:900px){.flags{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Жизненный цикл реиндекса</h1>
+  <p class="sub">Диспетчерская доска полного реиндекса: лента пяти стадий и что в каждой из них делает
+     каждый индекс. Смотрите на свой <b>dipdup_index</b> — и найдите эту картину на доске.</p>
+  <p class="stamp">mainnet-валидация 06-2026 · полный реиндекс — 3 сут 11 ч · ширина ленты ≈ доля времени</p>
+
+  <div class="board-wrap">
+  <div class="board">
+
+    <!-- stage boundary verticals (span ribbon + lanes) -->
+    <div class="bounds">
+      <div class="bline" style="left:50px"></div>
+      <div class="bline" style="left:58px"></div>
+      <div class="bline" style="left:559px"></div>
+      <div class="bline" style="left:810px"></div>
+    </div>
+
+    <!-- callouts for the two narrow segments -->
+    <div class="row callouts">
+      <div class="lbl"></div>
+      <div class="trk">
+        <div class="elbow" style="left:25px;top:14px;width:71px;height:50px"></div>
+        <div class="co" style="left:104px;top:8px"><span class="n">0</span> · <b>ТИШИНА</b> — ~6% · ~5.3 ч · dipdup_index пустой, бэкфилл inbox</div>
+        <div class="elbow" style="left:54px;top:38px;width:42px;height:26px"></div>
+        <div class="co" style="left:104px;top:32px"><span class="n">1</span> · <b>РАЗЛЁТ</b> — ~1% · ~0.5–1 ч · 9 индексов спавнятся, уровни скачут миллионами</div>
+      </div>
+    </div>
+
+    <!-- ribbon -->
+    <div class="row ribbon">
+      <div class="lbl" style="align-self:center">стадии реиндекса →</div>
+      <div class="trk">
+        <div class="seg s0"><span class="zero">0</span></div>
+        <div class="seg s1" title="1 · Разлёт"></div>
+        <div class="seg s2"><div class="inner">
+          <div class="name">2 · Толпа</div>
+          <div class="dur">~60% · ~2 сут</div>
+          <div class="sig">полюс еле шевелится — это норма</div>
+        </div></div>
+        <div class="seg s3"><div class="inner">
+          <div class="name">3 · Спринт</div>
+          <div class="dur">~30% · ~1 сут</div>
+          <div class="sig">ускорение ×4 — само по себе</div>
+        </div></div>
+        <div class="seg s4"><div class="inner">
+          <div class="name">4 · Реалтайм</div>
+          <div class="dur">лаг ~0</div>
+        </div><span class="inf">∞</span></div>
+      </div>
+    </div>
+
+    <!-- swimlanes -->
+    <div class="lanes">
+
+      <div class="row lane">
+        <div class="lbl">rollup_inbox_message</div>
+        <div class="trk">
+          <div class="bar run" style="left:0;width:50px"></div>
+          <div class="done" style="left:64px">✓ финишировал</div>
+          <div class="note" style="left:0">on_restart бэкфиллит inbox с TzKT · ~425 lvl/s · прогресс виден только по SQL: count(*) в rollup_inbox_message</div>
+        </div>
+      </div>
+
+      <div class="row lane">
+        <div class="lbl">head-индексы</div>
+        <div class="trk">
+          <div class="bar live" style="left:50px;width:870px"></div>
+          <div class="note" style="left:64px">спавн на Разлёте — сразу приклеены к голове</div>
+        </div>
+      </div>
+
+      <div class="row lane">
+        <div class="lbl">eth deposit / withdraw / xtz</div>
+        <div class="trk">
+          <div class="bar frozen" style="left:50px;width:507px"></div>
+          <div class="bar live" style="left:561px;width:359px"></div>
+          <div class="note" style="left:64px">летят сквозь пустые зоны Subsquid, у головы за ~полчаса; level заморожен со спавна — норма</div>
+        </div>
+      </div>
+
+      <div class="row lane">
+        <div class="lbl">token_balance</div>
+        <div class="trk">
+          <div class="bar run" style="left:50px;width:695px"></div>
+          <div class="bar live" style="left:747px;width:173px"></div>
+          <div class="note" style="left:64px">голодает в Толпе — еле растёт; финиширует в Спринте</div>
+        </div>
+      </div>
+
+      <div class="row lane">
+        <div class="lbl">tezos_withdrawal + claim_fast</div>
+        <div class="trk">
+          <div class="bar run" style="left:50px;width:598px"></div>
+          <div class="bar live" style="left:650px;width:270px"></div>
+          <div class="note" style="left:64px">финишируют один за другим — Толпа рассасывается</div>
+        </div>
+      </div>
+
+      <div class="row lane pole">
+        <div class="lbl"><span class="badge">ПОЛЮС</span>tezos_deposit_operations</div>
+        <div class="trk">
+          <div class="bar run" style="left:50px;width:758px"></div>
+          <div class="bar live" style="left:810px;width:110px"></div>
+          <div class="note spd" style="left:64px">≈17k lvl/min</div>
+          <div class="note spd" style="left:230px">~470 lvl/min — пол; штраф толпы ×4–16</div>
+          <div class="note spd" style="left:625px">≥2000 lvl/min</div>
+          <div class="note spd" style="left:816px">темп чейна L1</div>
+        </div>
+      </div>
+
+    </div><!-- /lanes -->
+
+    <!-- legend -->
+    <div class="legend">
+      <span class="it"><span class="sw run"></span>едет (syncing)</span>
+      <span class="it"><span class="sw frozen"></span>status=realtime, level заморожен — «страшно, но норм»</span>
+      <span class="it"><span class="sw live"></span>приклеен к голове (лаг ~0)</span>
+      <span class="it"><span class="sw fin">✓</span>финишировал</span>
+    </div>
+
+  </div><!-- /board -->
+  </div><!-- /board-wrap -->
+
+  <!-- footnotes: false alarms vs red flags -->
+  <div class="flags">
+    <div class="ok">
+      <h2 class="okh">✓ страшно, но норм</h2>
+      <ul>
+        <li>стадии 1–2: <code>status=realtime</code>, а level заморожен со спавна (13.8M / 46.7M)</li>
+        <li>стадия 2: плато L1-индекса 10–15 мин, потом скачок +50–150 уровней</li>
+        <li>любая: отрицательный / скачущий «N levels left» — артефакт Subsquid</li>
+        <li>стадия 4: evm-индексы мигают syncing↔realtime в 15–20 уровнях от головы; <code>etherlink_subsquid</code> в dipdup_head хронически stale с 1970-timestamp</li>
+      </ul>
+    </div>
+    <div class="bad">
+      <h2 class="badh">■ красный флаг — застряли</h2>
+      <ul>
+        <li><code>updated_at</code> ВСЕХ индексов старше ~15 мин — клин петли (ретрай-шторм 404/503); одного индекса — норма</li>
+        <li>в Тишине: <code>rollup_inbox_message</code> не растёт между двумя SQL-пробами через 10 мин</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

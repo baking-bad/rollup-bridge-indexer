@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="ru" xml:lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>L2 Michelson vs L2 EVM — разделять ли модели</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 46em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      background-color: #1a1a1a;
+      border: none;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">L2 Michelson vs L2 EVM — разделять ли модели</h1>
+</header>
+<h1
+id="эксплейнер-модели-l2-michelson-vs-l2-evm-разделять-или-нет">Эксплейнер:
+модели L2 Michelson vs L2 EVM — разделять или нет</h1>
+<p>Статус: <strong>draft для обсуждения</strong> (2026-06-12). Цель —
+зафиксировать, где именно смешались модели/примитивы двух L2-рантаймов,
+какие варианты есть, и выбрать один.</p>
+<h2 id="как-мы-сюда-попали">Как мы сюда попали</h2>
+<p>Индексер проектировался под один L2 — EVM (Etherlink). Tezos X
+добавил на L2 второй рантайм — Michelson (Tezlink): XTZ-депозит с
+tz1-получателем приземляется на L2 как синтетическая
+псевдо-Michelson-операция. Чтобы не дублировать схему, эти операции
+записываются в ту же таблицу <code>l2_deposit</code>
+(<code>EtherlinkDepositOperation</code>), переиспользуя EVM-поля «по
+аналогии». Аналогия в нескольких местах натянутая.</p>
+<h2 id="инвентаризация-смешения">Инвентаризация смешения</h2>
+<p>Одна таблица <code>l2_deposit</code>, два класса строк. Семантика
+полей расходится:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Поле</th>
+<th>EVM-строка</th>
+<th>Michelson-строка</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>transaction_hash</code> (Char 64)</td>
+<td>голый 64-hex tx-hash</td>
+<td>base58 <code>o…</code> op-hash (51 симв.)</td>
+</tr>
+<tr class="even">
+<td><code>transaction_index</code></td>
+<td>индекс tx в блоке (малое число)</td>
+<td>Tezos <code>counter</code> аккаунта (огромное, только для
+ordering)</td>
+</tr>
+<tr class="odd">
+<td><code>log_index</code></td>
+<td>индекс лога</td>
+<td>всегда <code>NULL</code></td>
+</tr>
+<tr class="even">
+<td><code>address</code> (Char 40)</td>
+<td>hex-40 отправителя без <code>0x</code></td>
+<td>base58 <code>tz1…</code> отправителя (36 симв.)</td>
+</tr>
+<tr class="odd">
+<td><code>l2_account</code> (Char 40)</td>
+<td>hex-40 получателя</td>
+<td>base58 <code>tz1…</code> получателя</td>
+</tr>
+<tr class="even">
+<td><code>amount</code> (Text)</td>
+<td>wei (native) / raw token amount</td>
+<td><strong>mutez × 10¹² при записи</strong>
+(<code>WEI_PER_MUTEZ</code>), чтобы выглядело как wei</td>
+</tr>
+<tr class="odd">
+<td><code>level</code></td>
+<td>номер EVM-блока Etherlink</td>
+<td>Tezlink-уровень (⚠ соответствие EVM-блокам не проверено — см.
+открытые вопросы)</td>
+</tr>
+<tr class="even">
+<td><code>l2_token</code> FK</td>
+<td><code>EtherlinkToken('xtz', decimals=18)</code></td>
+<td>тот же токен, хотя нативная единица рантайма — mutez (6 знаков)</td>
+</tr>
+</tbody>
+</table>
+<p>Класс строки <strong>нигде не хранится явно</strong> — он выводится
+по конвенциям:</p>
+<ul>
+<li><code>michelson_matcher.py:41</code> — Michelson-строки =
+<code>transaction_hash__startswith='o'</code>;</li>
+<li><code>bridge_matcher.py:148</code> — value-zip-шаг
+<strong>исключает</strong> их тем же префиксом;</li>
+<li><code>bridge_matcher.py:96</code> — coords-шаг отличает свои строки
+по <code>inbox_message_level__isnull</code>;</li>
+<li><code>BridgeOperation.l2_account</code> — hex-40 или
+<code>tz1…</code> в одной колонке, отличимы только по виду строки.</li>
+</ul>
+<p>Единицы тоже конвертируются строковой магией, рассыпанной по
+коду:</p>
+<ul>
+<li><code>bridge_matcher.py:162</code> —
+<code>l2_deposit.amount[:-12]</code> (wei → mutez срезом строки);</li>
+<li><code>bridge_matcher.py:316</code> —
+<code>full_amount * int(1e12) == int(amount)</code>;</li>
+<li><code>rollup_message.py:552</code> —
+<code>int(str(payload.amount)[:-12])</code>;</li>
+<li><code>handlers/tezos/on_michelson_deposit.py:57</code> и
+<code>tezos_x/on_michelson_deposit.py:92</code> —
+<code>op.amount * WEI_PER_MUTEZ</code>.</li>
+</ul>
+<p>Именование уже признано неточным в самом коде:
+<code>EtherlinkDepositOperation</code> хранит не-Etherlink строки, в
+<code>tezos_x/on_michelson_deposit.py:98</code> лежит
+<code>TODO(rename)</code>.</p>
+<h2 id="цена-которую-уже-заплатили">Цена, которую уже заплатили</h2>
+<p><strong>2026-06-11, tezosx-shadownet: все 12 L2 Michelson-депозитов
+слинковались с чужими L1-ногами и были помечены
+<code>finished</code></strong> (фикс <code>9b36cc5</code>). Причина —
+ровно это смешение: generic-шаги матчера претендовали на строки, для
+которых у них нет ключа, потому что «класс строки» — неявная конвенция,
+а не свойство данных. Фикс добавил guard’ы (<code>isnull</code>-фильтр +
+исключение по префиксу <code>o</code>), т.е. ещё больше конвенций поверх
+конвенций. Это работает, но каждый новый шаг матчера обязан помнить про
+все классы строк, иначе — повторение инцидента.</p>
+<h2 id="факты-ограничивающие-решение">Факты, ограничивающие решение</h2>
+<ol type="1">
+<li><strong>Michelson-поверхность мала и расти не будет</strong>
+(scope-решения Tezos X):
+<ul>
+<li>FA-токены на Michelson — DECIDED, не появятся. Только XTZ.</li>
+<li>Выводы с Michelson идут через NAC от EVM-алиаса → это обычные
+EVM-withdrawal. Отдельной Michelson-withdrawal-модели не нужно.</li>
+<li>Итого: «вторая модель» нужна ровно для одного потока —
+XTZ-депозиты.</li>
+</ul></li>
+<li><strong>Принятое решение <code>L2Account</code></strong> (KB:
+<code>decisions/deposit-model-design.md</code>, Опция 3):
+нормализованная таблица адресов с
+<code>kind = EVM | TZ | EVM_ALIAS</code>, <code>l2_account</code>
+становится FK. Оно уже закрывает измерение «формат/тип адреса» и
+предполагало <strong>одну</strong> таблицу операций. Тогда же отдельная
+<code>MichelsonDepositOperation</code> рассматривалась и была отклонена
+— но только в разрезе адресов, до того как смешение единиц/хэшей стало
+реальностью.</li>
+<li><strong>Op-hash-матчер — interim</strong>, но смешение — нет. Когда
+TzKT начнёт отдавать implicit-source события, удалится
+<code>michelson_matcher</code> (матчинг по префиксу <code>o</code>), а
+вот запись Michelson-строк в EVM-поля останется: будущий event-based
+хендлер (<code>tezos_x/on_michelson_deposit.py</code>) пишет в ту же
+таблицу в той же форме.</li>
+<li><strong>Окно дешёвой миграции — до mainnet-апгрейда (25
+июня)</strong>. Сейчас Michelson-строки есть только на тестовых сетях;
+после апгрейда mainnet любая смена схемы потребует миграции боевых
+данных.</li>
+<li><strong>Потребители хотят единый поток</strong>: bridge UI, Hasura
+GraphQL, Kuma-мониторинг читают <code>l2_deposit</code> /
+<code>bridge_operation</code> как один список, не зная рантаймов.</li>
+</ol>
+<h2 id="два-независимых-вопроса">Два независимых вопроса</h2>
+<p>Их стоит решать по отдельности — любая комбинация осмысленна:</p>
+<ul>
+<li><strong>Вопрос T (таблицы):</strong> одна таблица L2-депозитов или
+две?</li>
+<li><strong>Вопрос U (единицы):</strong> хранить amount в wei для всех
+или в нативной единице рантайма?</li>
+</ul>
+<hr />
+<h3 id="вопрос-t-структура-таблиц">Вопрос T — структура таблиц</h3>
+<h4 id="t0.-статус-кво-гигиена-только-rename-и-докуметация">T0.
+Статус-кво + гигиена (только rename и докуметация)</h4>
+<p>Переименовать <code>EtherlinkDepositOperation</code> →
+<code>L2DepositOperation</code> (и
+<code>set_pending_etherlink_deposits</code> →
+<code>set_pending_l2_deposits</code>), задокументировать конвенции.
+Схема БД не меняется.</p>
+<ul>
+<li>Плюсы: почти бесплатно; убирает враньё в имени.</li>
+<li>Минусы: классы строк остаются неявными; следующий шаг матчера снова
+может «забыть» про guard — инцидент 06-11 ничем не предотвращён
+структурно.</li>
+</ul>
+<h4 id="t1.-одна-таблица-явный-дискриминатор-l2_runtime">T1. Одна
+таблица + явный дискриминатор <code>l2_runtime</code></h4>
+<p>Колонка
+<code>l2_runtime = EnumField(L2Runtime)  # evm | michelson</code>
+(заполняется хендлером, который и так знает, кто он). Все guard’ы
+матчера переводятся с <code>startswith('o')</code> /
+<code>isnull</code>-эвристик на честный фильтр по enum. Опционально туда
+же — <code>l2_runtime</code> в <code>BridgeOperation</code> для
+фильтрации в UI/мониторинге.</p>
+<ul>
+<li>Плюсы: класс строки становится свойством данных, а не конвенцией;
+дисджойнтность пулов матчера выражается одним фильтром и проверяется
+тестом; дешёвая миграция (одна колонка, бэкфилл по тому же префиксу
+<code>o</code> один раз); совместимо с принятым решением
+<code>L2Account</code> (адресное измерение) и с единым потоком для
+потребителей; ничего не ломается в Hasura — поле добавляется, не
+меняется.</li>
+<li>Минусы: семантика «пустых» полей (<code>log_index=NULL</code>,
+<code>transaction_index=counter</code>) остаётся натянутой; в одной
+колонке по-прежнему два формата хэшей и (до <code>L2Account</code>) два
+формата адресов.</li>
+</ul>
+<h4
+id="t2.-разделить-отдельная-michelsondepositoperation-l2_michelson_deposit">T2.
+Разделить: отдельная <code>MichelsonDepositOperation</code>
+(l2_michelson_deposit)</h4>
+<p>Своя таблица со своими полями (<code>op_hash</code>,
+<code>counter</code>, <code>tz</code>-адреса, mutez).
+<code>BridgeDepositOperation</code> получает второй nullable-FK
+<code>l2_michelson_transaction</code> (полиморфных FK в Tortoise нет) +
+check-constraint «ровно один из двух».</p>
+<ul>
+<li>Плюсы: каждый рантайм типизирован честно, никаких полей-оборотней;
+матчер-шаги физически не могут перепутать пулы.</li>
+<li>Минусы: polymorphic-боль в каждом потребителе — UI/Hasura/мониторинг
+должны UNION-ить две таблицы и обрабатывать два FK; дублирование схемы
+ради <strong>одного</strong> потока (только XTZ-депозиты, см. факт 1);
+противоречит уже принятому <code>L2Account</code>-решению (его аргумент
+«retroactive alias через JOIN» работает, когда операции в одной
+таблице); самый большой объём работ; depositы на EVM-алиас tz-юзера
+снова поднимают вопрос «в какую таблицу писать».</li>
+</ul>
+<hr />
+<h3 id="вопрос-u-единицы-хранения-amount">Вопрос U — единицы хранения
+amount</h3>
+<h4 id="u0.-wei-для-всех-статус-кво">U0. Wei для всех (статус-кво)</h4>
+<p>Michelson-строки конвертируются при записи
+(<code>mutez × 10¹²</code>).</p>
+<ul>
+<li>Плюсы: потребители видят одну шкалу, ничего не пересчитывают;
+согласуется с <code>EtherlinkToken('xtz').decimals = 18</code>; так уже
+работает и кернел сам считает депозит в wei
+(<code>eth_from_mutez</code>) — хранимое значение совпадает с
+L2-реальностью EVM-вида.</li>
+<li>Минусы: 12 хвостовых нулей — фиктивная точность; обратные конверсии
+в коде — строковые срезы <code>[:-12]</code> (3 места), хрупко;
+«нативная правда» Michelson-рантайма (mutez) в БД отсутствует.</li>
+</ul>
+<h4 id="u1.-нативные-единицы-самоописание-через-токен">U1. Нативные
+единицы + самоописание через токен</h4>
+<p>Michelson-строки хранят mutez и ссылаются на отдельный токен-row
+(например, <code>xtz-tezlink</code>, <code>decimals=6</code>);
+потребитель всегда нормализует через <code>l2_token.decimals</code>, как
+уже делает для FA-токенов.</p>
+<ul>
+<li>Плюсы: в БД лежит правда; никакой фиктивной точности; конверсия
+выражена данными (decimals), а не магией в коде.</li>
+<li>Минусы: ломает потребителей, которые сейчас «знают», что xtz = 18
+знаков; агрегации по xtz должны учитывать два токен-row; матчеру всё
+равно нужна конверсия для сравнения с L1 (mutez) — выигрыш в коде
+меньше, чем кажется; миграция значений, а не только схемы.</li>
+</ul>
+<h4 id="u2.-wei-явные-хелперы-конверсии-компромисс">U2. Wei + явные
+хелперы конверсии (компромисс)</h4>
+<p>Хранение как в U0, но все <code>[:-12]</code> / <code>* 1e12</code>
+заменяются на пару функций <code>wei_to_mutez</code> /
+<code>mutez_to_wei</code> с проверкой делимости (остаток ≠ 0 →
+лог/ошибка, а не молчаливый срез).</p>
+<ul>
+<li>Плюсы: убирает хрупкость строковых срезов без миграции и без ломки
+потребителей.</li>
+<li>Минусы: фиктивная точность остаётся; это рефакторинг кода, не
+решение модели.</li>
+</ul>
+<hr />
+<h2 id="сравнение-вопрос-t">Сравнение (вопрос T)</h2>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Критерий</th>
+<th>T0 гигиена</th>
+<th>T1 дискриминатор</th>
+<th>T2 split</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Защита от повторения инцидента 06-11</td>
+<td>нет</td>
+<td>да (фильтр по enum + тест)</td>
+<td>да (физически)</td>
+</tr>
+<tr class="even">
+<td>Объём работ</td>
+<td>XS</td>
+<td>S (колонка + бэкфилл + guard’ы)</td>
+<td>L (таблица, dual-FK, все потребители)</td>
+</tr>
+<tr class="odd">
+<td>Ломает потребителей (UI/Hasura/Kuma)</td>
+<td>нет</td>
+<td>нет</td>
+<td>да (UNION, два FK)</td>
+</tr>
+<tr class="even">
+<td>Согласованность с решением <code>L2Account</code></td>
+<td>нейтрально</td>
+<td>да</td>
+<td>конфликтует</td>
+</tr>
+<tr class="odd">
+<td>Честность типов полей</td>
+<td>нет</td>
+<td>частично</td>
+<td>полностью</td>
+</tr>
+<tr class="even">
+<td>Оправдан при «Michelson = только XTZ-депозиты»</td>
+<td>—</td>
+<td>да</td>
+<td>избыточен</td>
+</tr>
+</tbody>
+</table>
+<h2 id="рекомендация-моя-на-обсуждение">Рекомендация (моя, на
+обсуждение)</h2>
+<p><strong>T1 + U2, и сделать rename из T0 заодно</strong>: одна таблица
+<code>L2DepositOperation</code> с явной колонкой
+<code>l2_runtime</code>, wei как единая шкала хранения, конверсии —
+через checked-хелперы вместо <code>[:-12]</code>. Плюс
+<code>l2_runtime</code> продублировать в <code>BridgeOperation</code>
+для UI/мониторинга.</p>
+<p>Логика: главный реальный риск — неявные классы строк в матчере
+(инцидент 06-11), и его закрывает дискриминатор, а не split. Split (T2)
+платит polymorphic-цену во всех потребителях ради единственного потока,
+который к тому же не будет расти (FA на Michelson не будет, withdrawals
+идут через NAC как EVM). Если когда-нибудь Michelson-поверхность
+расширится — T1 не мешает мигрировать на T2: дискриминатор как раз даст
+чистый критерий разреза.</p>
+<p>U1 (нативные mutez) стоит выбирать только если решим, что «БД хранит
+правду рантайма» важнее стабильности потребителей — это в первую очередь
+продуктовый вопрос к UI.</p>
+<p>Сделать это стоит <strong>до mainnet-апгрейда 25 июня</strong> — пока
+Michelson-строки есть только на тестовых сетях и бэкфилл тривиален.</p>
+<h2 id="открытые-вопросы-к-обсуждению">Открытые вопросы к
+обсуждению</h2>
+<ol type="1">
+<li>Согласны ли с T1 против T2 при текущем scope (Michelson = только
+XTZ-депозиты)?</li>
+<li>U: нужна ли потребителям (UI) «нативная» mutez-величина, или
+wei-шкала всем удобнее?</li>
+<li><code>level</code> у Michelson-строк — Tezlink-уровень. Совпадает ли
+он с номером EVM-блока на Tezos X (одни блоки секвенсера или разные)?
+Влияет на смысл ordering
+<code>('-level', '-transaction_index', …)</code> в смешанной
+таблице.</li>
+<li>Куда класть <code>l2_runtime</code> бэкфилл-миграцию — SQL в
+<code>sql/</code> при деплое или разово руками (строк пока десятки,
+только тестовые сети)?</li>
+<li>Делать ли rename моделей/локов (<code>TODO(rename)</code> в коде) в
+том же PR или отдельным?</li>
+</ol>
+</body>
+</html>
