@@ -32,6 +32,8 @@ datasources:
     # (no client-side throttling) → we hammer the flaky previewnet node and self-inflict 503
     # storms. Mirror the base values to throttle. tezosx has no Subsquid, so the node carries
     # the full L2 backfill — batch_size/ratelimit matter even more than on mainnet.
+    # `ws_url` is mirrored for the same reason; the rationale for it lives in the base `dipdup.yaml`.
+    ws_url: ${ETHERLINK_NODE_WS:-~}
     http:
       batch_size: 100
       ratelimit_rate: 900

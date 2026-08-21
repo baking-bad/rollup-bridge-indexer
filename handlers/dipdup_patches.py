@@ -56,12 +56,13 @@ _logger = logging.getLogger(__name__)
 # on one connection and the node delivers every head once per subscription id. Any config with both
 # index kinds and a `ws_url` dies on the first block after reaching realtime.
 #
-# No deployed config sets `etherlink_node.ws_url` right now, so nothing reaches `_emitter_loop` and
-# this patch is inert. It stays because turning the websocket back on is a one-line config change --
-# see the TODO in `configs/shadownet.yaml`, which is the same 8.6.2 change as the removal below.
+# `ws_url` is set for every network (base `dipdup.yaml`, mirrored into the overlays that redefine
+# `datasources`), so this patch is live wherever the indexer runs: every head the node announces twice
+# reaches `_handle_subscription` and is folded here. shadownet carried it alone for the first day after
+# the fix landed and held realtime without a single `_emitter_loop` crash.
 #
 # REMOVAL: delete this patch and its `apply_dipdup_patches()` entry once a released DipDup ships
-# the fix, and restore `ws_url` across the network configs in the same change.
+# the fix.
 # `tests/unit/datasource/test_evm_node_duplicate_head.py` is the gate -- it must pass with the
 # patch gone. Upstream: https://github.com/dipdup-io/dipdup/pull/1328
 # --------------------------------------------------------------------------------------------
