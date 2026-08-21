@@ -184,13 +184,25 @@ class OutboxMessageService:
 
 
 class RollupMessageIndex:
+    """Indexes the rollup inbox from TzKT and the outbox from the rollup node.
+
+    One pass is `_process`. The inbox is walked with a cursor; every `external` message means
+    its L1 level has outbox messages to fetch, and that level goes into `_outbox_level_queue`.
+
+    The queue is the one piece of that work the cursor cannot describe — the level of a full
+    outbox's continuation has no inbox message behind it at all — so it is stored alongside the
+    rows, in `dipdup_meta`. Two orderings make it durable: it is written **before** the inbox
+    rows that move the cursor past the externals that filled it, and a level leaves it **after**
+    the outbox rows it produced are committed. Between those two points a crash costs a re-fetch
+    and never a message.
+    """
+
     first_ticket_level: int | None = None
     request_limit = 10000
     _lock = threading.Lock()
 
-    # Where the pending outbox levels live between runs. `dipdup_meta` is DipDup's own
-    # key-value table, not part of the package schema, so using it costs no schema hash
-    # change (and therefore no reindex).
+    # Not part of the package schema, so storing here costs no schema hash change — and
+    # therefore no reindex.
     pending_outbox_levels_key = 'rollup_message_pending_outbox_levels'
 
     def __init__(
@@ -265,77 +277,88 @@ class RollupMessageIndex:
                     BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()
 
     async def _process(self):
-        # Levels a previous run queued but never stored: the inbox cursor has already moved
-        # past the external messages that queued them, so nothing else will ask again.
         await self._drain_outbox_levels()
 
-        inbox = await self._tzkt.request(
-            method='GET',
-            url=f'v1/smart_rollups/inbox?id.gt={self._inbox_id_cursor}&type.in=transfer,external&micheline=0&sort=id&limit={self.request_limit}',
-        )
-
-        if len(inbox) == 0:
+        inbox = await self._fetch_inbox_page()
+        if not inbox:
             if self._status == IndexStatus.syncing:
                 self._status = IndexStatus.realtime
                 return
         else:
-            self._logger.info('Found %d not indexed Inbox Messages.', len(inbox))
-
-            for inbox_message in inbox:
-                # Test-only upper bound: stop once we pass the requested window.
-                if self._sync_last_level is not None and inbox_message['level'] > self._sync_last_level:
-                    self._status = IndexStatus.realtime
-                    break
-                match inbox_message['type']:
-                    case RollupInboxMessageType.transfer.value:
-                        # Validate that transfer messages always have a target field
-                        if 'target' not in inbox_message or 'address' not in inbox_message.get('target', {}):
-                            raise ValueError(f"Transfer inbox message {inbox_message['id']} is missing target field")
-
-                        # Filter by target rollup (TzKT API doesn't support target= parameter)
-                        if inbox_message['target']['address'] != self._bridge.smart_rollup_address:
-                            continue
-
-                        await self._handle_transfer_inbox_message(inbox_message)
-                    case RollupInboxMessageType.external.value:
-                        await self._handle_external_inbox_message(inbox_message)
-                    case _:
-                        continue
-                self._inbox_id_cursor = inbox_message['id']
-
-            # Durability point: the queue must reach the database BEFORE the inbox rows that
-            # move the resume cursor past the external messages that filled it. Otherwise a
-            # failure in the drain below leaves work that is owed but no longer reachable.
-            await self._save_pending_outbox_levels()
-
-            if len(self._create_inbox_batch):
-                await RollupInboxMessage.bulk_create(self._create_inbox_batch)
-                self._logger.info('Successfully saved %d new Inbox Messages.', len(self._create_inbox_batch))
-                self._inbox_level_cursor = self._create_inbox_batch[-1].level
-                BridgeMatcherLocks.set_pending_inbox()
-                # A late-arriving inbox message may complete an already-recorded L2
-                # Michelson deposit — re-trigger the op-hash matcher step too.
-                BridgeMatcherLocks.set_pending_michelson_deposits()
-
-                del self._create_inbox_batch[:]
+            await self._walk_inbox_page(inbox)
+            await self._commit_inbox_page()
 
         await self._drain_outbox_levels()
+        await self._write_cursor_sentinel()
 
+    async def _fetch_inbox_page(self):
+        """The messages after the cursor. `id.gt=` — the cursor is the last id already consumed."""
+        inbox = await self._tzkt.request(
+            method='GET',
+            url=f'v1/smart_rollups/inbox?id.gt={self._inbox_id_cursor}&type.in=transfer,external&micheline=0&sort=id&limit={self.request_limit}',
+        )
+        if len(inbox):
+            self._logger.info('Found %d not indexed Inbox Messages.', len(inbox))
+        return inbox
+
+    async def _walk_inbox_page(self, inbox):
+        """Sort the page into the two in-memory batches. Nothing here touches the database."""
+        for inbox_message in inbox:
+            # Test-only upper bound: stop once we pass the requested window.
+            if self._sync_last_level is not None and inbox_message['level'] > self._sync_last_level:
+                self._status = IndexStatus.realtime
+                break
+            match inbox_message['type']:
+                case RollupInboxMessageType.transfer.value:
+                    if 'target' not in inbox_message or 'address' not in inbox_message.get('target', {}):
+                        raise ValueError(f"Transfer inbox message {inbox_message['id']} is missing target field")
+                    # TzKT has no `target=` filter, so the rollup is selected here.
+                    if inbox_message['target']['address'] != self._bridge.smart_rollup_address:
+                        continue
+                    await self._handle_transfer_inbox_message(inbox_message)
+                case RollupInboxMessageType.external.value:
+                    await self._handle_external_inbox_message(inbox_message)
+                case _:
+                    continue
+            self._inbox_id_cursor = inbox_message['id']
+
+    async def _commit_inbox_page(self):
+        """Store the pending outbox levels, then the rows — in that order.
+
+        The rows move the resume cursor past the external messages that filled the queue, so a
+        queue stored after them would describe work that nothing can reach again.
+        """
+        await self._save_pending_outbox_levels()
+
+        if not len(self._create_inbox_batch):
+            return
+        await RollupInboxMessage.bulk_create(self._create_inbox_batch)
+        self._logger.info('Successfully saved %d new Inbox Messages.', len(self._create_inbox_batch))
+        self._inbox_level_cursor = self._create_inbox_batch[-1].level
+        BridgeMatcherLocks.set_pending_inbox()
+        # A late-arriving inbox message may complete an already-recorded L2 Michelson deposit.
+        BridgeMatcherLocks.set_pending_michelson_deposits()
+
+        del self._create_inbox_batch[:]
+
+    async def _write_cursor_sentinel(self):
+        """Mark the cursor with a level-0 row when no real message carries its id."""
         self._logger.info('Update Inbox Message cursor index to %s', self._inbox_id_cursor)
-        if not await RollupInboxMessage.exists(id=self._inbox_id_cursor):
-            await RollupInboxMessage.filter(
-                level=0,
-                type=RollupInboxMessageType.external.value,
-                id__lt=self._inbox_id_cursor,
-            ).delete()
-            await RollupInboxMessage.create(
-                id=self._inbox_id_cursor,
-                level=0,
-                index=0,
-                message={},
-                parameters_hash=None,
-                type=RollupInboxMessageType.external,
-            )
+        if await RollupInboxMessage.exists(id=self._inbox_id_cursor):
+            return
+        await RollupInboxMessage.filter(
+            level=0,
+            type=RollupInboxMessageType.external.value,
+            id__lt=self._inbox_id_cursor,
+        ).delete()
+        await RollupInboxMessage.create(
+            id=self._inbox_id_cursor,
+            level=0,
+            index=0,
+            message={},
+            parameters_hash=None,
+            type=RollupInboxMessageType.external,
+        )
 
     async def _drain_outbox_levels(self):
         """Fetch every pending outbox level the chain has already reached, then store the result.
@@ -420,8 +443,6 @@ class RollupMessageIndex:
         )
 
     async def _handle_external_inbox_message(self, message):
-        # In-memory only here; `_process` stores the queue before the inbox rows of this page
-        # move the resume cursor past this message.
         self._outbox_level_queue.add(message['level'])
 
     async def _handle_outbox_level(self, outbox_level):
