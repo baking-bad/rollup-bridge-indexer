@@ -40,7 +40,9 @@ async def init_empty_schema(db_url: str = DB_URL) -> None:
     A fresh in-memory sqlite is empty by construction; a server-backed database outlives
     the test, so drop and recreate the schema to get the same starting point.
     """
-    await Tortoise.init(db_url=db_url, modules={'models': ['rollup_bridge_indexer.models']})
+    # `dipdup.models` too: DipDup's own tables (dipdup_meta among them) are part of every real
+    # database, and the rollup-message index keeps its pending outbox levels there.
+    await Tortoise.init(db_url=db_url, modules={'models': ['rollup_bridge_indexer.models', 'dipdup.models']})
     if not db_url.startswith('sqlite'):
         await Tortoise.get_connection('default').execute_script('DROP SCHEMA public CASCADE; CREATE SCHEMA public;')
     await Tortoise.generate_schemas()
