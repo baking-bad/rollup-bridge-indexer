@@ -86,3 +86,33 @@ test-indexer: _require-case
 inspect-test: _require-case
 	set -a; . $(CASE_DIR)/window.env; set +a
 	$(py) python -m tests.stand.cases.$(CASE).verify "$${SQLITE_PATH}"
+
+# --- Matcher benchmark + the Postgres backend it needs (tests/perf/) ---------------
+# Throwaway container on a non-default port so it can never be confused with the dev
+# compose db; tmpfs storage keeps seeding ~200k rows off the disk.
+PERF_PG := bridge-perf-pg
+PERF_PG_PORT := 55432
+PERF_DB_URL := postgres://dipdup:perf@127.0.0.1:$(PERF_PG_PORT)/dipdup
+
+perf-db:
+	@docker inspect -f '{{.State.Running}}' $(PERF_PG) 2>/dev/null | grep -q true && exit 0
+	docker rm -f $(PERF_PG) >/dev/null 2>&1 || true
+	docker run -d --name $(PERF_PG) --tmpfs /var/lib/postgresql/data \
+		-e POSTGRES_USER=dipdup -e POSTGRES_PASSWORD=perf -e POSTGRES_DB=dipdup \
+		-p $(PERF_PG_PORT):5432 postgres:17 >/dev/null
+	@for i in $$(seq 1 60); do docker exec $(PERF_PG) pg_isready -U dipdup >/dev/null 2>&1 && exit 0; sleep 1; done; \
+		echo "perf postgres did not come up"; exit 1
+
+perf-db-down:
+	docker rm -f $(PERF_PG) >/dev/null 2>&1 || true
+
+# SCALE=0.1 for a quick shape check; the default seeds the measured production pools.
+bench-matcher: perf-db
+	PYTHONPATH=. TEST_DB_URL=$(PERF_DB_URL) $(py) python -m tests.perf.bench_matcher \
+		--scale $(or $(SCALE),1.0) --passes $(or $(PASSES),3) \
+		$(if $(LABEL),--label $(LABEL)) $(if $(OUT),--out $(OUT))
+
+# The unit suite on the production backend. `make test` (sqlite) is the CI gate; this one
+# catches what only a real backend shows — NULL ordering, type coercion, real constraints.
+test-pg: perf-db
+	PYTHONPATH=. TEST_DB_URL=$(PERF_DB_URL) $(py) pytest $(unit_tests_dir)

@@ -2,10 +2,10 @@ import logging
 import threading
 from datetime import datetime
 from datetime import timedelta
-
-from tortoise.exceptions import DoesNotExist
+from typing import TYPE_CHECKING
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from rollup_bridge_indexer.handlers.candidate_pool import CandidatePool
 from rollup_bridge_indexer.models import BridgeDepositOperation
 from rollup_bridge_indexer.models import BridgeOperation
 from rollup_bridge_indexer.models import BridgeOperationKind
@@ -20,6 +20,9 @@ from rollup_bridge_indexer.models import RollupOutboxMessageBuilder
 from rollup_bridge_indexer.models import RuntimeKind
 from rollup_bridge_indexer.models import TezosDepositOperation
 from rollup_bridge_indexer.models import TezosWithdrawOperation
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 logger = logging.getLogger('rollup_bridge_indexer.handlers.bridge_matcher')
 
@@ -79,16 +82,30 @@ class BridgeMatcher:
             )
             .prefetch_related('l1_transaction')
         )
+        pending = await qs
+        if not pending:
+            return
+
+        # A deposit names its inbox message by the parameters hash it carries, at its own
+        # level. Only the hashes this walk asks about are read: most unclaimed inbox messages
+        # are not deposits at all and would sit in the pool forever, and this step runs after
+        # every level batch.
+        candidates: CandidatePool[RollupInboxMessage, tuple[str | None, int]] = CandidatePool(
+            'pending_inbox',
+            RollupInboxMessage.filter(
+                parameters_hash__in=sorted({deposit.l1_transaction.parameters_hash for deposit in pending} - {None}),
+            ).order_by('level', 'index'),
+            key=lambda message: (message.parameters_hash, message.level),
+            # Two identical deposits in one block share a hash by construction, and either
+            # message will do — a tie here is not news.
+            warn_on_tie=False,
+        )
+
         attached = False
-        async for bridge_deposit in qs:
+        for bridge_deposit in pending:
             bridge_deposit: BridgeDepositOperation
-            inbox_message = (
-                await RollupInboxMessage.filter(
-                    parameters_hash=bridge_deposit.l1_transaction.parameters_hash,
-                    level=bridge_deposit.l1_transaction.level,
-                )
-                .order_by('index')
-                .first()
+            inbox_message = await candidates.take(
+                (bridge_deposit.l1_transaction.parameters_hash, bridge_deposit.l1_transaction.level),
             )
 
             if inbox_message:
@@ -129,11 +146,26 @@ class BridgeMatcher:
             runtime_kind=RuntimeKind.michelson,
         ).order_by('level', 'transaction_index')
 
+        pending = await qs
+        if not pending:
+            return
+
+        # The op-hash is derived from the L1 deposit, so one hash names one message and one
+        # L2 row. Only the hashes this walk asks about are read — the op-hash is never
+        # cleared, so an unbounded pool would grow with the whole history of the network.
+        candidates: CandidatePool[RollupInboxMessage, str] = CandidatePool(
+            'pending_michelson_deposits',
+            RollupInboxMessage.filter(
+                expected_l2_op_hash__in=[l2_deposit.transaction_hash for l2_deposit in pending],
+            ).order_by('level', 'index'),
+            key=lambda message: message.expected_l2_op_hash,
+        )
+
         backfilled = 0
         unmatched = 0
-        async for l2_deposit in qs:
+        for l2_deposit in pending:
             l2_deposit: EtherlinkDepositOperation
-            inbox_message = await RollupInboxMessage.filter(expected_l2_op_hash=l2_deposit.transaction_hash).first()
+            inbox_message = await candidates.take(l2_deposit.transaction_hash)
             if inbox_message is None:
                 unmatched += 1
                 continue
@@ -174,16 +206,28 @@ class BridgeMatcher:
             .order_by('level', 'transaction_index', 'log_index')
         )
 
+        # An open bridge deposit is one whose L1 leg has landed and whose L2 leg has not; the
+        # inbox coords on its message are what an L2 row names it by. This side stays small
+        # by construction while the walk above runs ahead by a backfill's index-speed gap.
+        candidates: CandidatePool[BridgeDepositOperation, tuple[int, int]] = CandidatePool(
+            'pending_etherlink_deposits',
+            BridgeDepositOperation.filter(
+                l2_transaction=None,
+                # Only an attached message has coords to key on, and a missing one must not
+                # collapse into one (None, None) key shared by every inbox-less deposit.
+                inbox_message_id__isnull=False,
+            )
+            .order_by('-created_at')
+            .prefetch_related('inbox_message'),
+            key=lambda deposit: (deposit.inbox_message.level, deposit.inbox_message.index),
+        )
+
         async for l2_deposit in qs:
             l2_deposit: EtherlinkDepositOperation
-            bridge_deposit = await BridgeDepositOperation.filter(
-                inbox_message__level=l2_deposit.inbox_message_level,
-                inbox_message__index=l2_deposit.inbox_message_index,
-                l2_transaction=None,
-            ).first()
-
-            if not bridge_deposit:
+            bridge_deposit = await candidates.take((l2_deposit.inbox_message_level, l2_deposit.inbox_message_index))
+            if bridge_deposit is None:
                 continue
+
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
 
@@ -224,28 +268,39 @@ class BridgeMatcher:
             .order_by('level', 'transaction_index')
             .prefetch_related('l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
         )
+
+        # This step has no exact key — an XTZ deposit is recognised by its value. Three of the
+        # four things that must agree are equalities and become the pool's key; only the time
+        # window is left to scan. The pairing is a heuristic, so a key that fits more than one
+        # open deposit is the case worth hearing about, and the pool says so.
+        candidates: CandidatePool[BridgeDepositOperation, tuple[str, str, str]] = CandidatePool(
+            'pending_etherlink_xtz_deposits',
+            BridgeDepositOperation.filter(
+                l2_transaction=None,
+                inbox_message_id__isnull=False,
+            )
+            .order_by('l1_transaction__timestamp')
+            .prefetch_related('inbox_message', 'l1_transaction'),
+            key=lambda deposit: (
+                deposit.l1_transaction.ticket_id,
+                deposit.l1_transaction.l2_account_id,
+                deposit.l1_transaction.amount,
+            ),
+        )
+
         async for l2_deposit in qs:
             l2_deposit: EtherlinkDepositOperation
             # L1 stores mutez, the L2 EVM handle stores wei; the scale is the decimal gap
             # between the two token representations of the same native ticket (no magic 12).
             scale = 10 ** (l2_deposit.l2_token.decimals - l2_deposit.l2_token.ticket.token.decimals)
             l1_amount = str(int(l2_deposit.amount) // scale)
-            bridge_deposit = (
-                await BridgeDepositOperation.filter(
-                    l2_transaction=None,
-                    inbox_message_id__isnull=False,
-                    l1_transaction__ticket=l2_deposit.l2_token.ticket,
-                    l1_transaction__timestamp__lte=l2_deposit.timestamp,
-                    l1_transaction__timestamp__gte=l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX,
-                    l1_transaction__l2_account_id=l2_deposit.l2_account_id,
-                    l1_transaction__amount=l1_amount,
-                )
-                .order_by('l1_transaction__timestamp')
-                .prefetch_related('inbox_message', 'l1_transaction')
-                .first()
+            window_start = l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX
+            bridge_deposit = await candidates.take(
+                (l2_deposit.l2_token.ticket_id, l2_deposit.l2_account_id, l1_amount),
+                where=lambda d, start=window_start, end=l2_deposit.timestamp: start <= d.l1_transaction.timestamp <= end,
             )
 
-            if not bridge_deposit:
+            if bridge_deposit is None:
                 continue
 
             bridge_deposit.l2_transaction = l2_deposit
@@ -301,16 +356,27 @@ class BridgeMatcher:
             )
             .prefetch_related('l2_transaction')
         )
-        async for bridge_withdrawal in qs:
+        pending = await qs
+        if not pending:
+            return
+
+        # A withdrawal names its outbox message by the parameters hash it carries, and only
+        # an unclaimed message can answer. Read by the hashes this walk asks about, for the
+        # same reason as the inbox side: the step runs after every level batch.
+        candidates: CandidatePool[RollupOutboxMessage, str | None] = CandidatePool(
+            'pending_outbox',
+            RollupOutboxMessage.filter(
+                parameters_hash__in=sorted({withdrawal.l2_transaction.parameters_hash for withdrawal in pending} - {None}),
+                bridge_withdrawals=None,
+            ).order_by('level', 'index'),
+            key=lambda message: message.parameters_hash,
+            # Two identical withdrawals share a hash by construction; either message will do.
+            warn_on_tie=False,
+        )
+
+        for bridge_withdrawal in pending:
             bridge_withdrawal: BridgeWithdrawOperation
-            outbox_message = (
-                await RollupOutboxMessage.filter(
-                    parameters_hash=bridge_withdrawal.l2_transaction.parameters_hash,
-                    bridge_withdrawals=None,
-                )
-                .order_by('level', 'index')
-                .first()
-            )
+            outbox_message = await candidates.take(bridge_withdrawal.l2_transaction.parameters_hash)
 
             if outbox_message:
                 bridge_withdrawal.outbox_message = outbox_message
@@ -326,22 +392,27 @@ class BridgeMatcher:
             return
         BridgeMatcherLocks.pending_tezos_withdrawals = False
 
-        qs = (
-            TezosWithdrawOperation.filter(
-                bridge_withdrawals=None,
-                outbox_message__builder=RollupOutboxMessageBuilder.kernel,
-            )
-            .prefetch_related('outbox_message')
-            .order_by('level')
+        qs = TezosWithdrawOperation.filter(
+            bridge_withdrawals=None,
+            outbox_message__builder=RollupOutboxMessageBuilder.kernel,
+        ).order_by('level')
+
+        # An open bridge withdrawal is one whose L2 leg has landed and whose L1 execution has
+        # not; the outbox message it points at is what an execution names it by. This side
+        # stays small while the walk grows with every execution a backfill piles up. Reaching
+        # for a candidate by `outbox_message_id` costs a sequential scan — the column carries
+        # no index — so the pool is worth its one query even when the walk is short.
+        candidates: CandidatePool[BridgeWithdrawOperation, UUID] = CandidatePool(
+            'pending_tezos_withdrawals',
+            BridgeWithdrawOperation.filter(l1_transaction=None).order_by('-created_at'),
+            key=lambda withdrawal: withdrawal.outbox_message_id,
         )
+
         async for l1_withdrawal in qs:
             l1_withdrawal: TezosWithdrawOperation
-            bridge_withdrawal = await BridgeWithdrawOperation.filter(
-                l1_transaction=None,
-                outbox_message=l1_withdrawal.outbox_message,
-            ).first()
+            bridge_withdrawal = await candidates.take(l1_withdrawal.outbox_message_id)
 
-            if not bridge_withdrawal:
+            if bridge_withdrawal is None:
                 continue
 
             bridge_withdrawal.l1_transaction = l1_withdrawal
@@ -370,19 +441,48 @@ class BridgeMatcher:
             .order_by('level')
         )
 
+        # The payout carries its withdrawal id in `parameters_hash`, a CharField, while the
+        # column it joins is an integer. Tortoise coerces a scalar lookup but not the members
+        # of an `__in` list, so cast here — and a hash that is no number names no withdrawal
+        # id, so it drops out instead of failing the cast for every other payout in the pass.
+        payouts: list[tuple[TezosWithdrawOperation, int]] = []
         async for l1_payout in qs:
             l1_payout: TezosWithdrawOperation
-
             try:
-                l2_withdrawal = await EtherlinkWithdrawOperation.get(kernel_withdrawal_id=l1_payout.outbox_message.parameters_hash)
-            except DoesNotExist:
+                payouts.append((l1_payout, int(l1_payout.outbox_message.parameters_hash or '')))
+            except ValueError:
                 continue
 
-            withdrawal_id_finished = await BridgeWithdrawOperation.exists(
-                l1_transaction_id__isnull=False,
-                l2_transaction=l2_withdrawal,
+        if not payouts:
+            return
+
+        # `kernel_withdrawal_id` is unique, so each id maps to a single L2 leg and there is no
+        # candidate tie-break here.
+        l2_withdrawals: dict[int, EtherlinkWithdrawOperation] = {
+            l2_withdrawal.kernel_withdrawal_id: l2_withdrawal
+            async for l2_withdrawal in EtherlinkWithdrawOperation.filter(
+                kernel_withdrawal_id__in=sorted({withdrawal_id for _, withdrawal_id in payouts})
             )
-            if withdrawal_id_finished:
+        }
+        if not l2_withdrawals:
+            return
+
+        # L2 legs already paid out on L1 — the slow way, or by an earlier payout of this very
+        # pass, which is why the walk below keeps adding to the set: a leg must not be handed
+        # to a second payout.
+        settled_l2_ids: set[int] = set(
+            await BridgeWithdrawOperation.filter(
+                l1_transaction_id__isnull=False,
+                l2_transaction_id__in=[l2_withdrawal.pk for l2_withdrawal in l2_withdrawals.values()],
+            ).values_list('l2_transaction_id', flat=True)
+        )
+
+        for l1_payout, withdrawal_id in payouts:
+            l2_withdrawal = l2_withdrawals.get(withdrawal_id)
+            if l2_withdrawal is None:
+                continue
+
+            if l2_withdrawal.pk in settled_l2_ids:
                 l1_payout.outbox_message.parameters_hash = None
                 await l1_payout.outbox_message.save()
                 continue
@@ -413,6 +513,7 @@ class BridgeMatcher:
                 customers_bridge_withdrawal.outbox_message = l1_payout.outbox_message
                 customers_bridge_withdrawal.l1_transaction = l1_payout
                 await customers_bridge_withdrawal.save()
+                settled_l2_ids.add(l2_withdrawal.pk)
 
                 customers_bridge_operation = await BridgeOperation.get(id=customers_bridge_withdrawal.pk)
                 customers_bridge_operation.is_completed = True
