@@ -1,11 +1,11 @@
 import logging
 import threading
-from collections import deque
 from datetime import datetime
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
+from rollup_bridge_indexer.handlers.candidate_pool import CandidatePool
 from rollup_bridge_indexer.models import BridgeDepositOperation
 from rollup_bridge_indexer.models import BridgeOperation
 from rollup_bridge_indexer.models import BridgeOperationKind
@@ -82,16 +82,22 @@ class BridgeMatcher:
             )
             .prefetch_related('l1_transaction')
         )
+        # A deposit names its inbox message by the parameters hash it carries, at its own
+        # level. Attaching consumes the message — both sides drop the hash — so the pool is
+        # the messages still up for grabs. On a fresh database that is the entire deposit
+        # backlog on both sides, which is what this step costs when it costs anything.
+        candidates: CandidatePool[RollupInboxMessage, tuple[str | None, int]] = CandidatePool(
+            'pending_inbox',
+            RollupInboxMessage.filter(parameters_hash__isnull=False).order_by('level', 'index'),
+            key=lambda message: (message.parameters_hash, message.level),
+            warn_on_tie=False,
+        )
+
         attached = False
         async for bridge_deposit in qs:
             bridge_deposit: BridgeDepositOperation
-            inbox_message = (
-                await RollupInboxMessage.filter(
-                    parameters_hash=bridge_deposit.l1_transaction.parameters_hash,
-                    level=bridge_deposit.l1_transaction.level,
-                )
-                .order_by('index')
-                .first()
+            inbox_message = await candidates.take(
+                (bridge_deposit.l1_transaction.parameters_hash, bridge_deposit.l1_transaction.level),
             )
 
             if inbox_message:
@@ -132,11 +138,26 @@ class BridgeMatcher:
             runtime_kind=RuntimeKind.michelson,
         ).order_by('level', 'transaction_index')
 
+        pending = await qs
+        if not pending:
+            return
+
+        # The op-hash is derived from the L1 deposit, so one hash names one message and one
+        # L2 row. Only the hashes this walk asks about are read — the op-hash is never
+        # cleared, so an unbounded pool would grow with the whole history of the network.
+        candidates: CandidatePool[RollupInboxMessage, str] = CandidatePool(
+            'pending_michelson_deposits',
+            RollupInboxMessage.filter(
+                expected_l2_op_hash__in=[l2_deposit.transaction_hash for l2_deposit in pending],
+            ).order_by('level', 'index'),
+            key=lambda message: message.expected_l2_op_hash,
+        )
+
         backfilled = 0
         unmatched = 0
-        async for l2_deposit in qs:
+        for l2_deposit in pending:
             l2_deposit: EtherlinkDepositOperation
-            inbox_message = await RollupInboxMessage.filter(expected_l2_op_hash=l2_deposit.transaction_hash).first()
+            inbox_message = await candidates.take(l2_deposit.transaction_hash)
             if inbox_message is None:
                 unmatched += 1
                 continue
@@ -177,34 +198,28 @@ class BridgeMatcher:
             .order_by('level', 'transaction_index', 'log_index')
         )
 
-        # The counter side is fetched once and indexed by coords instead of re-queried per L2
-        # row: an open bridge deposit only exists once its L1 leg landed, so this side stays
-        # small while the L2 pool runs ahead by the whole index-speed gap during a backfill.
-        # `-created_at` is the ordering the per-row `.first()` inherited from `Meta.ordering`,
-        # so the head of each queue is the candidate that query would have returned; the rest
-        # stay queued because a bridge deposit taken here must still be reachable by the next
-        # L2 row on the same coordinates, which re-querying used to arrange for free.
-        candidates: dict[tuple[int, int], deque[BridgeDepositOperation]] = {}
-        open_deposits = (
+        # An open bridge deposit is one whose L1 leg has landed and whose L2 leg has not; the
+        # inbox coords on its message are what an L2 row names it by. This side stays small
+        # by construction while the walk above runs ahead by a backfill's index-speed gap.
+        candidates: CandidatePool[BridgeDepositOperation, tuple[int, int]] = CandidatePool(
+            'pending_etherlink_deposits',
             BridgeDepositOperation.filter(
                 l2_transaction=None,
-                # Mirrors the join the per-row query did: only an attached inbox message has
-                # coords to key on, and a NULL FK must not collapse into the (None, None) key.
+                # Only an attached message has coords to key on, and a missing one must not
+                # collapse into one (None, None) key shared by every inbox-less deposit.
                 inbox_message_id__isnull=False,
             )
             .order_by('-created_at')
-            .prefetch_related('inbox_message')
+            .prefetch_related('inbox_message'),
+            key=lambda deposit: (deposit.inbox_message.level, deposit.inbox_message.index),
         )
-        async for open_deposit in open_deposits:
-            open_deposit: BridgeDepositOperation
-            candidates.setdefault((open_deposit.inbox_message.level, open_deposit.inbox_message.index), deque()).append(open_deposit)
 
         async for l2_deposit in qs:
             l2_deposit: EtherlinkDepositOperation
-            queue = candidates.get((l2_deposit.inbox_message_level, l2_deposit.inbox_message_index))
-            if not queue:
+            bridge_deposit = await candidates.take((l2_deposit.inbox_message_level, l2_deposit.inbox_message_index))
+            if bridge_deposit is None:
                 continue
-            bridge_deposit = queue.popleft()
+
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
 
@@ -246,18 +261,23 @@ class BridgeMatcher:
             .prefetch_related('l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
         )
 
-        # The counter side is read once and narrowed in Python. It stays a handful by
-        # construction (a bridge deposit exists only once its L1 leg landed) while the pool
-        # above grows unbounded whenever L2 runs ahead during a backfill, so the per-row
-        # candidate query was the entire cost of the step. Ordering and predicates below
-        # mirror that query exactly — the surviving candidate is the same one.
-        open_deposits = (
-            await BridgeDepositOperation.filter(
+        # This step has no exact key — an XTZ deposit is recognised by its value. Three of the
+        # four things that must agree are equalities and become the pool's key; only the time
+        # window is left to scan. The pairing is a heuristic, so a key that fits more than one
+        # open deposit is the case worth hearing about, and the pool says so.
+        candidates: CandidatePool[BridgeDepositOperation, tuple[str, str, str]] = CandidatePool(
+            'pending_etherlink_xtz_deposits',
+            BridgeDepositOperation.filter(
                 l2_transaction=None,
                 inbox_message_id__isnull=False,
             )
             .order_by('l1_transaction__timestamp')
-            .prefetch_related('inbox_message', 'l1_transaction')
+            .prefetch_related('inbox_message', 'l1_transaction'),
+            key=lambda deposit: (
+                deposit.l1_transaction.ticket_id,
+                deposit.l1_transaction.l2_account_id,
+                deposit.l1_transaction.amount,
+            ),
         )
 
         async for l2_deposit in qs:
@@ -267,24 +287,14 @@ class BridgeMatcher:
             scale = 10 ** (l2_deposit.l2_token.decimals - l2_deposit.l2_token.ticket.token.decimals)
             l1_amount = str(int(l2_deposit.amount) // scale)
             window_start = l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX
-            taken = next(
-                (
-                    i
-                    for i, candidate in enumerate(open_deposits)
-                    if candidate.l1_transaction.ticket_id == l2_deposit.l2_token.ticket_id
-                    and window_start <= candidate.l1_transaction.timestamp <= l2_deposit.timestamp
-                    and candidate.l1_transaction.l2_account_id == l2_deposit.l2_account_id
-                    and candidate.l1_transaction.amount == l1_amount
-                ),
-                None,
+            bridge_deposit = await candidates.take(
+                (l2_deposit.l2_token.ticket_id, l2_deposit.l2_account_id, l1_amount),
+                where=lambda d, start=window_start, end=l2_deposit.timestamp: start <= d.l1_transaction.timestamp <= end,
             )
 
-            if taken is None:
+            if bridge_deposit is None:
                 continue
 
-            # `l2_transaction` is unique, so a claimed deposit must leave the pool — the
-            # discarded per-row query got that for free by re-reading `l2_transaction=None`.
-            bridge_deposit = open_deposits.pop(taken)
             bridge_deposit.l2_transaction = l2_deposit
             await bridge_deposit.save()
             bridge_deposit.l1_transaction.parameters_hash = None
@@ -338,16 +348,22 @@ class BridgeMatcher:
             )
             .prefetch_related('l2_transaction')
         )
+        # A withdrawal names its outbox message by the parameters hash it carries. Attaching
+        # consumes the message, so the pool is the unclaimed ones — the whole withdrawal
+        # backlog on a fresh database, and a few hundred rows once the backfill has settled.
+        candidates: CandidatePool[RollupOutboxMessage, str | None] = CandidatePool(
+            'pending_outbox',
+            RollupOutboxMessage.filter(
+                parameters_hash__isnull=False,
+                bridge_withdrawals=None,
+            ).order_by('level', 'index'),
+            key=lambda message: message.parameters_hash,
+            warn_on_tie=False,
+        )
+
         async for bridge_withdrawal in qs:
             bridge_withdrawal: BridgeWithdrawOperation
-            outbox_message = (
-                await RollupOutboxMessage.filter(
-                    parameters_hash=bridge_withdrawal.l2_transaction.parameters_hash,
-                    bridge_withdrawals=None,
-                )
-                .order_by('level', 'index')
-                .first()
-            )
+            outbox_message = await candidates.take(bridge_withdrawal.l2_transaction.parameters_hash)
 
             if outbox_message:
                 bridge_withdrawal.outbox_message = outbox_message
@@ -368,28 +384,24 @@ class BridgeMatcher:
             outbox_message__builder=RollupOutboxMessageBuilder.kernel,
         ).order_by('level')
 
-        # The open pool is read once instead of once per execution: it stays small (a bridge row
-        # exists only from its L2 leg on) while the walk grows with every unsettled execution the
-        # backfill piles up, and `bridge_withdrawal.outbox_message_id` has no index.
-        # `-created_at` is BridgeWithdrawOperation.Meta.ordering, which the per-row `.first()`
-        # applied implicitly — spelled out here because that order IS the tie-break between
-        # several open rows on one outbox message.
-        open_withdrawals: dict[UUID, deque[BridgeWithdrawOperation]] = {}
-        async for open_withdrawal in BridgeWithdrawOperation.filter(l1_transaction=None).order_by('-created_at'):
-            # An execution always carries an outbox message (the FK is non-null), so a bridge row
-            # without one is nobody's counterpart — keeping the null key out of the index.
-            if open_withdrawal.outbox_message_id is not None:
-                open_withdrawals.setdefault(open_withdrawal.outbox_message_id, deque()).append(open_withdrawal)
+        # An open bridge withdrawal is one whose L2 leg has landed and whose L1 execution has
+        # not; the outbox message it points at is what an execution names it by. This side
+        # stays small while the walk grows with every execution a backfill piles up. Reaching
+        # for a candidate by `outbox_message_id` costs a sequential scan — the column carries
+        # no index — so the pool is worth its one query even when the walk is short.
+        candidates: CandidatePool[BridgeWithdrawOperation, UUID] = CandidatePool(
+            'pending_tezos_withdrawals',
+            BridgeWithdrawOperation.filter(l1_transaction=None).order_by('-created_at'),
+            key=lambda withdrawal: withdrawal.outbox_message_id,
+        )
 
         async for l1_withdrawal in qs:
             l1_withdrawal: TezosWithdrawOperation
-            candidates = open_withdrawals.get(l1_withdrawal.outbox_message_id)
+            bridge_withdrawal = await candidates.take(l1_withdrawal.outbox_message_id)
 
-            if not candidates:
+            if bridge_withdrawal is None:
                 continue
 
-            # Taken rows leave the pool, the way re-querying used to drop them for free.
-            bridge_withdrawal = candidates.popleft()
             bridge_withdrawal.l1_transaction = l1_withdrawal
             await bridge_withdrawal.save()
 
