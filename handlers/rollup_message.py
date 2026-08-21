@@ -484,7 +484,9 @@ class RollupMessageIndex:
 
         try:
             last_saved_inbox_message = await RollupInboxMessage.all().order_by('-id').first()
-            self._inbox_id_cursor = 1 + last_saved_inbox_message.id
+            # The cursor is the last id consumed — `id.gt=` resumes strictly after it, so the
+            # saved row is not re-read and the one behind it is not skipped.
+            self._inbox_id_cursor = last_saved_inbox_message.id
             self._logger.info('Last previous saved Inbox Message found. Going to continue with next Inbox Message.')
             await self._load_pending_outbox_levels()
         except AttributeError:
@@ -508,7 +510,9 @@ class RollupMessageIndex:
                 method='GET',
                 url=f'v1/smart_rollups/inbox?type.in=transfer,external&level.ge={first_level}&sort.asc=id&limit=1',
             )
-            self._inbox_id_cursor = inbox[0]['id']
+            # ...which is the first message to index, not one already indexed: step back so the
+            # cursor keeps meaning the same thing.
+            self._inbox_id_cursor = inbox[0]['id'] - 1
 
         self._logger.info('Inbox Message cursor index is %d.', self._inbox_id_cursor)
         self._status = IndexStatus.syncing
