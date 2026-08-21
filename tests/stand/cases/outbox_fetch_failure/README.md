@@ -144,15 +144,6 @@ a RECOVERY that is really a clean CONTROL run.
   when a level is filled to `smart_rollup_max_outbox_messages_per_level`). Both levels of this
   window carry exactly 1 message, so that branch never fires — and a level queued by *it*, not
   by an inbox message, has no inbox id protecting it at all.
-- **The cursor off-by-one** at `rollup_message.py:487`: the restart resumes at `1 + last saved
-  id` and then queries `id.gt=` that value, so the message at `last saved id + 1` is skipped
-  entirely; `:511` seeds the same cursor from the first message of a fresh window and drops
-  that one. Raw TzKT ids are contiguous and the `type.in=transfer,external` filter only breaks
-  the run at level boundaries, so the skipped position holds a real message in 88% of cursor
-  positions. Visible in the arms' facts (CONTROL's sentinel lands on 38278430, RECOVERY's on
-  38278431) but not asserted, and this case's own fixture rides on it: `CASE_SENTINEL_SEED_ID`
-  is one below the page's first external, which the restart arms therefore drop. Neither
-  affects the verdict — `CASE_EXTERNAL_IDS` sit elsewhere in the window.
 - **Postgres.** The stand is sqlite; prod is Postgres. The case removes `unsafe_sqlite` (which
   turns off the journal and gives undefined post-crash state) so that at least the crash
   semantics resemble a journalled database.
