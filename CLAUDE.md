@@ -237,10 +237,14 @@ test.
 - **PRs land as merge commits — never squashed.** The commit sequence is part of what a PR delivers
   here (a harness that goes red, then the fix that turns it green), and a squash throws it away.
   Master having single-parent commits is history, not the convention.
-- **Pushing publishes an image.** `.github/workflows/build.yml` runs on pushes to `master` and on
-  pull requests against it; the publish step is unconditional, so a PR build lands in GHCR as
-  `pr-<N>` and a master push lands as `master`. Tags are in the metadata but are not a trigger.
-  Every publish is gated on the hermetic docker smoke test first.
+- **Every push publishes an image; only `master` arms a deploy.**
+  `.github/workflows/build.yml` runs on pushes to `master` and on pull requests against it, and
+  the publish step is unconditional — a PR build lands in GHCR as `pr-<N>`, a master push as
+  `master`. Tags are in the metadata but are not a trigger. Publishing by itself deploys nothing:
+  the consequence lives in the deployment compose, which resolves `${TAG:-master}`, so a stack on
+  the default tag picks up whatever `master` last published the next time its task is recreated —
+  a host drain, a node reboot, any Swarm reschedule, no operator involved. Every publish is gated
+  on the hermetic docker smoke test first.
 - **Any change to `models/` costs a full reindex.** `advanced.reindex.schema_modified: exception`
   makes DipDup refuse to start against a database whose schema hash no longer matches, so a new
   field is not a deploy — it is a wipe and a rebuild. Measured on mainnet from scratch: **3 d 11 h**
