@@ -37,6 +37,3 @@
 # host via `docker run`, and `package verify` only imports handlers/hooks/types. Keep all
 # test code (unit/, e2e/, stand/) out of the shipped image.
 tests/**
-# Same reason for the perf tooling: baseline.py talks to a deployed instance's GraphQL from
-# the host, never from inside the image, and the snapshots are just recorded measurements.
-perf/**

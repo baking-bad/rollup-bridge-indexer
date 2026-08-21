@@ -14,8 +14,9 @@ shape. The whole `tests/` tree is excluded from the prod image (`.dockerignore: 
   infrastructure (real postgres, network).
 - **Run:** `make test` (pinned via `testpaths=["tests/unit"]`). Runs anywhere, no secrets;
   should run in CI. `make test-pg` runs the same suite against a throwaway Postgres
-  (`TEST_DB_URL`) — the matcher's tie-breaks are implicit `Meta.ordering`, and sqlite and
-  Postgres disagree on where NULLs sort, so a rewrite can pass on one and not the other.
+  (`TEST_DB_URL`) — sqlite and Postgres disagree on where NULLs sort, and the matcher pairs
+  candidates in the order its queries return them, so a rewrite can pass on one and not the
+  other.
 
 ## `tests/e2e/` — production-readiness gate
 - **Purpose:** script-based checks that **the current repo state is shippable** — the
@@ -28,16 +29,19 @@ shape. The whole `tests/` tree is excluded from the prod image (`.dockerignore: 
 - **Run:** `make prod-check` (full) / `make docker-test` (docker only). CI runs the hermetic
   smoke as the publish gate.
 
-## `tests/perf/` — matcher benchmark (NOT a gate)
-- **Purpose:** cost of one matcher pass over a production-sized backlog, per step, in SQL
-  statements and milliseconds. The matcher's cost tracks how many unmatched rows have piled
-  up, so `seed.py` builds that backlog directly instead of indexing towards it.
-- **Belongs:** anything answering "did this rewrite stop querying once per row".
+## `tests/perf/` — speed instruments (NOT a gate)
+- **Purpose:** what a matcher pass costs. `bench_matcher.py` + `seed.py` measure it per step,
+  locally, over a seeded production-sized backlog (the cost tracks how many unmatched rows
+  have piled up, so the backlog is built directly instead of indexed towards).
+  `baseline.py` measures a *deployed* instance's throughput over GraphQL, for confirming an
+  effect after a deploy.
+- **Belongs:** anything answering "how much does this pass cost, and did that change".
 - **Does NOT belong:** correctness. The seeded state is a fixed point where nothing matches,
   so a patch that stopped matching would score well — that is what `tests/unit/matcher/` is
   for, and both must be run.
-- **Constraints:** Postgres only (`make bench-matcher` starts a throwaway container). Never
-  run two benchmarks concurrently — they contend and the timings are then meaningless.
+- **Constraints:** Postgres only (`make bench-matcher` starts a throwaway container, so it
+  needs a working Docker daemon). Never run two benchmarks concurrently — they contend and
+  the timings are then meaningless. Snapshots under `snapshots/` are gitignored output.
 - **Run:** `make bench-matcher [SCALE=] [PASSES=] [LABEL=] [OUT=]`; see `tests/perf/README.md`.
 
 ## `tests/stand/` — manual bug-repro harness (NOT a gate)

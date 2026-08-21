@@ -1,9 +1,9 @@
 """Seed the matcher's pools to the sizes measured on a production backfill.
 
 The matcher's cost is not driven by how many operations arrive — it is driven by how many
-unmatched rows have piled up, because every pass walks the whole pool and queries the
-database once per row. A block-window run can never produce that state: it yields pools of
-a few rows. So the bench builds the state directly.
+unmatched rows have piled up, because every pass walks the whole pool. A block-window run
+can never produce that state: it yields pools of a few rows. So the bench builds the state
+directly.
 
 The seeded state is a **fixed point**: no seeded row can ever match, so pass N does exactly
 the same work as pass 1. That is what makes repeated passes comparable, and it is also the
@@ -51,8 +51,8 @@ CHUNK = 2000
 
 @dataclass(frozen=True)
 class PoolSizes:
-    """Defaults are the pools measured on etherlink-bridge-mainnet-staging, 2026-08-05
-    (see perf/snapshots/2026-08-05-before-patch.json)."""
+    """Defaults are the pools measured on etherlink-bridge-mainnet-staging, 2026-08-05,
+    28 hours into a reindex — see the table in README.md."""
 
     # Pools the matcher walks, one database query per row. This is the defect.
     tezos_withdrawals: int = 8886  # P1
