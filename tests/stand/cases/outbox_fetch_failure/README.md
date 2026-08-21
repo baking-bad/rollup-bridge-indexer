@@ -69,10 +69,19 @@ make test-indexer CASE=outbox_fetch_failure
 
 ## Expected
 
-The four arms and what `run_arms.sh` asserts about each. A failed **precondition** aborts the
+The six arms and what `run_arms.sh` asserts about each. A failed **precondition** aborts the
 run as VOID (exit 2) — a sequence that cannot mean what it is supposed to mean must not be
-reported as RED or GREEN.
+reported as RED or GREEN. An arm whose *behaviour* is wrong aborts as RED (exit 1) instead.
 
+The first two arms are about which levels may be asked for at all; the last four are about what
+survives a fetch that fails.
+
+- **WEDGED** (`PROXY_WEDGED_AT=4285911`, fresh db) — the node stopped applying L1 blocks and
+  still answers RPC, reporting a level below both outbox levels. Neither can be served, so
+  neither may be asked for: exit **0** (the pass finishes instead of dying), zero outbox rows,
+  and inbox rows present — an arm that never reached the drain proves nothing ⇒ VOID.
+- **WEDGE-RECOVERY** (healthy node, same db) — both levels indexed. The debt the wedged arm
+  recorded is what makes this reachable; the cursor is already past those externals.
 - **CONTROL** (`PROXY_FAIL_LEVELS=`, fresh db) — exit 0, `rollup_outbox_message` = exactly the
   2 rows of levels 4285912 and 4286481, `rollup_inbox_message` = the two transfers + the
   level=0 cursor sentinel. Anything else means the window rotted off the rolling node ⇒ VOID.
@@ -144,6 +153,11 @@ a RECOVERY that is really a clean CONTROL run.
   when a level is filled to `smart_rollup_max_outbox_messages_per_level`). Both levels of this
   window carry exactly 1 message, so that branch never fires — and a level queued by *it*, not
   by an inbox message, has no inbox id protecting it at all.
+- **A real wedged node.** `PROXY_WEDGED_AT` encodes what the endpoint means — `head/level` is
+  the last level the node applied, and the level above it has no hash to resolve, verified
+  against a healthy node as an exact boundary (that level 200, the next 500 `kind: temporary`).
+  That a node which *stops* applying reports its frozen level rather than an advancing one
+  follows from the same semantics but was never observed on a broken node.
 - **Postgres.** The stand is sqlite; prod is Postgres. The case removes `unsafe_sqlite` (which
   turns off the journal and gives undefined post-crash state) so that at least the crash
   semantics resemble a journalled database.

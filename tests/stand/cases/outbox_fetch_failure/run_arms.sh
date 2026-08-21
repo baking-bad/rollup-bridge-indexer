@@ -106,12 +106,21 @@ die() { # a run that cannot mean what it is supposed to mean is VOID, not RED
 	exit 2
 }
 
+red() { # the code did the wrong thing, which is a different verdict from a broken instrument
+	echo
+	echo "RED: $*" >&2
+	write_arms_json RED "$*"
+	proxy_stop
+	exit 1
+}
+
 trap 'proxy_stop >/dev/null 2>&1' EXIT
 
 proxy_start() { # $1 = arm, $2 = PROXY_FAIL_LEVELS value
 	proxy_stop || die "port $PROXY_PORT is still held by another process"
 	PROXY_TOKEN="$1-$$-$(date +%s%N)"
 	PROXY_FAIL_LEVELS="$2" PROXY_FAIL_STATUS="$FAIL_STATUS" PROXY_TOKEN="$PROXY_TOKEN" PROXY_LOG="$OUT/$1.proxy.log" \
+		PROXY_WEDGED_AT="${WEDGE:-0}" \
 		setsid uv run python "$CASE_DIR/proxy.py" >"$OUT/$1.proxy.out" 2>&1 &
 	# Identity, not liveness: the arm must talk to the proxy IT started, with ITS fault spec.
 	uv run python "$CASE_DIR/proxy.py" check "$PROXY_PORT" "$PROXY_TOKEN" "$2" "$FAIL_STATUS" || {
@@ -162,6 +171,24 @@ run_arm() { # $1 = arm, $2 = PROXY_FAIL_LEVELS value, $3.. = extra env lines for
 # and the resulting TimeoutError is indistinguishable from the injected fault. ---
 uv run python "$CASE_DIR/proxy.py" prewarm "$CASE_PREWARM_FIRST_LEVEL" "$CASE_PREWARM_LAST_LEVEL" "$CASE_PREWARM_ENTRIES" ||
 	die "prewarm did not leave $CASE_PREWARM_ENTRIES cached entries in $PROXY_CACHE_DIR"
+
+# --- WEDGED: the node stopped applying L1 blocks and still answers RPC. Its reported level is
+# below both outbox levels, so neither can be served — and neither may be asked for. A drain
+# that asks anyway takes the process down, which is the state this arm exists to rule out. ---
+rm -f "$SQLITE_PATH"
+WEDGE="$CASE_WEDGE_LEVEL" run_arm wedged ''
+[ "$(fact "$ARM_FACTS" exit_code)" = 0 ] ||
+	red "WEDGED must finish cleanly, not die on a level the node cannot serve (exit $(fact "$ARM_FACTS" exit_code)); see $OUT/wedged.log"
+[ "$(fact "$ARM_FACTS" outbox_rows)" = 0 ] ||
+	red "WEDGED indexed $(fact "$ARM_FACTS" outbox_rows) outbox row(s) from a node that reports level $CASE_WEDGE_LEVEL"
+[ "$(fact "$ARM_FACTS" inbox_rows)" -gt 0 ] ||
+	die "WEDGED indexed no inbox rows — the arm never reached the drain and proves nothing"
+
+# --- WEDGE-RECOVERY: same database, the node has caught up. The debt the wedged arm recorded
+# is what makes this possible; without it the cursor is already past those externals. ---
+run_arm wedge_recovery ''
+[ "$(fact "$ARM_FACTS" outbox_levels_missing)" = 0 ] ||
+	red "WEDGE-RECOVERY left $(fact "$ARM_FACTS" outbox_levels_missing) outbox level(s) unindexed; see $OUT/wedge_recovery.log"
 
 # --- CONTROL: healthy node, fresh db. Anything but a complete index means the window rotted. ---
 rm -f "$SQLITE_PATH"

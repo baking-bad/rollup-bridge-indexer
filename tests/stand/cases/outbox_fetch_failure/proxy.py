@@ -3,7 +3,7 @@
 
 Sits between the indexer and the real rollup node so a single outbox-message fetch can be
 made to fail deterministically, with everything else served byte-identically to the clean
-run. Two arms of the same case differ only by `PROXY_FAIL_LEVELS`.
+run. Arms of the same case differ only by `PROXY_FAIL_LEVELS` and `PROXY_WEDGED_AT`.
 
 Modes
   serve                  run the proxy (default)
@@ -26,6 +26,9 @@ Env
   PROXY_UPSTREAM    real rollup node (default https://previewnet-smart.tzkt.io)
   PROXY_CACHE_DIR   response cache dir (default /tmp/bridge_outbox_fetch_failure_cache)
   PROXY_FAIL_LEVELS comma-separated outbox levels to fail; empty = pass-through (CONTROL)
+  PROXY_WEDGED_AT   pretend the node stopped applying L1 blocks here: `global/block/head/level`
+                    reports this level and every outbox above it answers PROXY_FAIL_STATUS in
+                    the upstream's own error shape; 0 (default) passes the real level through
   PROXY_FAIL_STATUS HTTP status to answer with (default 500 — the production shape: a wedged
                     rollup node 500s for every level above its processed_level)
   PROXY_TOKEN       identity string echoed by `/__armed` (default: a random one)
@@ -106,9 +109,14 @@ async def handle(request: web.Request) -> web.Response:
     path = request.match_info.get('tail', '').lstrip('/')
     query = request.rel_url.query_string
 
-    if WEDGED_AT and path == HEAD_LEVEL_PATH:
-        _log(f'WEDGE head/level -> {WEDGED_AT}')
-        return web.Response(status=200, body=str(WEDGED_AT).encode(), content_type='application/json')
+    if path == HEAD_LEVEL_PATH:
+        if WEDGED_AT:
+            _log(f'WEDGE head/level -> {WEDGED_AT}')
+            return web.Response(status=200, body=str(WEDGED_AT).encode(), content_type='application/json')
+        # Never cached: a frozen head level is the fault this case injects deliberately.
+        status, body = await _fetch(request.app['session'], path, query)
+        _log(f'HEAD {status} {path}')
+        return web.Response(status=status, body=body, content_type='application/json')
 
     match = OUTBOX_RE.match(path)
     if match and WEDGED_AT and int(match.group(2)) > WEDGED_AT:
