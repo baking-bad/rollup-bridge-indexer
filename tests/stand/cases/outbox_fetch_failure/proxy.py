@@ -60,7 +60,13 @@ LOG_PATH = Path(os.environ.get('PROXY_LOG', '/tmp/bridge_outbox_fetch_failure_pr
 
 FAIL_LEVELS = {int(x) for x in os.environ.get('PROXY_FAIL_LEVELS', '').replace(',', ' ').split()}
 
+# A wedged node: it stopped applying L1 blocks but still answers RPC. `head/level` reports the
+# last level it applied, and every level above that has no hash it can resolve — the shape of
+# the 2026-08-20 fault. 0 means the node is healthy and this is passed straight through.
+WEDGED_AT = int(os.environ.get('PROXY_WEDGED_AT', '0'))
+
 OUTBOX_RE = re.compile(r'^global/block/(\d+)/outbox/(\d+)/messages$')
+HEAD_LEVEL_PATH = 'global/block/head/level'
 
 
 def _cache_file(path: str, query: str) -> Path:
@@ -90,6 +96,7 @@ async def armed(request: web.Request) -> web.Response:
             'cache_dir': str(CACHE_DIR),
             'fail_levels': sorted(FAIL_LEVELS),
             'fail_status': FAIL_STATUS,
+            'wedged_at': WEDGED_AT,
             'log': str(LOG_PATH),
         }
     )
@@ -99,7 +106,19 @@ async def handle(request: web.Request) -> web.Response:
     path = request.match_info.get('tail', '').lstrip('/')
     query = request.rel_url.query_string
 
+    if WEDGED_AT and path == HEAD_LEVEL_PATH:
+        _log(f'WEDGE head/level -> {WEDGED_AT}')
+        return web.Response(status=200, body=str(WEDGED_AT).encode(), content_type='application/json')
+
     match = OUTBOX_RE.match(path)
+    if match and WEDGED_AT and int(match.group(2)) > WEDGED_AT:
+        _log(f'WEDGE {FAIL_STATUS} {path}')
+        return web.Response(
+            status=FAIL_STATUS,
+            body=b'{"kind":"temporary","id":"failure","msg":"Cannot retrieve hash of level"}',
+            content_type='application/json',
+        )
+
     if match and int(match.group(2)) in FAIL_LEVELS:
         _log(f'FAIL {FAIL_STATUS} {path}')
         return web.Response(status=FAIL_STATUS, body=b'injected upstream failure', content_type='text/plain')

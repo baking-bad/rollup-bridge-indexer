@@ -16,8 +16,8 @@ outbox_fetch_failure/`) cannot reach:
 
   * the continuation level of a full outbox, which has no inbox message behind it at all —
     both when the chain has not reached it yet and when its own fetch fails;
-  * the realtime deferral and the order the drain serves the queue in, which the oneshot
-    stand never enters (`_realtime_head_level` stays 0 there).
+  * the deferral of a level the rollup node has not applied yet, and the order the drain
+    serves the queue in.
 
 Offline: no TzKT, no rollup node — both datasources are fakes, and the database is the
 in-memory sqlite of the `db` fixture.
@@ -94,8 +94,6 @@ class FakeTzkt:
         self.head_level = head_level
 
     async def get_head_block(self) -> Any:
-        # `_prepare_new_index` seeds `_realtime_head_level` from this, so a restored level is
-        # not asked for before the chain can answer for it.
         return SimpleNamespace(level=self.head_level)
 
     async def request(self, method: Any = None, url: Any = None, **kwargs: Any) -> Any:
@@ -109,15 +107,25 @@ class FakeTzkt:
 
 
 class FakeRollupNode:
-    """`global/block/<level>/outbox/<level>/messages`, per level, and a record of who asked."""
+    """`global/block/<level>/outbox/<level>/messages`, per level, and a record of who asked.
 
-    def __init__(self, responses: dict[int, Any]) -> None:
+    `processed_level` is what the node says it has applied (`global/block/head/level`). A node
+    that stopped applying blocks keeps answering RPC and reports its frozen level; every level
+    above it has no hash it can resolve, so it answers 500.
+    """
+
+    def __init__(self, responses: dict[int, Any], processed_level: int = 10**9) -> None:
         self.responses = responses
+        self.processed_level = processed_level
         self.requested: list[int] = []
 
     async def request(self, method: Any = None, url: Any = None, **kwargs: Any) -> Any:
+        if url == 'global/block/head/level':
+            return self.processed_level
         level = int(url.split('/')[2])
         self.requested.append(level)
+        if level > self.processed_level:
+            raise _server_error()
         response = self.responses[level]
         if isinstance(response, Exception):
             raise response
@@ -155,42 +163,41 @@ async def _pending_levels() -> list[int]:
 
 
 async def test_full_outbox_continuation_level_is_deferred_and_stored(db: Any) -> None:
-    """F6 + F7: `outbox_level + 1` above the realtime head is stored, not fetched.
+    """F6 + F7: `outbox_level + 1` above what the node has applied is stored, not fetched.
 
     A level queued by a full outbox has no inbox message behind it, so the resume cursor
     cannot describe it — the stored queue is its only record. And it must not be fetched
-    before the chain reaches it: the node has no such block yet.
+    before the node can answer for it.
     """
     node = FakeRollupNode(
         {
             # A full outbox at 100 -> the drain queues 101 for the rest of the messages.
             100: [UNHASHABLE_MESSAGE] * MAX_OUTBOX_MESSAGES_PER_LEVEL,
             101: [],
-        }
+        },
+        processed_level=100,
     )
     index = _index(FakeTzkt(), node)
     index._status = IndexStatus.realtime
-    index._realtime_head_level = 100
     index._outbox_level_queue = {100}
 
     await index._drain_outbox_levels()
 
-    assert node.requested == [100], 'level 101 is above the realtime head and must not be fetched yet'
+    assert node.requested == [100], 'level 101 is above what the node has applied and must not be fetched yet'
     assert await _pending_levels() == [101], 'the continuation level must outlive the process that queued it'
 
-    # A restart takes it over — and still defers it until the head arrives.
+    # A restart takes it over — and still defers it until the node catches up.
     restarted = _index(FakeTzkt(), node)
     await restarted._load_pending_outbox_levels()
     assert restarted._outbox_level_queue == {101}
 
     restarted._status = IndexStatus.realtime
-    restarted._realtime_head_level = 100
     await restarted._drain_outbox_levels()
-    assert node.requested == [100], 'a restored level above the head must stay deferred'
+    assert node.requested == [100], 'a restored level the node cannot answer for must stay deferred'
 
-    restarted._realtime_head_level = 101
+    node.processed_level = 101
     await restarted._drain_outbox_levels()
-    assert node.requested == [100, 101], 'once the head reaches it, the restored level is fetched'
+    assert node.requested == [100, 101], 'once the node applies it, the restored level is fetched'
     assert await _pending_levels() == []
 
 
@@ -218,7 +225,6 @@ async def test_pending_levels_survive_a_failed_drain(db: Any) -> None:
     index._status = IndexStatus.syncing
     # What `_prepare_new_index` would have seeded on the way into `syncing`; without it the
     # drain would refuse every level as unreached and nothing would be fetched at all.
-    index._realtime_head_level = 12
 
     with pytest.raises(aiohttp.ClientResponseError):
         await index._process()
@@ -274,7 +280,6 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
     node = FakeRollupNode({100: full_outbox, 101: _server_error()})
     index = _index(FakeTzkt([page], head_level=head), node)
     index._status = IndexStatus.syncing
-    index._realtime_head_level = head
 
     with pytest.raises(aiohttp.ClientResponseError):
         await index._process()
@@ -314,22 +319,40 @@ async def test_drain_serves_the_lowest_level_and_stops_at_the_head(db: Any) -> N
     # hands back the *higher* one first, so the wrong implementation is observably wrong
     # here instead of getting the right answer by luck.
     head = 207
-    node = FakeRollupNode({207: [_outbox_message(207, 0)], 208: [_outbox_message(208, 0)]})
+    node = FakeRollupNode({207: [_outbox_message(207, 0)], 208: [_outbox_message(208, 0)]}, processed_level=head)
     index = _index(FakeTzkt(head_level=head), node)
     index._status = IndexStatus.realtime
-    index._realtime_head_level = head
     index._outbox_level_queue = {207, 208}
 
     await index._drain_outbox_levels()
 
-    assert node.requested == [207], 'level 208 is above the realtime head and must not be asked for'
+    assert node.requested == [207], 'level 208 is above what the node has applied and must not be asked for'
     assert await _outbox_rows() == [(207, 0)], 'only the reached level produced rows'
     assert await _pending_levels() == [208], 'the unreached level stays owed'
 
-    # Once the head reaches it, the same queue drains the rest.
-    index._realtime_head_level = 208
+    # Once the node applies it, the same queue drains the rest.
+    node.processed_level = 208
     await index._drain_outbox_levels()
 
     assert node.requested == [207, 208]
     assert await _outbox_rows() == [(207, 0), (208, 0)]
     assert await _pending_levels() == []
+
+
+async def test_a_wedged_node_is_not_asked_for_levels_it_cannot_answer(db: Any) -> None:
+    """The 2026-08-20 fault: a node stops applying L1 blocks and still answers RPC.
+
+    Its `head/level` freezes and every level above that answers 500. The L1 chain, meanwhile,
+    keeps producing — so a ceiling taken from the L1 head says "go ahead" for levels the node
+    demonstrably cannot serve, and the drain dies on the first one.
+    """
+    node = FakeRollupNode({300: [_outbox_message(300, 0)], 301: [_outbox_message(301, 0)]}, processed_level=300)
+    index = _index(FakeTzkt(head_level=999), node)
+    index._status = IndexStatus.realtime
+    index._outbox_level_queue = {300, 301}
+
+    await index._drain_outbox_levels()
+
+    assert node.requested == [300], 'only the level the node has applied was asked for'
+    assert await _outbox_rows() == [(300, 0)], 'the served level produced rows'
+    assert await _pending_levels() == [301], 'the level the node cannot answer for stays owed'

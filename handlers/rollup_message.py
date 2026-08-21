@@ -227,7 +227,6 @@ class RollupMessageIndex:
         self._inbox_level_cursor: int = 0
         self._outbox_level_cursor: int = 0
         self._outbox_index_cursor: int = 0
-        self._realtime_head_level: int = 0
         self._origination_level: int | None = None
 
         # Test-only inbox-backfill window (prod leaves these unset -> full backfill from origination).
@@ -268,7 +267,6 @@ class RollupMessageIndex:
     async def handle_realtime(self, head_level: int):
         with self._lock:
             if self._status == IndexStatus.realtime:
-                self._realtime_head_level = max(self._realtime_head_level, head_level)
                 previous_outbox_level_cursor = self._outbox_level_cursor
                 await self._process()
                 if self._outbox_level_cursor > previous_outbox_level_cursor:
@@ -361,19 +359,21 @@ class RollupMessageIndex:
         )
 
     async def _drain_outbox_levels(self):
-        """Fetch every pending outbox level the chain has already reached, then store the result.
+        """Fetch every pending outbox level the rollup node has already applied, then store the result.
 
         A level leaves the pending set only once its messages are committed: the fetch can
         fail (a wedged rollup node answers 500 for every level above the one it processed),
         and until the rows are in the database the pending level is the only record that the
         work is still owed.
         """
-        while len(self._outbox_level_queue) > 0 and min(self._outbox_level_queue) <= self._realtime_head_level:
-            # Lowest first: the loop condition speaks about the lowest level, so the drain has
-            # to take that one. Popping an arbitrary element can reach above the head.
-            outbox_level = min(self._outbox_level_queue)
-            self._outbox_level_queue.discard(outbox_level)
-            await self._handle_outbox_level(outbox_level)
+        if len(self._outbox_level_queue):
+            processed_level = await self._rollup_processed_level()
+            while len(self._outbox_level_queue) > 0 and min(self._outbox_level_queue) <= processed_level:
+                # Lowest first: the loop condition speaks about the lowest level, so the drain
+                # has to take that one. Popping an arbitrary element can reach above the ceiling.
+                outbox_level = min(self._outbox_level_queue)
+                self._outbox_level_queue.discard(outbox_level)
+                await self._handle_outbox_level(outbox_level)
 
         if len(self._create_outbox_batch):
             await RollupOutboxMessage.bulk_create(self._create_outbox_batch, ignore_conflicts=True)
@@ -386,6 +386,15 @@ class RollupMessageIndex:
 
         # The drained levels are rows now; what is left is what is still deferred or owed.
         await self._save_pending_outbox_levels()
+
+    async def _rollup_processed_level(self) -> int:
+        """The last L1 level the rollup node has applied — the ceiling the drain may ask for.
+
+        Not the L1 head: a node that stops applying blocks keeps answering RPC, and every level
+        above the one it applied has no hash it can resolve. That is the fault this ceiling is
+        for, and the L1 head does not see it.
+        """
+        return int(await self._rollup_node.request(method='GET', url='global/block/head/level'))
 
     async def _load_pending_outbox_levels(self):
         """Take over the outbox levels the previous run queued but never stored."""
@@ -496,13 +505,6 @@ class RollupMessageIndex:
             self._outbox_level_queue.add(outbox_level + 1)
 
     async def _prepare_new_index(self):
-        # The drain refuses levels the chain has not reached yet. Until the first realtime head
-        # arrives that ceiling is 0, which would hold back the whole backfill — so take the head
-        # once here. It also keeps a restored continuation level from being asked for before the
-        # rollup node can answer for it.
-        head_data = await self._tzkt.get_head_block()
-        self._realtime_head_level = max(self._realtime_head_level, head_data.level)
-
         try:
             last_saved_inbox_message = await RollupInboxMessage.all().order_by('-id').first()
             # The cursor is the last id consumed — `id.gt=` resumes strictly after it, so the
