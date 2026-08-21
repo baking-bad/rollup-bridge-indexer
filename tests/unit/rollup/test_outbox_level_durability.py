@@ -3,7 +3,7 @@
 `RollupMessageIndex` learns which outbox levels to fetch from the inbox page it is walking
 (`_handle_external_inbox_message`) and from a full outbox asking for its continuation
 (`_handle_outbox_level`, `outbox_level + 1`). Both used to live only in the in-memory
-`_outbox_level_queue`, while the resume cursor, derived from the last saved inbox row, was
+`PendingOutboxLevels`, while the resume cursor, derived from the last saved inbox row, was
 written *before* the drain. A drain that died halfway therefore resumed above the external
 messages it had not served yet, and those outbox messages were gone for good.
 
@@ -36,6 +36,7 @@ from dipdup.models import Meta
 from pytezos import MichelsonType
 from pytezos import michelson_to_micheline
 
+from rollup_bridge_indexer.handlers.rollup_message import PendingOutboxLevels
 from rollup_bridge_indexer.handlers.rollup_message import RollupMessageIndex
 from rollup_bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from rollup_bridge_indexer.models import RollupInboxMessage
@@ -158,7 +159,7 @@ def _index(tzkt: Any, rollup_node: Any) -> RollupMessageIndex:
 
 
 async def _pending_levels() -> list[int]:
-    meta = await Meta.get_or_none(key=RollupMessageIndex.pending_outbox_levels_key)
+    meta = await Meta.get_or_none(key=PendingOutboxLevels.key)
     return list(meta.value) if meta and meta.value else []
 
 
@@ -179,7 +180,7 @@ async def test_full_outbox_continuation_level_is_deferred_and_stored(db: Any) ->
     )
     index = _index(FakeTzkt(), node)
     index._status = IndexStatus.realtime
-    index._outbox_level_queue = {100}
+    index._pending_outbox_levels.add(100)
 
     await index._drain_outbox_levels()
 
@@ -188,8 +189,8 @@ async def test_full_outbox_continuation_level_is_deferred_and_stored(db: Any) ->
 
     # A restart takes it over — and still defers it until the node catches up.
     restarted = _index(FakeTzkt(), node)
-    await restarted._load_pending_outbox_levels()
-    assert restarted._outbox_level_queue == {101}
+    await restarted._pending_outbox_levels.load()
+    assert set(restarted._pending_outbox_levels) == {101}
 
     restarted._status = IndexStatus.realtime
     await restarted._drain_outbox_levels()
@@ -241,7 +242,7 @@ async def test_pending_levels_survive_a_failed_drain(db: Any) -> None:
     # At or above the last external, so `id.gt=` can never return either of them again. The
     # exact resume arithmetic is not this test's business — being out of reach is.
     assert restarted._inbox_id_cursor >= 101
-    assert restarted._outbox_level_queue == {10, 11}
+    assert set(restarted._pending_outbox_levels) == {10, 11}
 
     await restarted._process()
     assert restarted._rollup_node.requested == [10, 11]  # type: ignore[attr-defined]
@@ -298,7 +299,7 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
     restarted = _index(FakeTzkt([[]], head_level=head), restarted_node)
     await restarted._prepare_new_index()
     assert restarted._inbox_id_cursor >= 100, 'the cursor is past the external message of the failed page'
-    assert restarted._outbox_level_queue == {100}, 'the stored queue is what the cursor cannot describe'
+    assert set(restarted._pending_outbox_levels) == {100}, 'the stored set is what the cursor cannot describe'
 
     await restarted._process()
 
@@ -322,7 +323,8 @@ async def test_drain_serves_the_lowest_level_and_stops_at_the_head(db: Any) -> N
     node = FakeRollupNode({207: [_outbox_message(207, 0)], 208: [_outbox_message(208, 0)]}, processed_level=head)
     index = _index(FakeTzkt(head_level=head), node)
     index._status = IndexStatus.realtime
-    index._outbox_level_queue = {207, 208}
+    index._pending_outbox_levels.add(207)
+    index._pending_outbox_levels.add(208)
 
     await index._drain_outbox_levels()
 
@@ -349,7 +351,8 @@ async def test_a_wedged_node_is_not_asked_for_levels_it_cannot_answer(db: Any) -
     node = FakeRollupNode({300: [_outbox_message(300, 0)], 301: [_outbox_message(301, 0)]}, processed_level=300)
     index = _index(FakeTzkt(head_level=999), node)
     index._status = IndexStatus.realtime
-    index._outbox_level_queue = {300, 301}
+    index._pending_outbox_levels.add(300)
+    index._pending_outbox_levels.add(301)
 
     await index._drain_outbox_levels()
 
