@@ -55,15 +55,30 @@ class PoolSizes:
     28 hours into a reindex — see the table in README.md."""
 
     # Pools the matcher walks, one database query per row. This is the defect.
-    tezos_withdrawals: int = 8886  # P1
-    xtz_deposits: int = 2656  # P3
-    claimed_fast: int = 950  # P4
-    etherlink_deposits: int = 453  # P2
+    tezos_withdrawals: int = 8886
+    xtz_deposits: int = 2656
+    claimed_fast: int = 950
+    etherlink_deposits: int = 453
 
     # The counter-side pools those queries look into: small by construction, because a
     # bridge row is only created once its leading leg has arrived.
     open_bridge_withdrawals: int = 26
     open_bridge_deposits: int = 16
+
+    # The two attach steps (`check_pending_inbox`, `check_pending_outbox`) walk a different
+    # backlog: bridge rows whose leading leg has landed and whose rollup message has not been
+    # attached yet. That backlog is at its largest on a fresh database, where `on_restart`
+    # backfills the whole inbox and outbox before the operation indexes sync, so every bridge
+    # row is born unattached and stays that way until its message is claimed.
+    #
+    # Sizes follow the settled tail of exactly these pools on mainnet, 2026-08-20: 3772 of
+    # 38014 inbox messages and 796 of 59869 outbox messages still carry a `parameters_hash`,
+    # i.e. nobody has claimed them. A start has the same shape at the front — hence equal
+    # counts on the walked and the counter side.
+    pending_inbox_deposits: int = 3772
+    pending_outbox_withdrawals: int = 796
+    unclaimed_inbox_messages: int = 3772
+    unclaimed_outbox_messages: int = 796
 
     # Settled rows. They match nothing and are never walked — but they are the bulk of the
     # table each per-row query scans, because neither `bridge_withdrawal.outbox_message_id`
@@ -145,7 +160,7 @@ def _l1_withdrawal(outbox: RollupOutboxMessage, level: int):
     )
 
 
-def _l2_withdrawal(token: EtherlinkToken, ticket_hash: str, i: int, *, fast: bool = False):
+def _l2_withdrawal(token: EtherlinkToken, ticket_hash: str, i: int, *, fast: bool = False, parameters_hash: str | None = None):
     return EtherlinkWithdrawOperation(
         id=uuid.uuid4(),
         timestamp=T0 + timedelta(seconds=i),
@@ -162,7 +177,7 @@ def _l2_withdrawal(token: EtherlinkToken, ticket_hash: str, i: int, *, fast: boo
         l1_ticket_owner=NATIVE_TICKETER,
         amount='1000000' + '0' * 12,
         fast_payload=b'\x01\x02' if fast else None,
-        parameters_hash=None,
+        parameters_hash=parameters_hash,
         kernel_withdrawal_id=i if fast else None,
     )
 
@@ -174,6 +189,7 @@ async def seed_withdrawal_side(sizes: PoolSizes, xtz: EtherlinkToken, xtz_ticket
         sizes.tezos_withdrawals,
         sizes.claimed_fast,
     )
+    pending_outbox, unclaimed_outbox = sizes.pending_outbox_withdrawals, sizes.unclaimed_outbox_messages
 
     # Settled: L2 leg, outbox and L1 leg all present. Never walked, always scanned.
     outboxes = [_outbox(1000 + i, 0, RollupOutboxMessageBuilder.kernel, None) for i in range(settled)]
@@ -231,20 +247,47 @@ async def seed_withdrawal_side(sizes: PoolSizes, xtz: EtherlinkToken, xtz_ticket
     await _bulk(RollupOutboxMessage, payout_outboxes)
     await _bulk(TezosWithdrawOperation, [_l1_withdrawal(payout_outboxes[i], 900_000 + i) for i in range(fast)])
 
+    # The walked pool of `check_pending_outbox`: bridge rows created from an L2
+    # withdrawal whose outbox message has not been indexed yet. They ask by the hash their L2
+    # leg carries; those hashes live in their own namespace, so no seeded message answers.
+    pending_l2s = [_l2_withdrawal(xtz, xtz_ticket, 1_100_000 + i, parameters_hash=f'w{i:031x}') for i in range(pending_outbox)]
+    await _bulk(EtherlinkWithdrawOperation, pending_l2s)
+    await _bulk(
+        BridgeWithdrawOperation,
+        [
+            BridgeWithdrawOperation(
+                id=uuid.uuid4(),
+                created_at=T0 + timedelta(seconds=1_100_000 + i),
+                l1_transaction_id=None,
+                l2_transaction_id=pending_l2s[i].id,
+                outbox_message_id=None,
+            )
+            for i in range(pending_outbox)
+        ],
+    )
 
-def _inbox(id_: int, level: int, index: int):
+    # The counter side that walk reads: outbox messages still carrying a `parameters_hash`,
+    # i.e. unclaimed. A separate namespace again — they answer none of the walk's questions,
+    # and no walked row's hash is theirs, so the state is stable across passes.
+    await _bulk(
+        RollupOutboxMessage,
+        [_outbox(1_300_000 + i, 0, RollupOutboxMessageBuilder.kernel, f'm{i:031x}') for i in range(unclaimed_outbox)],
+    )
+
+
+def _inbox(id_: int, level: int, index: int, parameters_hash: str | None = None):
     return RollupInboxMessage(
         id=id_,
         level=level,
         index=index,
         type=RollupInboxMessageType.transfer,
         message={},
-        parameters_hash=None,
+        parameters_hash=parameters_hash,
         expected_l2_op_hash=None,
     )
 
 
-def _l1_deposit(ticket_id: str, i: int, amount: str):
+def _l1_deposit(ticket_id: str, i: int, amount: str, parameters_hash: str | None = None):
     return TezosDepositOperation(
         id=uuid.uuid4(),
         timestamp=T0 + timedelta(seconds=i),
@@ -259,7 +302,7 @@ def _l1_deposit(ticket_id: str, i: int, amount: str):
         l2_account_id=_account(i),
         ticket_id=ticket_id,
         amount=amount,
-        parameters_hash=None,
+        parameters_hash=parameters_hash,
     )
 
 
@@ -290,6 +333,7 @@ async def seed_deposit_side(sizes: PoolSizes, xtz: EtherlinkToken, xtz_ticket: s
         sizes.xtz_deposits,
         sizes.etherlink_deposits,
     )
+    pending_inbox, unclaimed_inbox = sizes.pending_inbox_deposits, sizes.unclaimed_inbox_messages
 
     # Settled: L1 leg, inbox message and L2 leg all present.
     inboxes = [_inbox(i + 1, i, 0) for i in range(settled)]
@@ -344,6 +388,34 @@ async def seed_deposit_side(sizes: PoolSizes, xtz: EtherlinkToken, xtz_ticket: s
     await _bulk(
         EtherlinkDepositOperation,
         [_l2_deposit(fa, fa_ticket, 900_000 + i, level=900_000 + i, coords=(900_000 + i, 0), amount='1000000') for i in range(coords_pool)],
+    )
+
+    # The walked pool of `check_pending_inbox`: bridge rows created from an L1 deposit
+    # whose inbox message has not been attached. They ask by the hash their L1 leg carries,
+    # in a namespace no seeded message uses; their amount is theirs alone, and they hold no
+    # inbox message, so neither deposit step's counter-side pool picks them up either.
+    pending_l1s = [_l1_deposit(xtz_ticket, 1_100_000 + i, '3333333', parameters_hash=f'd{i:031x}') for i in range(pending_inbox)]
+    await _bulk(TezosDepositOperation, pending_l1s)
+    await _bulk(
+        BridgeDepositOperation,
+        [
+            BridgeDepositOperation(
+                id=uuid.uuid4(),
+                created_at=T0 + timedelta(seconds=1_100_000 + i),
+                l1_transaction_id=pending_l1s[i].id,
+                l2_transaction_id=None,
+                inbox_message_id=None,
+            )
+            for i in range(pending_inbox)
+        ],
+    )
+
+    # The counter side that walk reads: inbox messages still carrying a `parameters_hash`.
+    # Own namespace again, so nothing here answers the walk and nothing in the walk claims
+    # a message — the pools are the same size on the next pass.
+    await _bulk(
+        RollupInboxMessage,
+        [_inbox(1_300_000 + i, 1_300_000 + i, 0, parameters_hash=f'i{i:031x}') for i in range(unclaimed_inbox)],
     )
 
 

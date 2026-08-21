@@ -33,6 +33,8 @@ from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLoc
 from rollup_bridge_indexer.models import BridgeDepositOperation
 from rollup_bridge_indexer.models import BridgeWithdrawOperation
 from rollup_bridge_indexer.models import EtherlinkDepositOperation
+from rollup_bridge_indexer.models import RollupInboxMessage
+from rollup_bridge_indexer.models import RollupOutboxMessage
 from rollup_bridge_indexer.models import RollupOutboxMessageBuilder
 from rollup_bridge_indexer.models import RuntimeKind
 from rollup_bridge_indexer.models import TezosWithdrawOperation
@@ -116,8 +118,16 @@ async def pool_census() -> dict[str, int]:
         'etherlink_deposits': await EtherlinkDepositOperation.filter(
             bridge_deposits=None, inbox_message_level__isnull=False, inbox_message_index__isnull=False
         ).count(),
+        'pending_inbox_deposits': await BridgeDepositOperation.filter(inbox_message=None).count(),
+        'pending_outbox_withdrawals': await BridgeWithdrawOperation.filter(outbox_message=None).count(),
         'open_bridge_withdrawals': await BridgeWithdrawOperation.filter(l1_transaction_id__isnull=True).count(),
-        'open_bridge_deposits': await BridgeDepositOperation.filter(l2_transaction_id__isnull=True).count(),
+        # The deposit steps' counter side is `l2_transaction=None` *with a message attached*
+        # — an unattached bridge deposit has no coords to key on and never enters that pool.
+        'open_bridge_deposits': await BridgeDepositOperation.filter(l2_transaction_id__isnull=True, inbox_message_id__isnull=False).count(),
+        # The counter sides of the two attach steps: a message that still carries a hash is
+        # one nobody has claimed. Attaching nulls the hash, so an attach shows up right here.
+        'unclaimed_inbox_messages': await RollupInboxMessage.filter(parameters_hash__isnull=False).count(),
+        'unclaimed_outbox_messages': await RollupOutboxMessage.filter(parameters_hash__isnull=False, bridge_withdrawals=None).count(),
     }
 
 

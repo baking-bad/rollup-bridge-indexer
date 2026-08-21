@@ -63,6 +63,12 @@ Pools as seeded (the defaults in `seed.py`, measured on etherlink-bridge-mainnet
 2026-08-05, 28 hours into a reindex): 8886 tezos withdrawals, 2656 xtz deposits, 950 claimed
 fast payouts, 453 etherlink deposits, against counter sides of 26 and 16 rows.
 
+The two attach steps walk a backlog of a different origin, so their sizes come from a
+different census: 3772 bridge deposits with no inbox message and 796 bridge withdrawals with
+no outbox message, against equally many unclaimed messages — the shape of mainnet's own
+unclaimed tail on 2026-08-20 (3772 of 38014 inbox messages, 796 of 59869 outbox), which is
+what a fresh database starts with at the front rather than accumulates at the end.
+
 Per-row lookups against pools batched into one query per counter side, 3 passes, `fixed_point`
 true on both runs:
 
@@ -70,17 +76,24 @@ true on both runs:
 |---|--:|--:|--:|--:|
 | | **per row** | **batched** | **per row** | **batched** |
 | `tezos_withdrawals` | 8888 | 2 | 14174 | 184 |
+| `inbox` | 3774 | 3 | 2429 | 184 |
 | `etherlink_xtz_deposits` | 2660 | 7 | 2632 | 81 |
 | `claimed_fast_withdrawals` | 952 | 3 | 686 | 55 |
+| `outbox` | 798 | 3 | 593 | 41 |
 | `etherlink_deposits` | 455 | 4 | 397 | 32 |
-| `tezos_deposits`, `inbox`, `michelson_deposits`, `outbox`, `etherlink_withdrawals` | 1 each | 1 each | | |
-| **whole pass** | **12960** | **21** | **17939** | **413** |
+| `tezos_deposits`, `michelson_deposits`, `etherlink_withdrawals` | 1 each | 1 each | | |
+| **whole pass** | **17530** | **25** | **21237** | **642** |
+
+The four steps with the largest pools were measured first, before the seed grew the two
+attach pools; `inbox`, `outbox` and the whole-pass totals come from the run after. Measuring
+all of them together changed nothing outside run-to-run noise, including `tezos_withdrawals`,
+whose counter side now also holds the 796 pending bridge withdrawals (they carry no outbox
+message, so they are read and then dropped for having no key).
 
 The headline is not the ratio but the change of class: the cost was linear in the backlog
-(12960 queries against a backlog of 12945 rows) and is now constant. `inbox`, `outbox` and
-`michelson_deposits` read 1 query here because this seed leaves their pools empty — they are
-the whole deposit and withdrawal backlog when starting from an empty database, and their
-counter side is read lazily, on the first candidate actually asked for.
+(17530 queries against a backlog of 17513 rows) and is now constant. `michelson_deposits`
+reads 1 query because this seed has no L2 Michelson deposits, and its counter side is read
+lazily, on the first candidate actually asked for.
 
 ## Known and not done
 
