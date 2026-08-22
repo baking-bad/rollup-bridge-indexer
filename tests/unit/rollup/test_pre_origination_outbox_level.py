@@ -21,6 +21,11 @@ rows are committed, so the resume branch is what runs, and the only door those l
 leave by is the floor `PendingOutboxLevels.load` applies on the way back in. That is the
 second test here, and the one that describes a database already wedged.
 
+The floor on the way out of storage only holds while nothing can put the level back. A cursor
+that itself sits below origination walks those externals again in the very same pass, so the
+level is owed again the moment it is dropped — the third test. What ends it is refusing the
+level where it is learned, in `_handle_external_inbox_message`.
+
 Offline: TzKT is a universe fake that applies the filter in the URL, and the rollup node is a
 fake with the one property that matters here — a floor it cannot see below.
 """
@@ -255,3 +260,46 @@ async def test_a_wedged_database_heals_its_impossible_owed_levels_on_boot(db: An
         'the one the node has not applied yet still owed'
     )
     assert node.requested == [APPLIED_LEVEL], 'the drain never got past the impossible levels to the real work behind them'
+
+
+async def _wedge_the_cursor_below_origination() -> None:
+    """The other wedged database: the resume cursor itself sits below origination.
+
+    Two live routes reach that state. The stand's `ROLLUP_SYNC_FIRST_LEVEL` sets the start
+    level directly, so a bounded window below origination never meets the clamp; and a
+    `SMART_ROLLUP_ADDRESS` repointed at a re-originated rollup lifts origination above a cursor
+    already stored. Either way the walk still has pre-origination externals ahead of it. A
+    level-0 sentinel row is how the cursor is stored when no real message carries its id, so
+    that is what the previous run left behind, together with the level it died on.
+    """
+    await RollupInboxMessage.create(
+        id=UNIVERSE[0]['id'] - 1,
+        level=0,
+        index=0,
+        message={},
+        parameters_hash=None,
+        type=RollupInboxMessageType.external,
+    )
+    owed = PendingOutboxLevels(logging.getLogger('test.rollup_message'))
+    owed.add(PRE_ORIGINATION_LEVEL)
+    await owed.save()
+
+
+async def test_a_cursor_below_origination_cannot_re_add_an_impossible_level(db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The floor on the way out of storage is not enough while the walk can put the level back.
+
+    `load` drops the impossible level, and then the very same pass walks the external that
+    produced it and owes it again — so the boot dies exactly where the previous one did, and
+    the set is back in `dipdup_meta` for the next one. Only refusing the level where it is
+    learned ends the loop.
+    """
+    monkeypatch.setattr(RollupMessageIndex, 'first_ticket_level', PRE_ORIGINATION_LEVEL)
+    await _wedge_the_cursor_below_origination()
+    node = FlooredRollupNode(first_available_level=ORIGINATION_LEVEL)
+
+    death = await _boot(node)
+
+    assert death is None, f'the boot died fetching outbox level {death} — the level `load` had just dropped, and the walk owed it again'
+    assert node.refused == [], f'the node was asked for {node.refused}, levels below its origination that it can never answer'
+    assert PRE_ORIGINATION_LEVEL not in await _owed_levels(), 'an impossible level was written back into the durable set for the next boot'
+    assert SERVABLE_LEVEL in node.requested, 'the backfill never reached the levels the node can actually answer for'

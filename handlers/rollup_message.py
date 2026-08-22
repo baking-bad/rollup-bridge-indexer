@@ -237,7 +237,7 @@ class PendingOutboxLevels:
         meta = await Meta.get_or_none(key=self.key)
         restored = {int(level) for level in (meta.value or [])} if meta else set()
         if impossible := {level for level in restored if level < floor}:
-            self._logger.info(
+            self._logger.warning(
                 'Dropped %d owed Outbox level(s) below the rollup origination level %d: %d..%d.',
                 len(impossible),
                 floor,
@@ -484,6 +484,14 @@ class RollupMessageIndex:
         )
 
     async def _handle_external_inbox_message(self, message):
+        # Externals carry no rollup field — the inbox is shared — so the walk can reach ones from
+        # before this rollup existed whenever the cursor starts below origination: the test bound
+        # `ROLLUP_SYNC_FIRST_LEVEL`, or an address repointed at a re-originated rollup. Their
+        # outbox is not late, it never was: the node answers 500 for that level forever, and the
+        # set is durable, so owing it once is a crash loop. This is the only door such a level can
+        # come in by — the other `add` is the continuation of a level the node just answered.
+        if message['level'] < await self._get_origination_level():
+            return
         self._pending_outbox_levels.add(message['level'])
 
     async def _handle_outbox_level(self, outbox_level):
@@ -560,9 +568,8 @@ class RollupMessageIndex:
                 self._logger.info('No previous saved Inbox Message found. Going to start indexing since first Whitelisted Token activity.')
                 # A whitelisted ticketer can be older than the rollup, so ticket activity is not bounded
                 # below by origination. Below origination there is nothing to walk: a `transfer` to a
-                # rollup that does not exist is impossible, and TzKT's `external` messages carry no rollup
-                # field at all — the inbox is shared — so every external down there would be queued as
-                # this rollup's outbox debt at a level its node can never serve.
+                # rollup that does not exist is impossible, and the externals down there belong to the
+                # shared inbox, not to this rollup — so starting lower only buys pages of nothing.
                 first_level = max(self.first_ticket_level, origination_level)
             else:
                 self._logger.info('No previous saved Inbox Message found. Going to start indexing since Smart Rollup origination moment.')
