@@ -189,7 +189,7 @@ async def test_full_outbox_continuation_level_is_deferred_and_stored(db: Any) ->
 
     # A restart takes it over — and still defers it until the node catches up.
     restarted = _index(FakeTzkt(), node)
-    await restarted._pending_outbox_levels.load()
+    await restarted._pending_outbox_levels.load(floor=ORIGINATION_LEVEL)
     assert set(restarted._pending_outbox_levels) == {101}
 
     restarted._status = IndexStatus.realtime

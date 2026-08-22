@@ -227,10 +227,24 @@ class PendingOutboxLevels:
         self._levels.discard(lowest)
         return lowest
 
-    async def load(self) -> None:
-        """Take over what the previous run queued and never finished."""
+    async def load(self, floor: int) -> None:
+        """Take over what the previous run queued and never finished.
+
+        `floor` is the rollup's origination. `dipdup_meta` outlives both the crash and the
+        reindex wipe, so a set written before the walk was clamped is dropped on the way back
+        in — there is no other door those levels can leave by.
+        """
         meta = await Meta.get_or_none(key=self.key)
         restored = {int(level) for level in (meta.value or [])} if meta else set()
+        if impossible := {level for level in restored if level < floor}:
+            self._logger.warning(
+                'Dropped %d owed Outbox level(s) below the rollup origination level %d: %d..%d.',
+                len(impossible),
+                floor,
+                min(impossible),
+                max(impossible),
+            )
+            restored -= impossible
         if restored:
             # A backfill page can leave thousands pending — log the span, not the list.
             self._logger.info(
@@ -470,6 +484,14 @@ class RollupMessageIndex:
         )
 
     async def _handle_external_inbox_message(self, message):
+        # Externals carry no rollup field — the inbox is shared — so the walk can reach ones from
+        # before this rollup existed whenever the cursor starts below origination: the test bound
+        # `ROLLUP_SYNC_FIRST_LEVEL`, or an address repointed at a re-originated rollup. Their
+        # outbox is not late, it never was: the node answers 500 for that level forever, and the
+        # set is durable, so owing it once is a crash loop. This is the only door such a level can
+        # come in by — the other `add` is the continuation of a level the node just answered.
+        if message['level'] < await self._get_origination_level():
+            return
         self._pending_outbox_levels.add(message['level'])
 
     async def _handle_outbox_level(self, outbox_level):
@@ -523,13 +545,16 @@ class RollupMessageIndex:
             self._pending_outbox_levels.add(outbox_level + 1)
 
     async def _prepare_new_index(self):
+        # Outside the try on purpose: `except AttributeError` below means "no inbox rows", and an
+        # AttributeError escaping this fetch must not be reclassified as a wiped database.
+        origination_level = await self._get_origination_level()
         try:
             last_saved_inbox_message = await RollupInboxMessage.all().order_by('-id').first()
             # The cursor is the last id consumed — `id.gt=` resumes strictly after it, so the
             # saved row is not re-read and the one behind it is not skipped.
             self._inbox_id_cursor = last_saved_inbox_message.id
             self._logger.info('Last previous saved Inbox Message found. Going to continue with next Inbox Message.')
-            await self._pending_outbox_levels.load()
+            await self._pending_outbox_levels.load(floor=origination_level)
         except AttributeError:
             # No inbox rows: this database was wiped or is brand new. `dipdup_meta` survives a
             # reindex, so a stored queue here belongs to a history that no longer exists.
@@ -541,11 +566,14 @@ class RollupMessageIndex:
                 first_level = self._sync_first_level
             elif self.first_ticket_level is not None:
                 self._logger.info('No previous saved Inbox Message found. Going to start indexing since first Whitelisted Token activity.')
-                first_level = self.first_ticket_level
+                # A whitelisted ticketer can be older than the rollup, so ticket activity is not bounded
+                # below by origination. Below origination there is nothing to walk: a `transfer` to a
+                # rollup that does not exist is impossible, and the externals down there belong to the
+                # shared inbox, not to this rollup — so starting lower only buys pages of nothing.
+                first_level = max(self.first_ticket_level, origination_level)
             else:
                 self._logger.info('No previous saved Inbox Message found. Going to start indexing since Smart Rollup origination moment.')
-                rollup_data = await self._tzkt.request(method='GET', url=f'v1/smart_rollups/{self._bridge.smart_rollup_address}')
-                first_level = rollup_data['firstActivity']
+                first_level = origination_level
             # Note: TzKT API doesn't support target= filter, transfer messages will be filtered in _process()
             inbox = await self._tzkt.request(
                 method='GET',
