@@ -66,6 +66,72 @@ until the loop frees up — status=realtime with a stale level during someone el
 07-02 ~12:52 audit: bridge_operation 86,500 = deposits 31,934 (31,907 FINISHED + 24 inbox-timeout + 3 routing)
 + withdrawals 54,566 (53,799 + 740 CREATED + 27 expired); deposit invariants 0/31,907 violations.
 
+## 1b. Full mainnet reindex from scratch, 2026-08-22 01:51 → 08-23 03:24 UTC
+
+Stack: `-mainnet-staging` (etherlink-bridge-mainnet-staging.dipdup.net), master carrying the matcher
+candidate-pool rewrite (PR #43) and the pre-origination outbox-level fix (PR #49). Ranges: L1 5.61M→14.63M,
+L2 →51.72M. Probes = public GraphQL every 60 s (`perf/reindex-2026-08/probe.py`, series in `progress.jsonl`);
+stage boundaries read from the database's own timestamps, which is what survived the sampler outage below.
+
+**End-to-end: 14 h 47 m** (08-22 12:37:22 redeploy → 08-23 03:24:24 first realtime-side `dipdup_head` rows),
+against **3 d 11 h** for the 06-29 run in §1 — **5.6×**.
+
+The wall clock from the wipe is longer and does not belong in that comparison: the schema was created
+**01:51:47** on an image predating PR #49, and the inbox backfill sat wedged at 45 rows / level 5,611,063 for
+**10 h 44 m** — every owed outbox level below the rollup origination is unresolvable, and the drain died on the
+first one ahead of `bulk_create`. The redeploy at 12:37:22 resumed the same cursor (45 rows retained, no wipe);
+`pending` fell 6,189 → 3,833 within 27 s as `PendingOutboxLevels.load(floor=…)` dropped the impossible levels,
+and `rollup_outbox_message` went 0 → 20 — the first outbox rows ever written on that database.
+
+### Phase 0 — inbox backfill inside on_restart (`dipdup_index` empty)
+
+12:37:22 → 17:52:02 = **5 h 14 m 40 s**, 5,611,063 → ~14.63M ≈ 9.02M levels, **average 478 lvl/s**
+(§1: 5 h 18.5 m, 8.14M levels, 425 lvl/s — same phase, ~12 % faster over a span that grew with the chain).
+
+| UTC 08-22 | inbox rows | max(level) | outbox rows | lvl/s |
+|---|--:|--:|--:|--:|
+| 12:37:22 | 135 | 5,622,542 | 13 | |
+| 13:02:43 | 2,623 | 6,378,799 | 565 | 497 |
+| 13:28:04 | 4,045 | 7,140,897 | 842 | 501 |
+| 13:53:25 | 5,870 | 7,890,560 | 1,215 | 493 |
+| 14:18:44 | 7,311 | 8,598,885 | 1,360 | 466 |
+| 14:43:59 | 8,325 | 9,242,685 | 1,603 | 425 |
+| 15:09:15 | 17,425 | 9,881,641 | 10,840 | 421 |
+| 15:34:32 | 22,743 | 10,574,280 | 15,720 | 457 |
+| 15:37:34 | 23,246 | 10,658,505 | 16,128 | 463 |
+
+Same shape as §1 — fastest in the first hour, sagging mid-phase — but without §1's 323–405 lvl/s trough.
+The outbox counter is not monotone with the inbox one: it advances in drain batches (`_drain_outbox_levels`
+commits after its whole loop), which is why 15:09 shows +9,100 inbox and +9,237 outbox in one step.
+
+### Phase 1 — 10 indexes spawn 17:52:02, sync to realtime 08-23 03:24:24
+
+**9 h 32 m.** In §1 the same phase ran 06-29 06:20:39 → 07-02 12:04 ≈ **77.7 h** — **≈8×**, and the whole
+end-to-end gain lives here. No interior samples: the sampler was down for this window (see below), so the
+per-index catch-up curve that §1 tabulates has no counterpart here. Two changes land in this interval at once —
+the matcher candidate-pool rewrite (PR #43, the first backfill measured on it) and whatever the host was
+doing — and this run does not separate them.
+
+### Final counters
+
+08-23 16:52 (13.5 h into realtime): `bridge_operation` **93,724**, `l1_deposit` 34,384, `l1_withdrawal` 58,668,
+`rollup_inbox_message` 38,157, `rollup_outbox_message` 60,144, `rollup_message_pending_outbox_levels` `[]`.
+All 10 indexes realtime; `dipdup_head` for tzkt / etherlink_node / tezos_x_michelson_tzkt fresh within seconds.
+
+### Instrument note — the 13 h hole in `progress.jsonl`
+
+The sampler ran on the workstation as a `systemd --user` unit (`bridge-probe.service`). It survived a Claude Code
+process restart with no gap, then stopped at **08-22 15:37:34** and resumed at **08-23 04:37:45** when the machine
+came back — `Linger=yes` keeps a unit alive across logout, not across the WSL VM shutting down. The hole swallowed
+the end of phase 0, all of phase 1, and the flip to realtime.
+
+The stage boundaries above survived anyway because the indexer records them itself, server-side:
+`dipdup_schema.created_at` = wipe, `dipdup_index.created_at` = phase 0 done / indexes spawned,
+`dipdup_head.created_at` = realtime. A sampler outage costs the rate curve, not the timeline —
+provided the measured system is asked for its own timestamps before the sampler is trusted overnight.
+`bridge_operation.created_at` is the on-chain operation time, not the row's insert time, and cannot
+substitute for the sampler.
+
 ## 2. Realtime hour at lag 0 (chain pace, NOT indexer ceiling)
 
 2026-06-24 22:34:43–23:35:28 UTC (3,645 s), staging instance on the mainnet stack, caught up, lag 0 the whole hour.
