@@ -249,10 +249,12 @@ test.
   if a particular run needs it.
 - **Any change to `models/` costs a full reindex.** `advanced.reindex.schema_modified: exception`
   makes DipDup refuse to start against a database whose schema hash no longer matches, so a new
-  field is not a deploy — it is a wipe and a rebuild. Measured on mainnet from scratch: **3 d 11 h**
-  end-to-end, of which the first 5 h 20 m is the rollup inbox backfill inside `on_restart`, before
-  `dipdup_index` has any rows at all. Prefer `dipdup_meta` for state that does not need to be
-  queryable.
+  field is not a deploy — it is a wipe and a rebuild. Measured on mainnet from scratch, 2026-08-22:
+  **14 h 47 m** end-to-end, of which the first **5 h 15 m** is the rollup inbox backfill inside
+  `on_restart`, before `dipdup_index` has any rows at all. Budget the backfill rather than the
+  total — it landed within four minutes of the 2026-06-29 run and grows with the chain, while the
+  index sync behind it went from ~78 h to 9 h 32 m once the matcher stopped issuing a query per
+  walked row. Prefer `dipdup_meta` for state that does not need to be queryable.
 
 ## Code style
 
