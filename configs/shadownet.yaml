@@ -1,3 +1,13 @@
+custom:
+  # Etherlink shadownet runs a Michelson runtime (Tezlink) alongside the EVM one, so EVM↔tz aliases
+  # exist and the RuntimeGateway `originOf` precompile is authoritative. `custom` merges first-level
+  # only, so this block replaces the base one (dipdup.yaml) — restate here any key added there later.
+  # With `true` every EVM deposit/withdrawal handler resolves its account through the precompile; if
+  # the precompile is absent the call raises RuntimeGatewayUnsupportedError, which takes L1 indexing
+  # down with it. Must be a literal YAML bool: handlers/alias.py requires `isinstance(value, bool)`,
+  # and env substitution can only ever yield a string.
+  has_michelson_runtime: true
+
 datasources:
   tzkt:
     kind: tezos.tzkt
@@ -39,6 +49,14 @@ datasources:
       connection_timeout: 1
       request_timeout: 4
 
+  # L2 Michelson side of the rollup — a TzKT over the rollup's Michelson runtime. Base host only,
+  # DipDup appends `/v1` itself. Unreachable at boot is a crash loop, not degradation:
+  # TezosTzktDatasource.__aenter__ probes v1/protocols/current and raises DatasourceError before the
+  # database schema is even opened.
+  tezos_x_michelson_tzkt:
+    kind: tezos.tzkt
+    url: ${TEZOSX_MICHELSON_TZKT_URL}
+
 contracts:
   tezos_smart_rollup:
     kind: tezos
@@ -49,6 +67,14 @@ contracts:
     kind: tezos
     address: ${FAST_WITHDRAWAL_NATIVE_ADDRESS}
     typename: fast_withdrawal
+
+  # TEZLINK_DEPOSITOR — synthetic source of L1->L2 Michelson XTZ deposits: the kernel
+  # const [0u8; 22] (all-zero serialized implicit contract) rendered in base58. A kernel
+  # constant, not a deployment address — identical on every network.
+  # See handlers/michelson_deposit.py for the kernel citations.
+  tezos_x_michelson_depositor:
+    kind: tezos
+    address: tz1Ke2h7sDdakHJQh8WX4Z372du1KChsksyU
 
   etherlink_rollup_kernel:
     kind: evm
@@ -174,6 +200,31 @@ indexes:
         from_: etherlink_rollup_kernel
       - callback: etherlink.on_xtz_deposit
         from_: etherlink_deposit_sender
+
+
+
+  # L2 Michelson XTZ deposits (tz1 receiver): synthetic pseudo-transactions emitted by the kernel from
+  # TEZLINK_DEPOSITOR, matched to the L1 leg by reconstructed op-hash
+  # (BridgeMatcher.check_pending_michelson_deposits, derivation in handlers/michelson_deposit.py).
+  # L2_MICHELSON_FIRST_LEVEL is an Etherlink L2 block number — the Michelson runtime shares the EVM
+  # block counter — and must be the first level that runtime exists at: earlier synthetic ops use an
+  # unverified derivation and would sit unmatched forever, and an unset value backfills from genesis.
+  # Above the Michelson TzKT's head at boot it freezes the WHOLE indexer with no error and no log
+  # line — the index never leaves status `new`, so no datasource ever opens a websocket.
+  tezos_x_michelson_deposits:
+    kind: tezos.operations
+    first_level: ${L2_MICHELSON_FIRST_LEVEL}
+    datasources:
+      - tezos_x_michelson_tzkt
+    types:
+      - transaction
+    contracts:
+      - tezos_x_michelson_depositor
+    handlers:
+      - callback: tezos_x.on_michelson_deposit_ophash
+        pattern:
+          - type: transaction
+            source: tezos_x_michelson_depositor
 
 
   etherlink_withdrawal_events:
