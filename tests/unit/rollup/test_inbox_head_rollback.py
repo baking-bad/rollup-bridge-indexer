@@ -239,3 +239,39 @@ async def test_a_rolled_back_sentinel_takes_the_cursor_back_with_it(db: Any) -> 
         'the pass after the rollback must re-walk exactly what the revert removed: the transfer back as a row, '
         'the cursor back on the external, and the untouched row left alone'
     )
+
+
+async def test_a_revert_that_empties_the_table_resumes_from_the_window(db: Any) -> None:
+    """Every surviving row written in realtime, then a rollback below all of them.
+
+    Narrow, but it is where a cursor with no row to stand on has to fall back to something, and
+    on a resumed database that something must still be the configured window — not the head of
+    the shared inbox, which on mainnet is tens of millions of messages back.
+    """
+    # A transfer below the window: fetched only by a walk that forgot where the window starts.
+    tzkt = UniverseTzkt([_transfer(50, FIRST_LEVEL - 5), _transfer(100, FIRST_LEVEL), _transfer(101, 11)])
+
+    # A previous process indexed both messages in realtime, so the journal owns every row.
+    writer = _index(tzkt)
+    writer._sync_first_level = FIRST_LEVEL
+    async with _head_handler(ROLLED_BACK_LEVEL):
+        await writer._prepare_new_index()
+        await writer._process()
+    assert await _rows() == [(100, FIRST_LEVEL), (101, 11)]
+
+    # A restart: the new process resumes from rows that are about to be reverted under it.
+    index = _index(tzkt)
+    index._sync_first_level = FIRST_LEVEL
+    await index.synchronize()
+    assert index._status is IndexStatus.realtime
+
+    assert await _roll_back_head(to_level=ROLLED_BACK_LEVEL - 1) == 2, 'the rollback reverted nothing, so it proves nothing'
+    assert await _rows() == [], 'the revert did not empty the table, so this is not the case under test'
+
+    async with _head_handler(ROLLED_BACK_LEVEL):
+        await index.handle_realtime(ROLLED_BACK_LEVEL)
+
+    assert await _rows() == [
+        (100, FIRST_LEVEL),
+        (101, 11),
+    ], 'the walk restarted from the head of the shared inbox instead of the configured window'
