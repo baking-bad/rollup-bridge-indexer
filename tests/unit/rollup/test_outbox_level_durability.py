@@ -241,7 +241,7 @@ async def test_pending_levels_survive_a_failed_drain(db: Any) -> None:
     await restarted._prepare_new_index()
     # At or above the last external, so `id.gt=` can never return either of them again. The
     # exact resume arithmetic is not this test's business — being out of reach is.
-    assert restarted._inbox_id_cursor >= 101
+    assert await restarted._inbox_cursor() >= 101
     assert set(restarted._pending_outbox_levels) == {10, 11}
 
     await restarted._process()
@@ -298,7 +298,7 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
     restarted_node = FakeRollupNode({100: full_outbox, 101: [_outbox_message(101, 0)]})
     restarted = _index(FakeTzkt([[]], head_level=head), restarted_node)
     await restarted._prepare_new_index()
-    assert restarted._inbox_id_cursor >= 100, 'the cursor is past the external message of the failed page'
+    assert await restarted._inbox_cursor() >= 100, 'the cursor is past the external message of the failed page'
     assert set(restarted._pending_outbox_levels) == {100}, 'the stored set is what the cursor cannot describe'
 
     await restarted._process()

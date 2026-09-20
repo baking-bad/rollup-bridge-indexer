@@ -269,10 +269,11 @@ class PendingOutboxLevels:
 class RollupMessageIndex:
     """Indexes the rollup inbox from TzKT and the outbox from the rollup node.
 
-    One pass is `_process`. The inbox is walked with a cursor; every `external` message means
-    its L1 level has outbox messages to fetch, and that level goes to `PendingOutboxLevels`,
-    which owns both the set and its durability. Between the two `save` calls below, a crash
-    costs a re-fetch and never a message.
+    One pass is `_process`. The inbox is walked with a cursor read from the rows themselves
+    (`_inbox_cursor`), never carried between passes; every `external` message means its L1
+    level has outbox messages to fetch, and that level goes to `PendingOutboxLevels`, which
+    owns both the set and its durability. Between the two `save` calls below, a crash costs a
+    re-fetch and never a message.
     """
 
     first_ticket_level: int | None = None
@@ -297,8 +298,10 @@ class RollupMessageIndex:
 
         self._status: IndexStatus = IndexStatus.new
 
-        self._inbox_id_cursor: int = 0
-        self._inbox_level_cursor: int = 0
+        # Where the walk starts while the inbox table is still empty; `_prepare_new_index`
+        # computes it from the window. Once a row exists it is the rows that say where to
+        # resume, so this is a floor and never an answer.
+        self._inbox_start_id: int = 0
         self._outbox_level_cursor: int = 0
         self._outbox_index_cursor: int = 0
         self._origination_level: int | None = None
@@ -348,30 +351,50 @@ class RollupMessageIndex:
     async def _process(self):
         await self._drain_outbox_levels()
 
-        inbox = await self._fetch_inbox_page()
+        cursor = await self._inbox_cursor()
+        inbox = await self._fetch_inbox_page(cursor)
         if not inbox:
             if self._status == IndexStatus.syncing:
                 self._status = IndexStatus.realtime
                 return
         else:
-            await self._walk_inbox_page(inbox)
+            cursor = await self._walk_inbox_page(inbox, cursor)
             await self._commit_inbox_page()
 
         await self._drain_outbox_levels()
-        await self._write_cursor_sentinel()
+        await self._write_cursor_sentinel(cursor)
 
-    async def _fetch_inbox_page(self):
-        """The messages after the cursor. `id.gt=` — the cursor is the last id already consumed."""
+    async def _inbox_cursor(self) -> int:
+        """The last inbox id already consumed, read back from the row that records it.
+
+        The rows are the only source, because this index is not their only writer: it is pumped
+        from the `tezos_head` handler, so DipDup journals everything it writes in realtime and
+        an L1 head rollback reverts it — the page's rows and the level-0 sentinel alike. A
+        cursor carried between passes would stay above the hole the revert opened, and `id.gt=`
+        would never ask for those messages again.
+
+        One query per page, on the primary key. An empty table records nothing consumed, so the
+        walk falls back to the window `_prepare_new_index` computed.
+        """
+        last_saved_inbox_message = await RollupInboxMessage.all().order_by('-id').first()
+        return last_saved_inbox_message.id if last_saved_inbox_message else self._inbox_start_id
+
+    async def _fetch_inbox_page(self, cursor: int):
+        """The messages after `cursor`. `id.gt=` — the cursor is the last id already consumed."""
         inbox = await self._tzkt.request(
             method='GET',
-            url=f'v1/smart_rollups/inbox?id.gt={self._inbox_id_cursor}&type.in=transfer,external&micheline=0&sort=id&limit={self.request_limit}',
+            url=f'v1/smart_rollups/inbox?id.gt={cursor}&type.in=transfer,external&micheline=0&sort=id&limit={self.request_limit}',
         )
         if len(inbox):
             self._logger.info('Found %d not indexed Inbox Messages.', len(inbox))
         return inbox
 
-    async def _walk_inbox_page(self, inbox):
-        """Sort the page into the two in-memory batches. Nothing here touches the database."""
+    async def _walk_inbox_page(self, inbox, cursor: int) -> int:
+        """Sort the page into the two in-memory batches, and answer where the walk stopped.
+
+        Nothing here touches the database, so the cursor it advances is a value of this pass
+        only — `_write_cursor_sentinel` is what makes the database record it.
+        """
         for inbox_message in inbox:
             # Test-only upper bound: stop once we pass the requested window.
             if self._sync_last_level is not None and inbox_message['level'] > self._sync_last_level:
@@ -389,7 +412,8 @@ class RollupMessageIndex:
                     await self._handle_external_inbox_message(inbox_message)
                 case _:
                     continue
-            self._inbox_id_cursor = inbox_message['id']
+            cursor = inbox_message['id']
+        return cursor
 
     async def _commit_inbox_page(self):
         """Store the pending outbox levels, then the rows — in that order.
@@ -403,25 +427,29 @@ class RollupMessageIndex:
             return
         await RollupInboxMessage.bulk_create(self._create_inbox_batch)
         self._logger.info('Successfully saved %d new Inbox Messages.', len(self._create_inbox_batch))
-        self._inbox_level_cursor = self._create_inbox_batch[-1].level
         BridgeMatcherLocks.set_pending_inbox()
         # A late-arriving inbox message may complete an already-recorded L2 Michelson deposit.
         BridgeMatcherLocks.set_pending_michelson_deposits()
 
         del self._create_inbox_batch[:]
 
-    async def _write_cursor_sentinel(self):
-        """Mark the cursor with a level-0 row when no real message carries its id."""
-        self._logger.info('Update Inbox Message cursor index to %s', self._inbox_id_cursor)
-        if await RollupInboxMessage.exists(id=self._inbox_id_cursor):
+    async def _write_cursor_sentinel(self, cursor: int):
+        """Mark the cursor with a level-0 row when no real message carries its id.
+
+        This is what puts the pass's cursor into the database, and therefore what the next
+        pass reads back. A walk that stopped on an `external` or on a transfer to another
+        rollup has no row of its own to stand on, and would otherwise be walked again.
+        """
+        self._logger.info('Update Inbox Message cursor index to %s', cursor)
+        if await RollupInboxMessage.exists(id=cursor):
             return
         await RollupInboxMessage.filter(
             level=0,
             type=RollupInboxMessageType.external.value,
-            id__lt=self._inbox_id_cursor,
+            id__lt=cursor,
         ).delete()
         await RollupInboxMessage.create(
-            id=self._inbox_id_cursor,
+            id=cursor,
             level=0,
             index=0,
             message={},
@@ -545,17 +573,17 @@ class RollupMessageIndex:
             self._pending_outbox_levels.add(outbox_level + 1)
 
     async def _prepare_new_index(self):
-        # Outside the try on purpose: `except AttributeError` below means "no inbox rows", and an
-        # AttributeError escaping this fetch must not be reclassified as a wiped database.
+        """Settle what a resuming walk cannot read off the rows: the pending set, or the window.
+
+        Nothing here seeds the cursor. Rows already saved carry it themselves, and this runs
+        once per process while `_inbox_cursor` runs once per page — a value copied out here
+        would be the stale half of exactly the divergence that method exists to close.
+        """
         origination_level = await self._get_origination_level()
-        try:
-            last_saved_inbox_message = await RollupInboxMessage.all().order_by('-id').first()
-            # The cursor is the last id consumed — `id.gt=` resumes strictly after it, so the
-            # saved row is not re-read and the one behind it is not skipped.
-            self._inbox_id_cursor = last_saved_inbox_message.id
+        if await RollupInboxMessage.all().exists():
             self._logger.info('Last previous saved Inbox Message found. Going to continue with next Inbox Message.')
             await self._pending_outbox_levels.load(floor=origination_level)
-        except AttributeError:
+        else:
             # No inbox rows: this database was wiped or is brand new. `dipdup_meta` survives a
             # reindex, so a stored queue here belongs to a history that no longer exists.
             await self._pending_outbox_levels.drop()
@@ -580,10 +608,10 @@ class RollupMessageIndex:
                 url=f'v1/smart_rollups/inbox?type.in=transfer,external&level.ge={first_level}&sort.asc=id&limit=1',
             )
             # ...which is the first message to index, not one already indexed: step back so the
-            # cursor keeps meaning the same thing.
-            self._inbox_id_cursor = inbox[0]['id'] - 1
+            # start id keeps meaning what the cursor means — the last id already consumed.
+            self._inbox_start_id = inbox[0]['id'] - 1
 
-        self._logger.info('Inbox Message cursor index is %d.', self._inbox_id_cursor)
+        self._logger.info('Inbox Message cursor index is %d.', await self._inbox_cursor())
         self._status = IndexStatus.syncing
 
 

@@ -250,10 +250,11 @@ async def test_a_wedged_database_heals_its_impossible_owed_levels_on_boot(db: An
         # fake has no meaning for, and an AttributeError would bury what actually happened.
         pytest.fail(f'the boot died fetching outbox level {node.refused[-1]}, exactly as the previous one did: {error.message}')
 
-    # The resume branch is the one that ran: the cursor is the committed row's id, not the
-    # `inbox[0]['id'] - 1` a fresh database would derive. Without this the test could pass on
-    # the clamp instead of on the floor it is here to prove.
-    assert index._inbox_id_cursor == UNIVERSE[-1]['id'], 'the database read as wiped, so the clamp ran and the floor was never asked for'
+    # The resume branch is the one that ran: the walk stands on the committed row, and the
+    # window `inbox[0]['id'] - 1` a fresh database would compute was never computed at all.
+    # Without this the test could pass on the clamp instead of on the floor it is here to prove.
+    assert index._inbox_start_id == 0, 'the database read as wiped, so the clamp ran and the floor was never asked for'
+    assert await index._inbox_cursor() == UNIVERSE[-1]['id']
     assert node.refused == [], f'the node was asked for {node.refused}, levels below its origination that it can never answer'
     assert await _owed_levels() == [UNAPPLIED_LEVEL], (
         'what survives the boot must be exactly the owed work that is still possible: the impossible levels dropped, '
