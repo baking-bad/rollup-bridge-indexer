@@ -298,10 +298,10 @@ class RollupMessageIndex:
 
         self._status: IndexStatus = IndexStatus.new
 
-        # Where the walk starts while the inbox table is still empty; `_prepare_new_index`
-        # computes it from the window. Once a row exists it is the rows that say where to
-        # resume, so this is a floor and never an answer.
-        self._inbox_start_id: int = 0
+        # Where the walk starts while the inbox table is empty, computed from the window on
+        # first need. Once a row exists it is the rows that say where to resume, so this is a
+        # floor and never an answer.
+        self._inbox_start_id: int | None = None
         self._outbox_level_cursor: int = 0
         self._outbox_index_cursor: int = 0
         self._origination_level: int | None = None
@@ -373,11 +373,17 @@ class RollupMessageIndex:
         cursor carried between passes would stay above the hole the revert opened, and `id.gt=`
         would never ask for those messages again.
 
-        One query per page, on the primary key. An empty table records nothing consumed, so the
-        walk falls back to the window `_prepare_new_index` computed.
+        One primary-key read per page, the id alone. No rows means nothing consumed yet, and the
+        walk starts at the window floor — a fresh database, or a resumed one whose every row the
+        journal has just reverted; either way the floor is the window, never id 0.
         """
-        last_saved_inbox_message = await RollupInboxMessage.all().order_by('-id').first()
-        return last_saved_inbox_message.id if last_saved_inbox_message else self._inbox_start_id
+        # `values`, not `.only`: DipDup's versioned Model reads every field on load.
+        last_saved = await RollupInboxMessage.all().order_by('-id').limit(1).values('id')
+        if last_saved:
+            return int(last_saved[0]['id'])
+        if self._inbox_start_id is None:
+            self._inbox_start_id = await self._inbox_window_start_id()
+        return self._inbox_start_id
 
     async def _fetch_inbox_page(self, cursor: int):
         """The messages after `cursor`. `id.gt=` — the cursor is the last id already consumed."""
@@ -573,7 +579,7 @@ class RollupMessageIndex:
             self._pending_outbox_levels.add(outbox_level + 1)
 
     async def _prepare_new_index(self):
-        """Settle what a resuming walk cannot read off the rows: the pending set, or the window.
+        """Settle what a walk cannot read off the rows: the pending outbox set.
 
         Nothing here seeds the cursor. Rows already saved carry it themselves, and this runs
         once per process while `_inbox_cursor` runs once per page — a value copied out here
@@ -586,33 +592,36 @@ class RollupMessageIndex:
         else:
             # No inbox rows: this database was wiped or is brand new. `dipdup_meta` survives a
             # reindex, so a stored queue here belongs to a history that no longer exists.
+            self._logger.info('No previous saved Inbox Message found.')
             await self._pending_outbox_levels.drop()
-            if self._sync_first_level is not None:
-                self._logger.info(
-                    'No previous saved Inbox Message found. TEST bound: start indexing since level %d.', self._sync_first_level
-                )
-                first_level = self._sync_first_level
-            elif self.first_ticket_level is not None:
-                self._logger.info('No previous saved Inbox Message found. Going to start indexing since first Whitelisted Token activity.')
-                # A whitelisted ticketer can be older than the rollup, so ticket activity is not bounded
-                # below by origination. Below origination there is nothing to walk: a `transfer` to a
-                # rollup that does not exist is impossible, and the externals down there belong to the
-                # shared inbox, not to this rollup — so starting lower only buys pages of nothing.
-                first_level = max(self.first_ticket_level, origination_level)
-            else:
-                self._logger.info('No previous saved Inbox Message found. Going to start indexing since Smart Rollup origination moment.')
-                first_level = origination_level
-            # Note: TzKT API doesn't support target= filter, transfer messages will be filtered in _process()
-            inbox = await self._tzkt.request(
-                method='GET',
-                url=f'v1/smart_rollups/inbox?type.in=transfer,external&level.ge={first_level}&sort.asc=id&limit=1',
-            )
-            # ...which is the first message to index, not one already indexed: step back so the
-            # start id keeps meaning what the cursor means — the last id already consumed.
-            self._inbox_start_id = inbox[0]['id'] - 1
 
         self._logger.info('Inbox Message cursor index is %d.', await self._inbox_cursor())
         self._status = IndexStatus.syncing
+
+    async def _inbox_window_start_id(self) -> int:
+        """The id just below the first message of the configured window."""
+        origination_level = await self._get_origination_level()
+        if self._sync_first_level is not None:
+            self._logger.info('TEST bound: the inbox window starts at level %d.', self._sync_first_level)
+            first_level = self._sync_first_level
+        elif self.first_ticket_level is not None:
+            self._logger.info('The inbox window starts at the first Whitelisted Token activity.')
+            # A whitelisted ticketer can be older than the rollup, so ticket activity is not bounded
+            # below by origination. Below origination there is nothing to walk: a `transfer` to a
+            # rollup that does not exist is impossible, and the externals down there belong to the
+            # shared inbox, not to this rollup — so starting lower only buys pages of nothing.
+            first_level = max(self.first_ticket_level, origination_level)
+        else:
+            self._logger.info('The inbox window starts at the Smart Rollup origination moment.')
+            first_level = origination_level
+        # Note: TzKT API doesn't support target= filter, transfer messages will be filtered in _process()
+        inbox = await self._tzkt.request(
+            method='GET',
+            url=f'v1/smart_rollups/inbox?type.in=transfer,external&level.ge={first_level}&sort.asc=id&limit=1',
+        )
+        # ...which is the first message to index, not one already indexed: step back so the
+        # floor keeps meaning what the cursor means — the last id already consumed.
+        return inbox[0]['id'] - 1
 
 
 def _inbox_parameters_hash(dto: Any) -> str:

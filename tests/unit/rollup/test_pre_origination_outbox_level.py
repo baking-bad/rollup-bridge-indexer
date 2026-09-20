@@ -253,7 +253,7 @@ async def test_a_wedged_database_heals_its_impossible_owed_levels_on_boot(db: An
     # The resume branch is the one that ran: the walk stands on the committed row, and the
     # window `inbox[0]['id'] - 1` a fresh database would compute was never computed at all.
     # Without this the test could pass on the clamp instead of on the floor it is here to prove.
-    assert index._inbox_start_id == 0, 'the database read as wiped, so the clamp ran and the floor was never asked for'
+    assert index._inbox_start_id is None, 'the database read as wiped, so the clamp ran and the floor was never asked for'
     assert await index._inbox_cursor() == UNIVERSE[-1]['id']
     assert node.refused == [], f'the node was asked for {node.refused}, levels below its origination that it can never answer'
     assert await _owed_levels() == [UNAPPLIED_LEVEL], (
