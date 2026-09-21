@@ -206,6 +206,29 @@ class RollupOutboxMessage(AbstractRollupMessage):
     bridge_withdrawals: fields.ReverseRelation['BridgeWithdrawOperation']
 
 
+class RollupPendingOutboxLevel(Model):
+    """An L1 level whose outbox the index still owes — one row per owed level.
+
+    The queue is a table of this package rather than a `dipdup_meta` key because the index
+    that fills it (`handlers/rollup_message.py`) is pumped from the `tezos_head` handler:
+    everything written there is journalled and an L1 head rollback reverts it, outbox rows
+    included. Only a queue journalled alongside those rows comes back when they go — the
+    revert restores the row that says the level is owed, and the next pass drains it again.
+
+    `queued_at` is not decoration: `ModelUpdate` rebuilds a deleted row out of its
+    *non-primary* fields, so a row that has nothing but a primary key comes back without one.
+    """
+
+    class Meta:
+        table = 'rollup_pending_outbox_level'
+        model = 'models.RollupPendingOutboxLevel'
+
+        ordering = ('level',)
+
+    level = fields.IntField(primary_key=True)
+    queued_at = fields.DatetimeField(auto_now_add=True)
+
+
 class AbstractTezosOperation(AbstractBlockchainOperation):
     class Meta:
         abstract = True

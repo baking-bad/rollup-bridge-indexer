@@ -102,11 +102,17 @@ indexes start and pumped afterwards from `on_head`.
   FA-only minimum silently drops earlier XTZ deposits' inbox messages forever.
 - Outbox comes from the rollup node RPC per level. Levels are learned from `external` inbox
   messages (and from a full outbox asking for its continuation) and held in `PendingOutboxLevels`,
-  mirrored into DipDup's `dipdup_meta` table — outside the package schema, so it costs no schema
-  hash change, but it also survives a reindex wipe and is therefore explicitly dropped when the
-  inbox table comes up empty. **Ordering is the contract:** the pending set is saved *before* the
-  rows that advance the cursor past those externals, and a level leaves the set only *after* its
-  outbox rows are committed.
+  which stores them as one `rollup_pending_outbox_level` row each and **re-reads them from those
+  rows on every pass**. The store is a package table, not `dipdup_meta`, for the same reason the
+  inbox cursor is read back: the queue is written inside the `tezos_head` handler, so it is
+  journalled, and a rollback that deletes a drain's outbox rows restores the row saying the level
+  is owed. An immune queue kept the removal and left the messages owed by nobody — and a lost
+  outbox row is permanent (`on_rollup_execute` logs "Failed to fetch Outbox Message" and creates
+  no L1 withdrawal). **Ordering is the contract:** levels are stored *before* the rows that
+  advance the cursor past those externals, and a level leaves the queue only *after* its outbox
+  rows are committed. No in-memory cursor decides a level has nothing left to give either: the
+  continuation of a full outbox exists nowhere but in that outbox, so a level is always walked
+  and `ignore_conflicts` absorbs the rows it already wrote.
 - The drain ceiling is the rollup node's own `global/block/head/level`, not the L1 head: a node
   that stopped applying blocks still answers RPC but cannot resolve levels above what it applied.
 - The same module owns all **parameter hashing** — `uuid5(NAMESPACE_OID, orjson.dumps(dto,
@@ -257,7 +263,8 @@ test.
   field is not a deploy — it is a wipe and a rebuild. Measured on mainnet from scratch: **3 d 11 h**
   end-to-end, of which the first 5 h 20 m is the rollup inbox backfill inside `on_restart`, before
   `dipdup_index` has any rows at all. Prefer `dipdup_meta` for state that does not need to be
-  queryable.
+  queryable — but not for state a rollback must move: `dipdup_meta` is immune to `ctx.rollback`
+  and to the reindex wipe, so anything kept there survives a revert of the rows it describes.
 
 ## Code style
 

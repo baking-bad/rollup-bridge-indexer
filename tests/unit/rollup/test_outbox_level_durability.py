@@ -7,9 +7,10 @@
 written *before* the drain. A drain that died halfway therefore resumed above the external
 messages it had not served yet, and those outbox messages were gone for good.
 
-The fix stores the queue in DipDup's own `dipdup_meta` key-value table (no package model, no
-schema hash change, no reindex) and drops a level from it only once the messages it produced
-are committed.
+The fix stores the queue in a table of this package, one `rollup_pending_outbox_level` row per
+owed level, and drops a level from it only once the messages it produced are committed. (A
+package table rather than `dipdup_meta` because the queue has to be journalled with the rows it
+produces — see `test_outbox_head_rollback.py` for what an immune queue costs.)
 
 These tests cover the paths the block-bounded stand case (`tests/stand/cases/
 outbox_fetch_failure/`) cannot reach:
@@ -41,6 +42,7 @@ from rollup_bridge_indexer.handlers.rollup_message import RollupMessageIndex
 from rollup_bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupOutboxMessage
+from rollup_bridge_indexer.models import RollupPendingOutboxLevel
 
 pytestmark = pytest.mark.anyio
 
@@ -159,8 +161,9 @@ def _index(tzkt: Any, rollup_node: Any) -> RollupMessageIndex:
 
 
 async def _pending_levels() -> list[int]:
-    meta = await Meta.get_or_none(key=PendingOutboxLevels.key)
-    return list(meta.value) if meta and meta.value else []
+    """The owed levels as the database holds them, plus the check that nothing else does."""
+    assert await Meta.get_or_none(key=PendingOutboxLevels.key) is None, 'the obsolete `dipdup_meta` queue was written again'
+    return [row.level for row in await RollupPendingOutboxLevel.all().order_by('level')]
 
 
 async def test_full_outbox_continuation_level_is_deferred_and_stored(db: Any) -> None:
@@ -253,7 +256,7 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
     """The continuation level of a full outbox is recoverable when its own fetch dies.
 
     `outbox_level + 1` is queued *during* the drain, after the durability write of the page
-    that started it, so it is never in `dipdup_meta` under its own name. What keeps it
+    that started it, so it is never stored under its own name. What keeps it
     reachable is its parent: level L only leaves the stored set once `bulk_create` has
     committed the rows it produced, and a drain that dies before that flush leaves L owed.
     The restart re-fetches L, the full outbox re-derives L+1, and both land.

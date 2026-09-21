@@ -16,9 +16,9 @@ inbox cursor can move past it, and a reindex does not help — a fresh database 
 externals back into the same set. The backfill never reaches `dipdup_index` at all.
 
 Clamping the walk only saves a database that has not started yet. One already in the loop
-keeps its impossible levels in `dipdup_meta`, which no wipe and no clamp can reach: its inbox
-rows are committed, so the resume branch is what runs, and the only door those levels can
-leave by is the floor `PendingOutboxLevels.load` applies on the way back in. That is the
+keeps its impossible levels in the stored queue, which the clamp never reads: its inbox rows
+are committed, so the resume branch is what runs, and the only door those levels can leave by
+is the floor `PendingOutboxLevels.load` applies on the way back in. That is the
 second test here, and the one that describes a database already wedged.
 
 The floor on the way out of storage only holds while nothing can put the level back. A cursor
@@ -44,6 +44,7 @@ from rollup_bridge_indexer.handlers.rollup_message import PendingOutboxLevels
 from rollup_bridge_indexer.handlers.rollup_message import RollupMessageIndex
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupInboxMessageType
+from rollup_bridge_indexer.models import RollupPendingOutboxLevel
 
 pytestmark = pytest.mark.anyio
 
@@ -178,8 +179,9 @@ async def _boot(node: FlooredRollupNode) -> int | None:
 
 
 async def _owed_levels() -> list[int]:
-    meta = await Meta.get_or_none(key=PendingOutboxLevels.key)
-    return list(meta.value) if meta and meta.value else []
+    """The owed levels as the database holds them, plus the check that nothing else does."""
+    assert await Meta.get_or_none(key=PendingOutboxLevels.key) is None, 'the obsolete `dipdup_meta` queue was written again'
+    return [row.level for row in await RollupPendingOutboxLevel.all().order_by('level')]
 
 
 async def test_a_pre_origination_outbox_level_does_not_wedge_the_backfill(db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -199,7 +201,7 @@ async def test_a_pre_origination_outbox_level_does_not_wedge_the_backfill(db: An
     second_death = await _boot(node)
 
     assert second_death is None, (
-        f'the first boot died fetching outbox level {first_death}, {owed_after_the_crash} stayed owed in dipdup_meta, '
+        f'the first boot died fetching outbox level {first_death}, {owed_after_the_crash} stayed owed in the queue, '
         f'and the restart died on level {second_death} again — the backfill can never leave this level'
     )
     assert await _owed_levels() == [], 'a level the node will never serve stays owed forever'
@@ -211,8 +213,8 @@ async def _wedge_the_database() -> None:
 
     The committed row is the universe's transfer — the last id in it, so the resume cursor
     lands above every external and the walk has nothing left to hand back. The owed set is
-    written through `PendingOutboxLevels` rather than into `dipdup_meta` by hand, because that
-    is the only way a real process ever put it there.
+    written through `PendingOutboxLevels` rather than as rows by hand, because that is the only
+    way a real process ever put it there.
     """
     committed = UNIVERSE[-1]
     await RollupInboxMessage.create(
@@ -233,9 +235,9 @@ async def test_a_wedged_database_heals_its_impossible_owed_levels_on_boot(db: An
     """A database already in the crash loop gets out of it without being wiped.
 
     This is the half of the fix that the clamp cannot do. The rows are already committed, so
-    `_prepare_new_index` resumes and never computes a start level at all; a reindex would not
-    help either, since `dipdup_meta` outlives the wipe. Only the floor on the way out of
-    storage removes levels whose data never existed.
+    `_prepare_new_index` resumes and never computes a start level at all, and the walk that a
+    reindex would restart puts the same externals back into the queue. Only the floor on the
+    way out of storage removes levels whose data never existed.
     """
     monkeypatch.setattr(RollupMessageIndex, 'first_ticket_level', PRE_ORIGINATION_LEVEL)
     await _wedge_the_database()
@@ -291,7 +293,7 @@ async def test_a_cursor_below_origination_cannot_re_add_an_impossible_level(db: 
 
     `load` drops the impossible level, and then the very same pass walks the external that
     produced it and owes it again — so the boot dies exactly where the previous one did, and
-    the set is back in `dipdup_meta` for the next one. Only refusing the level where it is
+    the level is back in the stored queue for the next one. Only refusing the level where it is
     learned ends the loop.
     """
     monkeypatch.setattr(RollupMessageIndex, 'first_ticket_level', PRE_ORIGINATION_LEVEL)

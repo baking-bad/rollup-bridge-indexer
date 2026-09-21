@@ -8,12 +8,13 @@ ran at, never the L1 level the messages belong to. `hooks/on_index_rollback.py` 
 one of those above the new head.
 
 What makes the outbox side structurally different is where the work is remembered. An outbox
-level is learned from an inbox `external` message and queued in `PendingOutboxLevels`, which
-lives in `dipdup_meta` — a table the rollback is blind to. The level leaves that queue once its
-rows are committed, and those rows are journalled. So one rollback deletes the rows while the
-queue stays empty, and the inbox cursor — immune since the fix in #51 — rewinds only to the
-last surviving inbox row, which is *above* the external that queued the level. No reader of any
-of the three pieces of state can tell that the level is owed again.
+level is learned from an inbox `external` message and queued in `PendingOutboxLevels`, and the
+level leaves that queue once its rows are committed. While the queue lived in `dipdup_meta` —
+a table the rollback is blind to — one rollback deleted the journalled rows and left the queue
+empty, and the inbox cursor, immune since the fix in #51, rewound only to the last surviving
+inbox row, which is *above* the external that queued the level. No reader of any of the three
+pieces of state could tell that the level was owed again. So the queue is journalled too now:
+one `rollup_pending_outbox_level` row per owed level, reverted with the rows it stands for.
 
 A lost outbox row is not a gap that fills itself: `bridge_matcher.check_pending_outbox` has
 nothing to link the L2 withdrawal to, and `on_rollup_execute` finds no row for
@@ -47,6 +48,7 @@ from rollup_bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupInboxMessageType
 from rollup_bridge_indexer.models import RollupOutboxMessage
+from rollup_bridge_indexer.models import RollupPendingOutboxLevel
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -247,9 +249,14 @@ async def _inbox_rows() -> list[tuple[int, int]]:
 
 
 async def _pending_levels() -> list[int]:
-    """The owed outbox levels as the database holds them — `dipdup_meta`, which no revert touches."""
-    meta = await Meta.get_or_none(key=PendingOutboxLevels.key)
-    return list(meta.value) if meta and meta.value else []
+    """The owed outbox levels as the database holds them — one row each, and no other copy.
+
+    Read through the model the index writes, so a revert of those rows is visible here exactly
+    as the next pass will see it. The `dipdup_meta` key below is the store this queue used to
+    live in; nothing writes it any more, and a leftover there would be read by nobody.
+    """
+    assert await Meta.get_or_none(key=PendingOutboxLevels.key) is None, 'the obsolete `dipdup_meta` queue was written again'
+    return [row.level for row in await RollupPendingOutboxLevel.all().order_by('level')]
 
 
 async def test_the_outbox_of_a_drained_level_comes_back_after_a_rollback(db: Any) -> None:
@@ -258,8 +265,9 @@ async def test_the_outbox_of_a_drained_level_comes_back_after_a_rollback(db: Any
     The external arrives at its own level and the node has not applied it yet, so the level
     waits in the queue. Two blocks later the drain writes its messages and the level leaves the
     queue — and the rows carry the drain's head, not the level's, so a one-block rollback of
-    that head deletes them. The queue is in `dipdup_meta` and does not come back with them; the
-    inbox cursor sits above the external that filled it. Nothing asks for the level again.
+    that head deletes them. What the level's departure from the queue is worth afterwards is
+    the whole question: the inbox cursor sits above the external that filled it, so if the
+    queue does not come back with the rows, nothing asks for the level again.
     """
     tzkt = UniverseTzkt([_transfer(100, FIRST_LEVEL)])
     node = FakeRollupNode({OUTBOX_LEVEL: [_outbox_message(OUTBOX_LEVEL, 0)]}, processed_level=OUTBOX_LEVEL - 1)
@@ -278,7 +286,8 @@ async def test_the_outbox_of_a_drained_level_comes_back_after_a_rollback(db: Any
     assert await _outbox_rows() == [(OUTBOX_LEVEL, 0)]
     assert await _pending_levels() == [], 'the level stops being owed once its rows are committed'
 
-    assert await _roll_back_head(to_level=DRAIN_HEAD - 1) == 1, 'the rollback reverted nothing, so it proves nothing'
+    # One INSERT for the outbox message, one DELETE of the queue row the drain retired.
+    assert await _roll_back_head(to_level=DRAIN_HEAD - 1) == 2, 'the rollback reverted nothing, so it proves nothing'
     assert await _outbox_rows() == [], 'the journal revert is the instrument; it has to really remove the rows'
 
     # The chain re-delivers the head; the node still serves the level, so whether the messages
@@ -295,10 +304,11 @@ async def test_the_outbox_of_a_drained_level_comes_back_after_a_rollback(db: Any
 async def test_a_rollback_before_the_drain_neither_loses_nor_duplicates_the_level(db: Any) -> None:
     """The guard: a rollback that hits the pass which *queued* the level must be harmless.
 
-    Here the level is still owed when the head rolls back: the rows that moved the cursor past
-    the external are journalled and go, while the queue in `dipdup_meta` stays. Both halves of
-    the state then point at the same work — the restored cursor re-walks the external and the
-    queue already holds its level — and the drain that follows must produce the messages once.
+    Here the level is still owed when the head rolls back, and both halves of the state are
+    journalled: the sentinel that moved the cursor past the external goes, and so does the
+    queue row that same pass wrote. They therefore agree afterwards — the restored cursor
+    re-walks the external, which queues the level again — and the drain that follows must
+    produce the messages exactly once, not twice and not never.
     """
     tzkt = UniverseTzkt([_transfer(100, FIRST_LEVEL)])
     node = FakeRollupNode({OUTBOX_LEVEL: [_outbox_message(OUTBOX_LEVEL, 0)]}, processed_level=OUTBOX_LEVEL - 1)
@@ -310,9 +320,10 @@ async def test_a_rollback_before_the_drain_neither_loses_nor_duplicates_the_leve
     assert await _inbox_rows() == [(100, FIRST_LEVEL), (101, 0)], 'only a sentinel can carry a cursor that stopped on an external'
     assert await _pending_levels() == [OUTBOX_LEVEL]
 
-    assert await _roll_back_head(to_level=OUTBOX_LEVEL - 1) == 1, 'the rollback reverted nothing, so it proves nothing'
+    # One INSERT for the queue row, one for the sentinel: the same pass wrote both.
+    assert await _roll_back_head(to_level=OUTBOX_LEVEL - 1) == 2, 'the rollback reverted nothing, so it proves nothing'
     assert await _inbox_rows() == [(100, FIRST_LEVEL)], 'the sentinel that carried the cursor past the external is gone'
-    assert await _pending_levels() == [OUTBOX_LEVEL], '`dipdup_meta` is immune, so the queue still owes the level'
+    assert await _pending_levels() == [], 'the queue row of that pass went with it — the external is what owes the level again'
 
     node.processed_level = OUTBOX_LEVEL
     async with _head_handler(OUTBOX_LEVEL + 1):
@@ -326,10 +337,10 @@ async def test_a_rollback_of_a_full_outbox_drain_recovers_the_continuation_too(d
     """The continuation level: queued by a full outbox, reachable through nothing else.
 
     A full outbox at L asks for L + 1, which has no inbox message behind it — the queue is its
-    only record, and by the time the rollback lands both levels have left it. The in-memory
-    `_outbox_level_cursor` makes it worse: the drain left it at L + 1, and `_handle_outbox_level`
-    returns early for a full outbox at or below that cursor, so even a re-queued L would be
-    skipped and would never re-derive L + 1.
+    only record, and by the time the rollback lands both levels have left it. Restoring L is
+    therefore not enough on its own: the drain has to walk the full outbox at L again and
+    re-derive L + 1 from it, which is why no cursor of this process may decide that a level it
+    remembers writing has nothing left to give.
     """
     full_outbox = [_outbox_message(OUTBOX_LEVEL, 0), _outbox_message(OUTBOX_LEVEL, 1)]
     assert len(full_outbox) == MAX_OUTBOX_MESSAGES_PER_LEVEL
@@ -354,7 +365,8 @@ async def test_a_rollback_of_a_full_outbox_drain_recovers_the_continuation_too(d
     assert await _outbox_rows() == expected
     assert await _pending_levels() == []
 
-    assert await _roll_back_head(to_level=DRAIN_HEAD - 1) == 3, 'the rollback reverted nothing, so it proves nothing'
+    # Three INSERTs for the messages, one DELETE of the queue row of the level that had them.
+    assert await _roll_back_head(to_level=DRAIN_HEAD - 1) == 4, 'the rollback reverted nothing, so it proves nothing'
     assert await _outbox_rows() == [], 'the journal revert is the instrument; it has to really remove the rows'
 
     async with _head_handler(DRAIN_HEAD):
@@ -384,7 +396,7 @@ async def test_two_consecutive_rollbacks_after_a_drain_still_leave_the_messages(
         await index.handle_realtime(DRAIN_HEAD)
     assert await _outbox_rows() == [(OUTBOX_LEVEL, 0)]
 
-    assert await _roll_back_head(to_level=DRAIN_HEAD - 1) == 1, 'the rollback reverted nothing, so it proves nothing'
+    assert await _roll_back_head(to_level=DRAIN_HEAD - 1) == 2, 'the rollback reverted nothing, so it proves nothing'
     assert await _outbox_rows() == []
 
     # The head the first rollback settled on runs a pass of its own before rolling back too.
