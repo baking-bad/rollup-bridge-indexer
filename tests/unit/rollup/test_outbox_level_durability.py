@@ -363,3 +363,33 @@ async def test_a_wedged_node_is_not_asked_for_levels_it_cannot_answer(db: Any) -
     assert node.requested == [300], 'only the level the node has applied was asked for'
     assert await _outbox_rows() == [(300, 0)], 'the served level produced rows'
     assert await _pending_levels() == [301], 'the level the node cannot answer for stays owed'
+
+
+async def test_a_full_level_owed_a_second_time_re_derives_its_continuation(db: Any) -> None:
+    """A full level whose rows are already stored must still be walked, not recognised and skipped.
+
+    The continuation of a full outbox exists nowhere but in that outbox: no inbox message
+    stands behind L + 1, and the queue forgets it the moment its rows are committed. So the
+    only way to get L + 1 back is to fetch L again and re-derive it — which is what both the
+    crash between the row commit and the queue write, and the rollback that restores the queue
+    row of an already-drained level, ask the drain to do.
+    """
+    full_outbox = [_outbox_message(100, 0), _outbox_message(100, 1)]
+    assert len(full_outbox) == MAX_OUTBOX_MESSAGES_PER_LEVEL
+
+    node = FakeRollupNode({100: full_outbox, 101: [_outbox_message(101, 0)]}, processed_level=101)
+    index = _index(FakeTzkt(), node)
+    index._status = IndexStatus.realtime
+    index._pending_outbox_levels.add(100)
+
+    await index._drain_outbox_levels()
+    stored = [(100, 0), (100, 1), (101, 0)]
+    assert await _outbox_rows() == stored
+
+    # The same level owed again, on the same process, with its rows already in the database.
+    index._pending_outbox_levels.add(100)
+    await index._drain_outbox_levels()
+
+    assert node.requested == [100, 101, 100, 101], 'the second walk of the full level has to ask for its continuation again'
+    assert await _outbox_rows() == stored, 'and it must not double the rows it walks past on the way'
+    assert await _pending_levels() == [], 'nothing is owed once the rows are committed'
