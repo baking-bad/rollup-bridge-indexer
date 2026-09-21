@@ -206,9 +206,9 @@ class PendingOutboxLevels:
     them, and a level leaves the queue only *after* the outbox rows it produced are committed.
     """
 
-    # The `dipdup_meta` key the queue used to live under. Nothing reads it any more — the
-    # models change that moved the queue costs a reindex, so whatever it holds belongs to a
-    # wiped history — and `drop` deletes it, since the wipe cannot.
+    # The `dipdup_meta` key the queue lived under before it had rows of its own. `load`
+    # empties it into the table once, on the first boot after the deploy that moved the queue,
+    # and deletes it; nothing writes it again.
     key = 'rollup_message_pending_outbox_levels'
 
     def __init__(self, logger: Logger) -> None:
@@ -263,6 +263,7 @@ class PendingOutboxLevels:
         still holds such levels, and this is the door they leave by.
         """
         await self.refresh()
+        await self._adopt_meta_queue()
         if impossible := {level for level in self._levels if level < floor}:
             self._logger.warning(
                 'Dropped %d owed Outbox level(s) below the rollup origination level %d: %d..%d.',
@@ -283,6 +284,33 @@ class PendingOutboxLevels:
                 min(self._levels),
                 max(self._levels),
             )
+
+    async def _adopt_meta_queue(self) -> None:
+        """Empty the `dipdup_meta` queue of the previous version into the rows, once.
+
+        The deploy that moved this queue lands between two boots of a live database, and what
+        the binary before it still owed is in that key and nowhere else. `drop` cannot be what
+        clears it: it only runs when the inbox table is empty, which a live database never is.
+
+        The rows go in before the key goes out, so a crash in between repeats an adoption the
+        insert absorbs rather than losing the queue. The boot after this one finds no key.
+        """
+        meta = await Meta.get_or_none(key=self.key)
+        if meta is None:
+            return
+        if inherited := {int(level) for level in (meta.value or [])}:
+            self._logger.info(
+                'Adopting %d owed Outbox level(s) from the `%s` key of the previous version: %d..%d.',
+                len(inherited),
+                self.key,
+                min(inherited),
+                max(inherited),
+            )
+            for level in inherited:
+                self.add(level)
+            await self.save()
+        await Meta.filter(key=self.key).delete()
+        await self.refresh()
 
     async def save(self) -> None:
         """Write what the pass has learned, then delete what it has drained — in that order.
