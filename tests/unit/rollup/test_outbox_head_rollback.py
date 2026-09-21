@@ -424,6 +424,89 @@ async def test_two_consecutive_rollbacks_after_a_drain_still_leave_the_messages(
     assert await _pending_levels() == []
 
 
+async def test_a_restart_between_the_rollback_and_the_next_pass_still_owes_the_level(db: Any) -> None:
+    """The recovery has to survive the process, not just the pass.
+
+    A rollback lands, the container goes down before the next head, and a new
+    `RollupMessageIndex` comes up on the same database. Everything the previous process knew
+    about the drain went with it, so whatever re-owes the level has to be readable from the
+    database alone — and the fresh index has to agree with the rows about it afterwards,
+    rather than carry a private answer.
+    """
+    tzkt = UniverseTzkt([_transfer(100, FIRST_LEVEL)])
+    node = FakeRollupNode({OUTBOX_LEVEL: [_outbox_message(OUTBOX_LEVEL, 0)]}, processed_level=OUTBOX_LEVEL - 1)
+    index = await _backfilled_index(tzkt, node)
+
+    tzkt.universe.append(_external(101, OUTBOX_LEVEL))
+    async with _head_handler(OUTBOX_LEVEL):
+        await index.handle_realtime(OUTBOX_LEVEL)
+
+    node.processed_level = OUTBOX_LEVEL
+    async with _head_handler(DRAIN_HEAD):
+        await index.handle_realtime(DRAIN_HEAD)
+    assert await _outbox_rows() == [(OUTBOX_LEVEL, 0)]
+
+    # One INSERT for the outbox message, one DELETE of the queue row the drain retired.
+    assert await _roll_back_head(to_level=DRAIN_HEAD - 1) == 2, 'the rollback reverted nothing, so it proves nothing'
+    assert await _outbox_rows() == []
+
+    # A new process on the same database — `_prepare_new_index` is all it gets to read.
+    restarted = _index(tzkt, node)
+    await restarted._prepare_new_index()
+
+    async with _head_handler(DRAIN_HEAD):
+        await restarted._process()
+
+    assert await _outbox_rows() == [(OUTBOX_LEVEL, 0)], 'the level is owed to the database, not to the process that drained it'
+    assert await _pending_levels() == []
+    assert set(restarted._pending_outbox_levels) == set(await _pending_levels()), 'memory and the stored queue must not diverge'
+
+
+async def test_a_chain_of_full_levels_is_walked_once_per_pass_and_redone_whole(db: Any) -> None:
+    """A run of full outboxes terminates, and a rollback of it costs the whole run again.
+
+    Each full outbox owes the level after it, so three of them in a row hand the drain along a
+    chain that only the data ends — here the fourth level, whose outbox is short. Nothing in
+    the process remembers having served a level, which is what makes the redo after a rollback
+    complete; the price is that the second pass walks the whole chain again, and the assertion
+    is that it walks it exactly once more.
+    """
+    full = {level: [_outbox_message(level, 0), _outbox_message(level, 1)] for level in (OUTBOX_LEVEL, OUTBOX_LEVEL + 1, OUTBOX_LEVEL + 2)}
+    chain = [*full.keys(), OUTBOX_LEVEL + 3]
+    # The head a pass runs at says nothing about the levels it drains: the messages belong to
+    # the L1 levels above, the journal entries to this head.
+    pass_head = DRAIN_HEAD + 20
+
+    tzkt = UniverseTzkt([_transfer(100, FIRST_LEVEL)])
+    node = FakeRollupNode({**full, OUTBOX_LEVEL + 3: []}, processed_level=OUTBOX_LEVEL - 1)
+    index = await _backfilled_index(tzkt, node)
+
+    tzkt.universe.append(_external(101, OUTBOX_LEVEL))
+    async with _head_handler(OUTBOX_LEVEL):
+        await index.handle_realtime(OUTBOX_LEVEL)
+    assert await _pending_levels() == [OUTBOX_LEVEL], 'only the external is owed; the rest of the chain is still unknown'
+
+    node.processed_level = OUTBOX_LEVEL + 3
+    async with _head_handler(pass_head):
+        await index.handle_realtime(pass_head)
+
+    assert node.requested == chain, 'the chain is walked in order, once each, and the short outbox ends it'
+    stored = [(level, index_) for level in full for index_ in (0, 1)]
+    assert await _outbox_rows() == stored
+    assert await _pending_levels() == [], 'a terminated chain leaves nothing owed'
+
+    # Six INSERTs for the messages, one DELETE of the queue row of the level that started it.
+    assert await _roll_back_head(to_level=pass_head - 1) == 7, 'the rollback reverted nothing, so it proves nothing'
+    assert await _outbox_rows() == []
+
+    async with _head_handler(pass_head):
+        await index.handle_realtime(pass_head)
+
+    assert node.requested == chain * 2, 'the restored level re-derives the whole chain, and still asks each level once'
+    assert await _outbox_rows() == stored, 'every message of the reverted run is back'
+    assert await _pending_levels() == []
+
+
 async def test_the_queue_never_journals_an_insert_of_a_row_that_is_already_there(db: Any) -> None:
     """`bulk_create(ignore_conflicts=True)` journals an INSERT the database did not keep.
 

@@ -396,6 +396,58 @@ async def test_a_full_level_owed_a_second_time_re_derives_its_continuation(db: A
     assert await _pending_levels() == [], 'nothing is owed once the rows are committed'
 
 
+async def test_a_chain_of_full_outbox_levels_ends_at_the_first_level_that_is_not_full(db: Any) -> None:
+    """Every full outbox owes the level after it, so a run of them is a chain — and it terminates.
+
+    Nothing in this process decides a level has already been served: the continuation is derived
+    from the outbox itself, every time. What ends the chain is therefore the data, and the first
+    level whose outbox is not full is the end of it. Asked once each, in order, and once the
+    fourth answers short nothing is left owed.
+    """
+    node = FakeRollupNode(
+        {
+            100: [_outbox_message(100, 0), _outbox_message(100, 1)],
+            101: [_outbox_message(101, 0), _outbox_message(101, 1)],
+            102: [_outbox_message(102, 0), _outbox_message(102, 1)],
+            103: [],
+        },
+        processed_level=103,
+    )
+    index = _index(FakeTzkt(), node)
+    index._status = IndexStatus.realtime
+    index._pending_outbox_levels.add(100)
+
+    await index._drain_outbox_levels()
+
+    assert node.requested == [100, 101, 102, 103], 'each level of the chain is asked for exactly once, and the short one ends it'
+    assert await _outbox_rows() == [(100, 0), (100, 1), (101, 0), (101, 1), (102, 0), (102, 1)]
+    assert await _pending_levels() == [], 'a level whose outbox is empty owes nothing after it'
+
+
+async def test_an_unbroken_chain_of_full_levels_stops_at_what_the_node_has_applied(db: Any) -> None:
+    """The other end of the chain: a node that cannot answer for the next level.
+
+    A run of full outboxes that reaches the node's ceiling does not spin on it — the level the
+    node has not applied is owed, not fetched, and the pass ends. That is the bound on a chain
+    the data has not ended yet.
+    """
+    node = FakeRollupNode(
+        {
+            100: [_outbox_message(100, 0), _outbox_message(100, 1)],
+            101: [_outbox_message(101, 0), _outbox_message(101, 1)],
+        },
+        processed_level=101,
+    )
+    index = _index(FakeTzkt(), node)
+    index._status = IndexStatus.realtime
+    index._pending_outbox_levels.add(100)
+
+    await index._drain_outbox_levels()
+
+    assert node.requested == [100, 101], 'the drain stops at the ceiling instead of walking past it'
+    assert await _pending_levels() == [102], 'the continuation the node cannot answer for yet is owed, and waits for it'
+
+
 async def test_the_queue_of_the_dipdup_meta_version_is_adopted_on_the_first_boot(db: Any) -> None:
     """The deploy: levels the previous binary owed have to arrive in the rows, once.
 
