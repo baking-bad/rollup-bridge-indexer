@@ -217,6 +217,9 @@ class PendingOutboxLevels:
         self._levels: set[int] = set()
         self._stored: set[int] = set()
         self._staged: set[int] = set()
+        # The levels the last `save` deleted rows for: the only ones a revert can hand back,
+        # and the reason `refresh` can tell a rollback from an ordinary queue read.
+        self._drained: set[int] = set()
         self._logger = logger
 
     def __len__(self) -> int:
@@ -228,6 +231,8 @@ class PendingOutboxLevels:
     def add(self, level: int) -> None:
         self._levels.add(level)
         self._staged.add(level)
+        # Owed again on purpose — a later read of its row says nothing about a rollback.
+        self._drained.discard(level)
 
     def take_lowest(self, ceiling: int) -> int | None:
         """The lowest owed level at or below `ceiling`, removed — or None if there is none.
@@ -253,6 +258,11 @@ class PendingOutboxLevels:
         pass has learned and not yet saved.
         """
         self._stored = {row['level'] for row in await RollupPendingOutboxLevel.all().values('level')}
+        if returned := self._stored & self._drained:
+            # The line this fix is read off Loki by: this process deleted these rows itself,
+            # so nothing but a journal revert can have put them back.
+            self._logger.info('An L1 head rollback returned outbox level(s) %s to the queue.', sorted(returned))
+            self._drained -= returned
         self._levels = self._stored | self._staged
 
     async def load(self, floor: int) -> None:
@@ -335,6 +345,7 @@ class PendingOutboxLevels:
                 )
         if drained := sorted(self._stored - self._levels):
             await RollupPendingOutboxLevel.filter(level__in=drained).delete()
+            self._drained = set(drained)
         self._stored = set(self._levels)
         self._staged.clear()
 
@@ -351,6 +362,7 @@ class PendingOutboxLevels:
         self._levels.clear()
         self._stored.clear()
         self._staged.clear()
+        self._drained.clear()
 
 
 class RollupMessageIndex:
