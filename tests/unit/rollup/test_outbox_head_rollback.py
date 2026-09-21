@@ -37,6 +37,7 @@ import pytest
 from dipdup.models import IndexStatus
 from dipdup.models import Meta
 from dipdup.models import ModelUpdate
+from dipdup.models import ModelUpdateAction
 from dipdup.transactions import TransactionManager
 from pytezos import MichelsonType
 from pytezos import michelson_to_micheline
@@ -75,6 +76,9 @@ OUTBOX_LEVEL = 12
 CONTINUATION_LEVEL = OUTBOX_LEVEL + 1
 # L + 2: the head the node has caught up by, so the drain runs — and the head that rolls back.
 DRAIN_HEAD = OUTBOX_LEVEL + 2
+
+# The logger the index is built with here, and the one the recovery line is read off.
+LOGGER_NAME = 'test.rollup_message'
 
 _FAST_WITHDRAW_TYPE = MichelsonType.match(michelson_to_micheline(FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE))
 TICKETER = 'KT1MJxf4KVN3sosR99VRG7WBbWTJtAyWUJt9'
@@ -194,7 +198,7 @@ def _index(tzkt: UniverseTzkt, rollup_node: FakeRollupNode) -> RollupMessageInde
         bridge=bridge,
         ticket_service=ticket_service,
         protocol=protocol,
-        logger=logging.getLogger('test.rollup_message'),
+        logger=logging.getLogger(LOGGER_NAME),
     )
 
 
@@ -411,3 +415,30 @@ async def test_two_consecutive_rollbacks_after_a_drain_still_leave_the_messages(
 
     assert await _outbox_rows() == [(OUTBOX_LEVEL, 0)], 'the level is still owed after the second rollback, and has to be drained again'
     assert await _pending_levels() == []
+
+
+async def test_the_queue_never_journals_an_insert_of_a_row_that_is_already_there(db: Any) -> None:
+    """`bulk_create(ignore_conflicts=True)` journals an INSERT the database did not keep.
+
+    `ModelUpdate.revert` of an INSERT is a DELETE by primary key, so an insert the conflict
+    clause swallowed still arms a revert that removes the row that was already there — an owed
+    level dropped exactly the way the immune queue dropped it, and by the fix itself. The row
+    can be there without this object knowing: a revert of an earlier DELETE restores it while
+    the pass is awaiting the rollup node. So what to insert is decided by asking the rows.
+    """
+    queue = PendingOutboxLevels(logging.getLogger(LOGGER_NAME))
+    await queue.refresh()
+    queue.add(OUTBOX_LEVEL)
+
+    # Behind the object's back, as a revert lands mid-pass: the level it is about to insert.
+    await RollupPendingOutboxLevel.create(level=OUTBOX_LEVEL)
+
+    async with _head_handler(DRAIN_HEAD):
+        await queue.save()
+
+    journalled = await ModelUpdate.filter(model_name=RollupPendingOutboxLevel.__name__, action=ModelUpdateAction.INSERT).count()
+    assert journalled == 0, 'the insert of a row that was already there was journalled, and its revert deletes an owed level'
+
+    # And the consequence the count stands for: the restored row outlives the next rollback.
+    await _roll_back_head(to_level=DRAIN_HEAD - 1)
+    assert await _pending_levels() == [OUTBOX_LEVEL], 'the level a rollback handed back was taken away again by a phantom journal entry'
