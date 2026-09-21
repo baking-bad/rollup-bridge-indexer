@@ -112,7 +112,19 @@ indexes start and pumped afterwards from `on_head`.
   advance the cursor past those externals, and a level leaves the queue only *after* its outbox
   rows are committed. No in-memory cursor decides a level has nothing left to give either: the
   continuation of a full outbox exists nowhere but in that outbox, so a level is always walked
-  and `ignore_conflicts` absorbs the rows it already wrote.
+  and `ignore_conflicts` absorbs the rows it already wrote. What to *insert* is decided against
+  the rows and not against `ignore_conflicts`, though: DipDup journals an INSERT for every object
+  handed to `bulk_create`, kept or not, and the revert of a swallowed insert deletes the row that
+  was already there.
+- The queue used to live in the `dipdup_meta` key `rollup_message_pending_outbox_levels`, and the
+  first boot on a database that still has one empties it into the table, under the origination
+  floor, and deletes the key (`PendingOutboxLevels._adopt_meta_queue`); every boot after finds
+  nothing. Rows are also the cheaper store — one delta write per pass against a rewrite of the
+  whole JSON array — measured over a five-page backfill through tortoise's own `tortoise.db_client`
+  query log: 41 statements against the `dipdup_meta` version's 45.
+- A level handed back by an L1 head rollback is logged at INFO, `An L1 head rollback returned
+  outbox level(s) ... to the queue` — the only observable that says the recovery happened, since
+  the rows it is about are gone by the time anyone reads the log.
 - The drain ceiling is the rollup node's own `global/block/head/level`, not the L1 head: a node
   that stopped applying blocks still answers RPC but cannot resolve levels above what it applied.
 - The same module owns all **parameter hashing** — `uuid5(NAMESPACE_OID, orjson.dumps(dto,
@@ -258,13 +270,26 @@ test.
   it was running before. Moving a stack to a newer image is an explicit redeploy that someone
   performs. Pinning a tag to hold a version still is therefore unnecessary, and can be done later
   if a particular run needs it.
-- **Any change to `models/` costs a full reindex.** `advanced.reindex.schema_modified: exception`
-  makes DipDup refuse to start against a database whose schema hash no longer matches, so a new
-  field is not a deploy — it is a wipe and a rebuild. Measured on mainnet from scratch: **3 d 11 h**
-  end-to-end, of which the first 5 h 20 m is the rollup inbox backfill inside `on_restart`, before
-  `dipdup_index` has any rows at all. Prefer `dipdup_meta` for state that does not need to be
-  queryable — but not for state a rollback must move: `dipdup_meta` is immune to `ctx.rollback`
-  and to the reindex wipe, so anything kept there survives a revert of the rows it describes.
+- **A changed or removed column in `models/` costs a full reindex; an added table does not.**
+  `advanced.reindex.schema_modified: exception` makes DipDup refuse to start against a database
+  whose schema hash no longer matches, so a changed field is not a deploy — it is a wipe and a
+  rebuild. Measured on mainnet from scratch: **3 d 11 h** end-to-end, of which the first 5 h 20 m
+  is the rollup inbox backfill inside `on_restart`, before `dipdup_index` has any rows at all.
+  A purely additive table is different, and the boot order is why: `_initialize_schema`
+  (`dipdup/dipdup.py:785-833`) calls `generate_schema` at line 796 — `Tortoise.generate_schemas()`
+  with its default `safe=True`, i.e. `CREATE TABLE IF NOT EXISTS` (`dipdup/database.py:245-252`) —
+  and only *then* compares the hash, at line 829. The table is therefore already created on the
+  populated database, every row kept, by the boot that refuses over the hash. Adopting the new
+  hash takes two boots: one with `advanced.reindex.schema_modified: ignore`, which nulls the
+  stored hash instead of raising (`dipdup/context.py:228-234`) and indexes on, then one with
+  `exception` restored, which finds the hash empty and stores the new one
+  (`dipdup/dipdup.py:825-827`). The risk is exactly what that first boot buys: it accepts *any*
+  schema difference, not only the intended one, so it must carry no other model change — and the
+  drift it would have caught is gone unremarked. `tests/unit/rollup/test_queue_table_deploy.py`
+  is the half of this that is ours to keep true.
+  Prefer `dipdup_meta` for state that does not need to be queryable — but not for state a
+  rollback must move: `dipdup_meta` is immune to `ctx.rollback` and to the reindex wipe, so
+  anything kept there survives a revert of the rows it describes.
 
 ## Code style
 
