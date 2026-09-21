@@ -263,7 +263,7 @@ async def _pending_levels() -> list[int]:
     return [row.level for row in await RollupPendingOutboxLevel.all().order_by('level')]
 
 
-async def test_the_outbox_of_a_drained_level_comes_back_after_a_rollback(db: Any) -> None:
+async def test_the_outbox_of_a_drained_level_comes_back_after_a_rollback(db: Any, caplog: pytest.LogCaptureFixture) -> None:
     """The main loss: a level drained at one head, rolled back at that head, is owed by nobody.
 
     The external arrives at its own level and the node has not applied it yet, so the level
@@ -296,8 +296,15 @@ async def test_the_outbox_of_a_drained_level_comes_back_after_a_rollback(db: Any
 
     # The chain re-delivers the head; the node still serves the level, so whether the messages
     # come back is entirely about whether anything still knows they are owed.
-    async with _head_handler(DRAIN_HEAD):
-        await index.handle_realtime(DRAIN_HEAD)
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        async with _head_handler(DRAIN_HEAD):
+            await index.handle_realtime(DRAIN_HEAD)
+
+    # The line this fix is confirmed by on the real chain: nothing else reports a recovery, and
+    # the rows it is about are gone by the time anyone reads the logs.
+    assert [record.getMessage() for record in caplog.records if 'rollback returned' in record.getMessage()] == [
+        f'An L1 head rollback returned outbox level(s) [{OUTBOX_LEVEL}] to the queue.'
+    ], 'a recovery nobody can grep for is a fix nobody can confirm in production'
 
     assert await _outbox_rows() == [
         (OUTBOX_LEVEL, 0)
