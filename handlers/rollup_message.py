@@ -442,23 +442,33 @@ class RollupMessageIndex:
     async def handle_realtime(self, head_level: int):
         with self._lock:
             if self._status == IndexStatus.realtime:
-                await self._process()
+                # New outbox rows are the whole reason these three matcher steps have anything
+                # to do, and committing them is the only event that produces one. Committed,
+                # not "the outbox got further": a pass that redoes a drain a rollback reverted
+                # ends exactly where the reverted one did, and its rows are the ones the
+                # waiting withdrawals need matched again.
+                if await self._process():
+                    BridgeMatcherLocks.set_pending_outbox()
+                    BridgeMatcherLocks.set_pending_tezos_withdrawals()
+                    BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()
 
-    async def _process(self):
-        await self._drain_outbox_levels()
+    async def _process(self) -> bool:
+        """One pass. Answers whether any outbox rows were committed in it."""
+        committed = await self._drain_outbox_levels()
 
         cursor = await self._inbox_cursor()
         inbox = await self._fetch_inbox_page(cursor)
         if not inbox:
             if self._status == IndexStatus.syncing:
                 self._status = IndexStatus.realtime
-                return
+                return committed
         else:
             cursor = await self._walk_inbox_page(inbox, cursor)
             await self._commit_inbox_page()
 
-        await self._drain_outbox_levels()
+        committed |= await self._drain_outbox_levels()
         await self._write_cursor_sentinel(cursor)
+        return committed
 
     async def _inbox_cursor(self) -> int:
         """The last inbox id already consumed, read back from the row that records it.
@@ -559,13 +569,15 @@ class RollupMessageIndex:
             type=RollupInboxMessageType.external,
         )
 
-    async def _drain_outbox_levels(self):
+    async def _drain_outbox_levels(self) -> bool:
         """Fetch every pending outbox level the rollup node has already applied, then store the result.
 
         A level leaves the pending set only once its messages are committed: the fetch can
         fail (a wedged rollup node answers 500 for every level above the one it processed),
         and until the rows are in the database the pending level is the only record that the
         work is still owed.
+
+        Answers whether any outbox rows were committed, which is what arms the matcher.
         """
         # The queue is read back from its rows here, so a pass that follows a rollback works
         # from the queue that rollback restored rather than from what this object remembers.
@@ -575,19 +587,15 @@ class RollupMessageIndex:
             while (outbox_level := self._pending_outbox_levels.take_lowest(processed_level)) is not None:
                 await self._handle_outbox_level(outbox_level)
 
-        if len(self._create_outbox_batch):
+        committed = bool(self._create_outbox_batch)
+        if committed:
             await RollupOutboxMessage.bulk_create(self._create_outbox_batch, ignore_conflicts=True)
             self._logger.info('Successfully saved %d new Outbox Messages.', len(self._create_outbox_batch))
             del self._create_outbox_batch[:]
 
-            # New outbox rows are the whole reason these three matcher steps have anything to
-            # do, and committing them is the only event that produces one.
-            BridgeMatcherLocks.set_pending_outbox()
-            BridgeMatcherLocks.set_pending_tezos_withdrawals()
-            BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()
-
         # The drained levels are rows now; what is left is what is still deferred or owed.
         await self._pending_outbox_levels.save()
+        return committed
 
     async def _rollup_processed_level(self) -> int:
         """The last L1 level the rollup node has applied — the ceiling the drain may ask for.
