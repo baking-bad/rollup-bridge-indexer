@@ -318,12 +318,21 @@ class PendingOutboxLevels:
         A crash between the two costs a re-fetch of a level whose rows are already committed,
         which `ignore_conflicts` absorbs. The other order would cost the continuation level of
         a full outbox, which nothing but this queue records.
+
+        Which levels to insert is decided against the rows and not against `ignore_conflicts`:
+        DipDup journals an INSERT for every object handed to `bulk_create`, kept or not, and
+        the revert of an insert the database swallowed deletes the row that was already there
+        — the owed level gone exactly the way it went before. What to delete is decided the
+        other way, on the queue this object last read, because a row that appeared behind its
+        back is a row a rollback restored.
         """
-        if learned := sorted(self._levels - self._stored):
-            await RollupPendingOutboxLevel.bulk_create(
-                [RollupPendingOutboxLevel(level=level) for level in learned],
-                ignore_conflicts=True,
-            )
+        if candidates := self._levels - self._stored:
+            present = {row['level'] for row in await RollupPendingOutboxLevel.filter(level__in=sorted(candidates)).values('level')}
+            if learned := sorted(candidates - present):
+                await RollupPendingOutboxLevel.bulk_create(
+                    [RollupPendingOutboxLevel(level=level) for level in learned],
+                    ignore_conflicts=True,
+                )
         if drained := sorted(self._stored - self._levels):
             await RollupPendingOutboxLevel.filter(level__in=drained).delete()
         self._stored = set(self._levels)
