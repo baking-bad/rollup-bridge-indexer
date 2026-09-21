@@ -41,6 +41,7 @@ from rollup_bridge_indexer.handlers.rollup_message import PendingOutboxLevels
 from rollup_bridge_indexer.handlers.rollup_message import RollupMessageIndex
 from rollup_bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from rollup_bridge_indexer.models import RollupInboxMessage
+from rollup_bridge_indexer.models import RollupInboxMessageType
 from rollup_bridge_indexer.models import RollupOutboxMessage
 from rollup_bridge_indexer.models import RollupPendingOutboxLevel
 
@@ -393,3 +394,42 @@ async def test_a_full_level_owed_a_second_time_re_derives_its_continuation(db: A
     assert node.requested == [100, 101, 100, 101], 'the second walk of the full level has to ask for its continuation again'
     assert await _outbox_rows() == stored, 'and it must not double the rows it walks past on the way'
     assert await _pending_levels() == [], 'nothing is owed once the rows are committed'
+
+
+async def test_the_queue_of_the_dipdup_meta_version_is_adopted_on_the_first_boot(db: Any) -> None:
+    """The deploy: levels the previous binary owed have to arrive in the rows, once.
+
+    The boot that first runs this code meets a live database — inbox rows committed, the queue
+    in the `dipdup_meta` key of the version that kept it there, and no rows of its own. Nothing
+    else can carry those levels across: `drop` runs only on an empty inbox table, and the walk
+    cannot re-derive them, because the cursor sits above the externals that produced them.
+
+    The origination floor applies on the way in exactly as it did to the old key, so a database
+    wedged on an impossible level does not import its wedge.
+    """
+    await RollupInboxMessage.create(
+        id=500,
+        level=ORIGINATION_LEVEL,
+        index=0,
+        type=RollupInboxMessageType.transfer,
+        message={},
+        parameters_hash=None,
+    )
+    await Meta.update_or_create(key=PendingOutboxLevels.key, defaults={'value': [50, 100, 101]})
+
+    index = _index(FakeTzkt(), FakeRollupNode({}))
+    # The origination the boot clamps against; presetting it is what `_get_origination_level`
+    # would have cached, and it puts level 50 below the floor.
+    index._origination_level = 100
+    await index._prepare_new_index()
+
+    assert await _pending_levels() == [100, 101], 'the owed levels are rows now, and the key they came from is gone'
+    assert set(index._pending_outbox_levels) == {100, 101}, 'and the running index owes what the rows say'
+
+    # The next boot finds no key and must not resurrect anything — least of all level 50.
+    restarted = _index(FakeTzkt(), FakeRollupNode({}))
+    restarted._origination_level = 100
+    await restarted._prepare_new_index()
+
+    assert await _pending_levels() == [100, 101], 'the second boot is a no-op'
+    assert set(restarted._pending_outbox_levels) == {100, 101}
