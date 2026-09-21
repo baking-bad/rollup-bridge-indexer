@@ -91,7 +91,12 @@ lifecycle (`new -> syncing -> realtime`), backfilled in `on_restart` **before** 
 indexes start and pumped afterwards from `on_head`.
 
 - Inbox comes from the TzKT `v1/smart_rollups/inbox` endpoint, walked by an `id.gt=` cursor. When
-  no real row carries the cursor id, a level-0 sentinel row records it.
+  no real row carries the cursor id, a level-0 sentinel row records it. The cursor is **read back
+  from those rows on every page**, never carried between passes: the index is pumped from the
+  `tezos_head` handler, so DipDup journals its realtime writes and an L1 head rollback reverts
+  them — a cursor held in memory would stay above the hole and never ask for those messages again.
+  Nothing reports that loss: the index stays `realtime`, `dipdup_head` tracks the chain, and the
+  only symptom is an L1 deposit at that level that never matches.
 - A fresh DB starts at `RollupMessageIndex.first_ticket_level` — the min first-activity level over
   *every* whitelisted ticket, native included (`TicketService._lower_first_ticket_level`). An
   FA-only minimum silently drops earlier XTZ deposits' inbox messages forever.
