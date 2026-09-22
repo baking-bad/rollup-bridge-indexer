@@ -31,6 +31,7 @@ from rollup_bridge_indexer.models import RollupCementedCommitment
 from rollup_bridge_indexer.models import RollupInboxMessage
 from rollup_bridge_indexer.models import RollupInboxMessageType
 from rollup_bridge_indexer.models import RollupOutboxMessage
+from rollup_bridge_indexer.models import RollupPendingOutboxLevel
 from rollup_bridge_indexer.models import TezosTicket
 from rollup_bridge_indexer.models import json_dumps_fallback
 from rollup_bridge_indexer.types.fast_withdrawal.tezos_parameters.default import (
@@ -185,23 +186,40 @@ class OutboxMessageService:
 
 
 class PendingOutboxLevels:
-    """The outbox levels the index still owes, and the one durable copy of them.
+    """The outbox levels the index still owes, and the rows that hold them.
 
     A level is learned from an inbox `external` message, or from a full outbox asking for its
     continuation. Neither is something the inbox cursor can describe — the continuation has no
-    inbox message behind it at all — so the set is mirrored into `dipdup_meta`, DipDup's own
-    key-value table. It is outside the package schema, so keeping it there costs no schema hash
-    change and therefore no reindex.
+    inbox message behind it at all — so the queue needs a store of its own: one
+    `RollupPendingOutboxLevel` row per owed level.
 
-    Ordering is the whole contract, and it lives in the two callers of `save`: the set reaches
-    the database *before* the rows that move the cursor past the externals that filled it, and
-    a level leaves it only *after* the outbox rows it produced are committed.
+    It has to be a table of this package and not `dipdup_meta`, because the index is pumped
+    from the `tezos_head` handler. Everything written there is journalled at the head of the
+    pass and an L1 head rollback reverts it, the outbox rows of a drain included. Only a queue
+    journalled with them comes back when they go: the revert restores the row that says the
+    level is owed and the next pass drains it again. `dipdup_meta` is immune to that revert, so
+    a level's departure from the queue outlived the deletion of the rows it stood for and
+    nothing was left that could ask for the level a second time.
+
+    Ordering is the rest of the contract, and it lives in `save`: levels the pass has learned
+    are written *before* the inbox rows that move the cursor past the externals that produced
+    them, and a level leaves the queue only *after* the outbox rows it produced are committed.
     """
 
+    # The `dipdup_meta` key the queue lived under before it had rows of its own. `load`
+    # empties it into the table once, on the first boot after the deploy that moved the queue,
+    # and deletes it; nothing writes it again.
     key = 'rollup_message_pending_outbox_levels'
 
     def __init__(self, logger: Logger) -> None:
+        # `_stored` is what the rows held when they were last read or written and `_staged`
+        # what this pass has learned and not written yet; everything else `refresh` re-reads.
         self._levels: set[int] = set()
+        self._stored: set[int] = set()
+        self._staged: set[int] = set()
+        # The levels the last `save` deleted rows for: the only ones a revert can hand back,
+        # and the reason `refresh` can tell a rollback from an ordinary queue read.
+        self._drained: set[int] = set()
         self._logger = logger
 
     def __len__(self) -> int:
@@ -212,6 +230,9 @@ class PendingOutboxLevels:
 
     def add(self, level: int) -> None:
         self._levels.add(level)
+        self._staged.add(level)
+        # Owed again on purpose — a later read of its row says nothing about a rollback.
+        self._drained.discard(level)
 
     def take_lowest(self, ceiling: int) -> int | None:
         """The lowest owed level at or below `ceiling`, removed — or None if there is none.
@@ -225,18 +246,35 @@ class PendingOutboxLevels:
         if lowest > ceiling:
             return None
         self._levels.discard(lowest)
+        self._staged.discard(lowest)
         return lowest
+
+    async def refresh(self) -> None:
+        """Read the owed levels back off the rows, the way the inbox cursor is read back.
+
+        A rollback rewrites this queue without telling the object that wrote it, and in both
+        directions: a level it drained is owed again, a level it queued was never queued. So
+        the rows decide, and the only thing memory carries across the read is what the current
+        pass has learned and not yet saved.
+        """
+        self._stored = {row['level'] for row in await RollupPendingOutboxLevel.all().values('level')}
+        if returned := self._stored & self._drained:
+            # The line this fix is read off Loki by: this process deleted these rows itself,
+            # so nothing but a journal revert can have put them back.
+            self._logger.info('An L1 head rollback returned outbox level(s) %s to the queue.', sorted(returned))
+            self._drained -= returned
+        self._levels = self._stored | self._staged
 
     async def load(self, floor: int) -> None:
         """Take over what the previous run queued and never finished.
 
-        `floor` is the rollup's origination. `dipdup_meta` outlives both the crash and the
-        reindex wipe, so a set written before the walk was clamped is dropped on the way back
-        in — there is no other door those levels can leave by.
+        `floor` is the rollup's origination: a level below it is not late, it never existed,
+        and the node answers 500 for it forever. A queue written before the walk was clamped
+        still holds such levels, and this is the door they leave by.
         """
-        meta = await Meta.get_or_none(key=self.key)
-        restored = {int(level) for level in (meta.value or [])} if meta else set()
-        if impossible := {level for level in restored if level < floor}:
+        await self.refresh()
+        await self._adopt_meta_queue()
+        if impossible := {level for level in self._levels if level < floor}:
             self._logger.warning(
                 'Dropped %d owed Outbox level(s) below the rollup origination level %d: %d..%d.',
                 len(impossible),
@@ -244,36 +282,101 @@ class PendingOutboxLevels:
                 min(impossible),
                 max(impossible),
             )
-            restored -= impossible
-        if restored:
-            # A backfill page can leave thousands pending — log the span, not the list.
+            await RollupPendingOutboxLevel.filter(level__lt=floor).delete()
+            self._levels -= impossible
+            self._stored -= impossible
+            self._staged -= impossible
+        if self._levels:
+            # A backfill page can leave thousands owed — log the span, not the list.
             self._logger.info(
-                'Restored %d pending Outbox level(s) from the previous run: %d..%d', len(restored), min(restored), max(restored)
+                'Restored %d pending Outbox level(s) from the previous run: %d..%d',
+                len(self._levels),
+                min(self._levels),
+                max(self._levels),
             )
-        self._levels |= restored
+
+    async def _adopt_meta_queue(self) -> None:
+        """Empty the `dipdup_meta` queue of the previous version into the rows, once.
+
+        The deploy that moved this queue lands between two boots of a live database, and what
+        the binary before it still owed is in that key and nowhere else. `drop` cannot be what
+        clears it: it only runs when the inbox table is empty, which a live database never is.
+
+        The rows go in before the key goes out, so a crash in between repeats an adoption the
+        insert absorbs rather than losing the queue. The boot after this one finds no key.
+        """
+        meta = await Meta.get_or_none(key=self.key)
+        if meta is None:
+            return
+        if inherited := {int(level) for level in (meta.value or [])}:
+            self._logger.info(
+                'Adopting %d owed Outbox level(s) from the `%s` key of the previous version: %d..%d.',
+                len(inherited),
+                self.key,
+                min(inherited),
+                max(inherited),
+            )
+            for level in inherited:
+                self.add(level)
+            await self.save()
+        await Meta.filter(key=self.key).delete()
+        await self.refresh()
 
     async def save(self) -> None:
-        await Meta.update_or_create(key=self.key, defaults={'value': sorted(self._levels)})
+        """Write what the pass has learned, then delete what it has drained — in that order.
+
+        A crash between the two costs a re-fetch of a level whose rows are already committed,
+        which `ignore_conflicts` absorbs. The other order would cost the continuation level of
+        a full outbox, which nothing but this queue records.
+
+        Which levels to insert is decided against the rows and not against `ignore_conflicts`:
+        DipDup journals an INSERT for every object handed to `bulk_create`, kept or not, and
+        the revert of an insert the database swallowed deletes the row that was already there
+        — the owed level gone exactly the way it went before. What to delete is decided the
+        other way, on the queue this object last read, because a row that appeared behind its
+        back is a row a rollback restored.
+        """
+        if candidates := self._levels - self._stored:
+            present = {row['level'] for row in await RollupPendingOutboxLevel.filter(level__in=sorted(candidates)).values('level')}
+            if learned := sorted(candidates - present):
+                await RollupPendingOutboxLevel.bulk_create(
+                    [RollupPendingOutboxLevel(level=level) for level in learned],
+                    ignore_conflicts=True,
+                )
+        if drained := sorted(self._stored - self._levels):
+            await RollupPendingOutboxLevel.filter(level__in=drained).delete()
+            self._drained = set(drained)
+        self._stored = set(self._levels)
+        self._staged.clear()
 
     async def drop(self) -> None:
         """Forget levels owed to a database that no longer exists.
 
-        `dipdup_meta` is immune to the reindex wipe, so without this a fresh backfill would
-        inherit the previous history's levels and drag its outbox cursor ahead of itself.
+        The rows go down with the reindex wipe now, so what is left to drop is the
+        `dipdup_meta` key the queue used to live in: immune to the wipe, maintained by nobody
+        since, and still holding the levels of the previous history.
         """
+        await RollupPendingOutboxLevel.filter().delete()
         if await Meta.filter(key=self.key).delete():
             self._logger.info('Dropped the pending Outbox levels of a wiped database.')
         self._levels.clear()
+        self._stored.clear()
+        self._staged.clear()
+        self._drained.clear()
 
 
 class RollupMessageIndex:
     """Indexes the rollup inbox from TzKT and the outbox from the rollup node.
 
-    One pass is `_process`. The inbox is walked with a cursor read from the rows themselves
-    (`_inbox_cursor`), never carried between passes; every `external` message means its L1
-    level has outbox messages to fetch, and that level goes to `PendingOutboxLevels`, which
-    owns both the set and its durability. Between the two `save` calls below, a crash costs a
-    re-fetch and never a message.
+    One pass is `_process`. Neither of the two things a pass resumes from is carried in memory
+    across passes: the inbox cursor is read from the inbox rows (`_inbox_cursor`) and the owed
+    outbox levels from their own rows (`PendingOutboxLevels.refresh`). Both are written inside
+    the `tezos_head` handler and therefore journalled, so an L1 head rollback moves them back
+    together with the rows they describe — and remembered copies would not move at all.
+
+    Every `external` message means its L1 level has outbox messages to fetch, and that level
+    goes to `PendingOutboxLevels`. Between the two `save` calls below, a crash costs a re-fetch
+    and never a message.
     """
 
     first_ticket_level: int | None = None
@@ -302,8 +405,6 @@ class RollupMessageIndex:
         # first need. Once a row exists it is the rows that say where to resume, so this is a
         # floor and never an answer.
         self._inbox_start_id: int | None = None
-        self._outbox_level_cursor: int = 0
-        self._outbox_index_cursor: int = 0
         self._origination_level: int | None = None
 
         # Test-only inbox-backfill window (prod leaves these unset -> full backfill from origination).
@@ -341,28 +442,33 @@ class RollupMessageIndex:
     async def handle_realtime(self, head_level: int):
         with self._lock:
             if self._status == IndexStatus.realtime:
-                previous_outbox_level_cursor = self._outbox_level_cursor
-                await self._process()
-                if self._outbox_level_cursor > previous_outbox_level_cursor:
+                # New outbox rows are the whole reason these three matcher steps have anything
+                # to do, and committing them is the only event that produces one. Committed,
+                # not "the outbox got further": a pass that redoes a drain a rollback reverted
+                # ends exactly where the reverted one did, and its rows are the ones the
+                # waiting withdrawals need matched again.
+                if await self._process():
                     BridgeMatcherLocks.set_pending_outbox()
                     BridgeMatcherLocks.set_pending_tezos_withdrawals()
                     BridgeMatcherLocks.set_pending_claimed_fast_withdrawals()
 
-    async def _process(self):
-        await self._drain_outbox_levels()
+    async def _process(self) -> bool:
+        """One pass. Answers whether any outbox rows were committed in it."""
+        committed = await self._drain_outbox_levels()
 
         cursor = await self._inbox_cursor()
         inbox = await self._fetch_inbox_page(cursor)
         if not inbox:
             if self._status == IndexStatus.syncing:
                 self._status = IndexStatus.realtime
-                return
+                return committed
         else:
             cursor = await self._walk_inbox_page(inbox, cursor)
             await self._commit_inbox_page()
 
-        await self._drain_outbox_levels()
+        committed |= await self._drain_outbox_levels()
         await self._write_cursor_sentinel(cursor)
+        return committed
 
     async def _inbox_cursor(self) -> int:
         """The last inbox id already consumed, read back from the row that records it.
@@ -463,30 +569,33 @@ class RollupMessageIndex:
             type=RollupInboxMessageType.external,
         )
 
-    async def _drain_outbox_levels(self):
+    async def _drain_outbox_levels(self) -> bool:
         """Fetch every pending outbox level the rollup node has already applied, then store the result.
 
         A level leaves the pending set only once its messages are committed: the fetch can
         fail (a wedged rollup node answers 500 for every level above the one it processed),
         and until the rows are in the database the pending level is the only record that the
         work is still owed.
+
+        Answers whether any outbox rows were committed, which is what arms the matcher.
         """
+        # The queue is read back from its rows here, so a pass that follows a rollback works
+        # from the queue that rollback restored rather than from what this object remembers.
+        await self._pending_outbox_levels.refresh()
         if len(self._pending_outbox_levels):
             processed_level = await self._rollup_processed_level()
             while (outbox_level := self._pending_outbox_levels.take_lowest(processed_level)) is not None:
                 await self._handle_outbox_level(outbox_level)
 
-        if len(self._create_outbox_batch):
+        committed = bool(self._create_outbox_batch)
+        if committed:
             await RollupOutboxMessage.bulk_create(self._create_outbox_batch, ignore_conflicts=True)
             self._logger.info('Successfully saved %d new Outbox Messages.', len(self._create_outbox_batch))
-            self._outbox_index_cursor = self._create_outbox_batch[-1].index
-            self._outbox_level_cursor = self._create_outbox_batch[-1].level
-            BridgeMatcherLocks.set_pending_outbox()
-
             del self._create_outbox_batch[:]
 
         # The drained levels are rows now; what is left is what is still deferred or owed.
         await self._pending_outbox_levels.save()
+        return committed
 
     async def _rollup_processed_level(self) -> int:
         """The last L1 level the rollup node has applied — the ceiling the drain may ask for.
@@ -535,13 +644,12 @@ class RollupMessageIndex:
         self._logger.info('_handle_outbox_level %d with %d messages.', outbox_level, len(outbox))
 
         if len(outbox) == self._protocol.smart_rollup_max_outbox_messages_per_level:
-            if outbox_level < self._outbox_level_cursor:
-                return
-            if outbox_level == self._outbox_level_cursor:
-                if self._outbox_index_cursor < len(outbox) - 1:
-                    outbox = outbox[self._outbox_index_cursor :]
-                else:
-                    return
+            self._logger.info('Full outbox found at level %d, going to check next level for the rest Outbox Messages...', outbox_level)
+            # No inbox message stands behind this level — the queue is its only record — so it
+            # is owed before anything below can decide it has nothing left to do. A level is
+            # only ever walked twice when its rows are already stored, and `ignore_conflicts`
+            # on the insert is what makes the second walk cost nothing but the fetch.
+            self._pending_outbox_levels.add(outbox_level + 1)
 
         created_at = datetime.fromisoformat(await self._tzkt.request('GET', f'v1/blocks/{outbox_level}/timestamp'))
         cemented_level = OutboxMessageService.estimate_outbox_message_cemented_level(
@@ -573,25 +681,20 @@ class RollupMessageIndex:
                 )
             )
 
-        if len(outbox) == self._protocol.smart_rollup_max_outbox_messages_per_level:
-            self._logger.info('Full outbox found at level %d, going to check next level for the rest Outbox Messages...', outbox_level)
-            # No inbox message stands behind this level — the stored queue is its only record.
-            self._pending_outbox_levels.add(outbox_level + 1)
-
     async def _prepare_new_index(self):
-        """Settle what a walk cannot read off the rows: the pending outbox set.
+        """Apply to the stored queue the one thing only a boot knows: the origination floor.
 
-        Nothing here seeds the cursor. Rows already saved carry it themselves, and this runs
-        once per process while `_inbox_cursor` runs once per page — a value copied out here
-        would be the stale half of exactly the divergence that method exists to close.
+        Nothing here seeds a cursor, the inbox one or the queue. Rows already saved carry
+        both, and this runs once per process while they are re-read once per pass — a value
+        copied out here would be the stale half of exactly the divergence they exist to close.
         """
         origination_level = await self._get_origination_level()
         if await RollupInboxMessage.all().exists():
             self._logger.info('Last previous saved Inbox Message found. Going to continue with next Inbox Message.')
             await self._pending_outbox_levels.load(floor=origination_level)
         else:
-            # No inbox rows: this database was wiped or is brand new. `dipdup_meta` survives a
-            # reindex, so a stored queue here belongs to a history that no longer exists.
+            # No inbox rows: this database was wiped or is brand new. Its queue went down with
+            # it; the `dipdup_meta` key a pre-table version of this index used did not.
             self._logger.info('No previous saved Inbox Message found.')
             await self._pending_outbox_levels.drop()
 

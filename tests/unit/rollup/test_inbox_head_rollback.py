@@ -14,8 +14,9 @@ is `realtime`, `dipdup_head` is at the chain head, and the L1 deposit — re-del
 re-created by TzKT's own rollback handling — simply never matches, because every L2-deposit
 matcher step needs `bridge_deposit.inbox_message` attached first.
 
-`dipdup_meta` is not journalled, so `PendingOutboxLevels` does not move; the divergence is
-between the cursor and `rollup_inbox_message` alone.
+The owed outbox levels are journalled alongside these rows (`test_outbox_head_rollback.py` is
+what that is for), so they move with them; the divergence under test here is between the cursor
+and `rollup_inbox_message` alone.
 
 Offline: the fake TzKT answers *from a universe* by applying the filter in the URL, so a
 message that is never asked for is a row that is never written — the assertions are about the
@@ -228,8 +229,9 @@ async def test_a_rolled_back_sentinel_takes_the_cursor_back_with_it(db: Any) -> 
         (103, 0),
     ], 'the sentinel moved up to the external of the new page'
 
-    # One INSERT for the row, one DELETE of the old sentinel and one INSERT of the new one.
-    assert await _roll_back_head(to_level=ROLLED_BACK_LEVEL - 1) == 3, 'the rollback reverted nothing, so it proves nothing'
+    # One INSERT for the row, one DELETE of the old sentinel and one INSERT of the new one —
+    # plus the queue row the external at this head added and the drain then retired.
+    assert await _roll_back_head(to_level=ROLLED_BACK_LEVEL - 1) == 5, 'the rollback reverted nothing, so it proves nothing'
     assert await _rows() == [(100, FIRST_LEVEL), (101, 0)], 'the revert has to put the earlier sentinel back, not just drop the later one'
 
     async with _head_handler(ROLLED_BACK_LEVEL):

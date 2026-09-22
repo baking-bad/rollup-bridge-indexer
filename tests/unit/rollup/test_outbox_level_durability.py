@@ -7,9 +7,10 @@
 written *before* the drain. A drain that died halfway therefore resumed above the external
 messages it had not served yet, and those outbox messages were gone for good.
 
-The fix stores the queue in DipDup's own `dipdup_meta` key-value table (no package model, no
-schema hash change, no reindex) and drops a level from it only once the messages it produced
-are committed.
+The fix stores the queue in a table of this package, one `rollup_pending_outbox_level` row per
+owed level, and drops a level from it only once the messages it produced are committed. (A
+package table rather than `dipdup_meta` because the queue has to be journalled with the rows it
+produces — see `test_outbox_head_rollback.py` for what an immune queue costs.)
 
 These tests cover the paths the block-bounded stand case (`tests/stand/cases/
 outbox_fetch_failure/`) cannot reach:
@@ -40,7 +41,9 @@ from rollup_bridge_indexer.handlers.rollup_message import PendingOutboxLevels
 from rollup_bridge_indexer.handlers.rollup_message import RollupMessageIndex
 from rollup_bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
 from rollup_bridge_indexer.models import RollupInboxMessage
+from rollup_bridge_indexer.models import RollupInboxMessageType
 from rollup_bridge_indexer.models import RollupOutboxMessage
+from rollup_bridge_indexer.models import RollupPendingOutboxLevel
 
 pytestmark = pytest.mark.anyio
 
@@ -159,8 +162,9 @@ def _index(tzkt: Any, rollup_node: Any) -> RollupMessageIndex:
 
 
 async def _pending_levels() -> list[int]:
-    meta = await Meta.get_or_none(key=PendingOutboxLevels.key)
-    return list(meta.value) if meta and meta.value else []
+    """The owed levels as the database holds them, plus the check that nothing else does."""
+    assert await Meta.get_or_none(key=PendingOutboxLevels.key) is None, 'the obsolete `dipdup_meta` queue was written again'
+    return [row.level for row in await RollupPendingOutboxLevel.all().order_by('level')]
 
 
 async def test_full_outbox_continuation_level_is_deferred_and_stored(db: Any) -> None:
@@ -253,7 +257,7 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
     """The continuation level of a full outbox is recoverable when its own fetch dies.
 
     `outbox_level + 1` is queued *during* the drain, after the durability write of the page
-    that started it, so it is never in `dipdup_meta` under its own name. What keeps it
+    that started it, so it is never stored under its own name. What keeps it
     reachable is its parent: level L only leaves the stored set once `bulk_create` has
     committed the rows it produced, and a drain that dies before that flush leaves L owed.
     The restart re-fetches L, the full outbox re-derives L+1, and both land.
@@ -360,3 +364,124 @@ async def test_a_wedged_node_is_not_asked_for_levels_it_cannot_answer(db: Any) -
     assert node.requested == [300], 'only the level the node has applied was asked for'
     assert await _outbox_rows() == [(300, 0)], 'the served level produced rows'
     assert await _pending_levels() == [301], 'the level the node cannot answer for stays owed'
+
+
+async def test_a_full_level_owed_a_second_time_re_derives_its_continuation(db: Any) -> None:
+    """A full level whose rows are already stored must still be walked, not recognised and skipped.
+
+    The continuation of a full outbox exists nowhere but in that outbox: no inbox message
+    stands behind L + 1, and the queue forgets it the moment its rows are committed. So the
+    only way to get L + 1 back is to fetch L again and re-derive it — which is what both the
+    crash between the row commit and the queue write, and the rollback that restores the queue
+    row of an already-drained level, ask the drain to do.
+    """
+    full_outbox = [_outbox_message(100, 0), _outbox_message(100, 1)]
+    assert len(full_outbox) == MAX_OUTBOX_MESSAGES_PER_LEVEL
+
+    node = FakeRollupNode({100: full_outbox, 101: [_outbox_message(101, 0)]}, processed_level=101)
+    index = _index(FakeTzkt(), node)
+    index._status = IndexStatus.realtime
+    index._pending_outbox_levels.add(100)
+
+    await index._drain_outbox_levels()
+    stored = [(100, 0), (100, 1), (101, 0)]
+    assert await _outbox_rows() == stored
+
+    # The same level owed again, on the same process, with its rows already in the database.
+    index._pending_outbox_levels.add(100)
+    await index._drain_outbox_levels()
+
+    assert node.requested == [100, 101, 100, 101], 'the second walk of the full level has to ask for its continuation again'
+    assert await _outbox_rows() == stored, 'and it must not double the rows it walks past on the way'
+    assert await _pending_levels() == [], 'nothing is owed once the rows are committed'
+
+
+async def test_a_chain_of_full_outbox_levels_ends_at_the_first_level_that_is_not_full(db: Any) -> None:
+    """Every full outbox owes the level after it, so a run of them is a chain — and it terminates.
+
+    Nothing in this process decides a level has already been served: the continuation is derived
+    from the outbox itself, every time. What ends the chain is therefore the data, and the first
+    level whose outbox is not full is the end of it. Asked once each, in order, and once the
+    fourth answers short nothing is left owed.
+    """
+    node = FakeRollupNode(
+        {
+            100: [_outbox_message(100, 0), _outbox_message(100, 1)],
+            101: [_outbox_message(101, 0), _outbox_message(101, 1)],
+            102: [_outbox_message(102, 0), _outbox_message(102, 1)],
+            103: [],
+        },
+        processed_level=103,
+    )
+    index = _index(FakeTzkt(), node)
+    index._status = IndexStatus.realtime
+    index._pending_outbox_levels.add(100)
+
+    await index._drain_outbox_levels()
+
+    assert node.requested == [100, 101, 102, 103], 'each level of the chain is asked for exactly once, and the short one ends it'
+    assert await _outbox_rows() == [(100, 0), (100, 1), (101, 0), (101, 1), (102, 0), (102, 1)]
+    assert await _pending_levels() == [], 'a level whose outbox is empty owes nothing after it'
+
+
+async def test_an_unbroken_chain_of_full_levels_stops_at_what_the_node_has_applied(db: Any) -> None:
+    """The other end of the chain: a node that cannot answer for the next level.
+
+    A run of full outboxes that reaches the node's ceiling does not spin on it — the level the
+    node has not applied is owed, not fetched, and the pass ends. That is the bound on a chain
+    the data has not ended yet.
+    """
+    node = FakeRollupNode(
+        {
+            100: [_outbox_message(100, 0), _outbox_message(100, 1)],
+            101: [_outbox_message(101, 0), _outbox_message(101, 1)],
+        },
+        processed_level=101,
+    )
+    index = _index(FakeTzkt(), node)
+    index._status = IndexStatus.realtime
+    index._pending_outbox_levels.add(100)
+
+    await index._drain_outbox_levels()
+
+    assert node.requested == [100, 101], 'the drain stops at the ceiling instead of walking past it'
+    assert await _pending_levels() == [102], 'the continuation the node cannot answer for yet is owed, and waits for it'
+
+
+async def test_the_queue_of_the_dipdup_meta_version_is_adopted_on_the_first_boot(db: Any) -> None:
+    """The deploy: levels the previous binary owed have to arrive in the rows, once.
+
+    The boot that first runs this code meets a live database — inbox rows committed, the queue
+    in the `dipdup_meta` key of the version that kept it there, and no rows of its own. Nothing
+    else can carry those levels across: `drop` runs only on an empty inbox table, and the walk
+    cannot re-derive them, because the cursor sits above the externals that produced them.
+
+    The origination floor applies on the way in exactly as it did to the old key, so a database
+    wedged on an impossible level does not import its wedge.
+    """
+    await RollupInboxMessage.create(
+        id=500,
+        level=ORIGINATION_LEVEL,
+        index=0,
+        type=RollupInboxMessageType.transfer,
+        message={},
+        parameters_hash=None,
+    )
+    await Meta.update_or_create(key=PendingOutboxLevels.key, defaults={'value': [50, 100, 101]})
+
+    index = _index(FakeTzkt(), FakeRollupNode({}))
+    # The origination the boot clamps against; presetting it is what `_get_origination_level`
+    # would have cached, and it puts level 50 below the floor.
+    index._origination_level = 100
+    await index._prepare_new_index()
+
+    assert await _pending_levels() == [100, 101], 'the owed levels are rows now, and the key they came from is gone'
+    assert set(index._pending_outbox_levels) == {100, 101}, 'and the running index owes what the rows say'
+
+    # The next boot finds no key and must not resurrect anything — least of all level 50.
+    restarted = _index(FakeTzkt(), FakeRollupNode({}))
+    restarted._origination_level = 100
+    await restarted._prepare_new_index()
+
+    assert await _pending_levels() == [100, 101], 'the second boot is a no-op'
+    assert set(restarted._pending_outbox_levels) == {100, 101}
