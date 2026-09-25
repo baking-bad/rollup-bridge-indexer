@@ -23,9 +23,8 @@ duplicate arriving while the emitter is mid-pass.
 Offline: no node, no websocket, no HTTP -- frames are fed straight into `_handle_subscription` and
 the real `_emitter_loop` drains them.
 
-The patch under test lives in `handlers/dipdup_patches.py`. When upstream ships the fix and that
-module is deleted, drop the `_patched` fixture below; the rest of the file is the permanent
-regression guard and must stay green against stock DipDup.
+Upstream fixed this in DipDup 8.6.2 (dipdup-io/dipdup#1328); until then the repo carried a
+runtime patch. This file is the permanent regression guard and runs against stock DipDup.
 """
 
 import asyncio
@@ -40,8 +39,6 @@ from dipdup.models import MessageType
 from dipdup.models.evm_node import EvmNodeHeadData
 from dipdup.subscriptions.evm_node import EvmNodeHeadSubscription
 
-from rollup_bridge_indexer.handlers.dipdup_patches import apply_dipdup_patches
-
 if TYPE_CHECKING:
     from dipdup.datasources import IndexDatasource
 
@@ -53,12 +50,6 @@ pytestmark = pytest.mark.anyio
 _DRAIN_TIMEOUT = max(1.0, NODE_LEVEL_TIMEOUT * 20)
 
 _BLOCK_HASH = '0x' + 'ab' * 32
-
-
-@pytest.fixture(autouse=True)
-def _patched() -> None:
-    """Apply the shipped runtime patch, exactly as `hooks/on_restart.py` does."""
-    apply_dipdup_patches()
 
 
 def _head_frame(*, block_hash: str, level: int) -> dict[str, Any]:

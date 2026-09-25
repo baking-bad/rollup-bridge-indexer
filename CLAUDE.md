@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A DipDup (v8.6.1+, Python 3.12, `uv`) indexer that tracks bridge operations between Tezos (L1) and
+A DipDup (v8.6.2+, Python 3.12, `uv`) indexer that tracks bridge operations between Tezos (L1) and
 Etherlink / Tezos X (L2, a smart rollup on Tezos). It ingests both chains independently and
 reconciles the two legs of each transfer into unified `bridge_operation` rows. Postgres storage,
 Hasura on top (`camel_case: false`; the dev compose publishes it on `HASURA_PORT`, default 49180).
@@ -204,14 +204,12 @@ seeds the `xtz` `tezos_token` row the native registration depends on.
 attached as `DipDupContext.container`, read via `get_container(ctx)`. Note that the protocol
 constants it carries are fetched from the Tezos node at startup, not hardcoded.
 
-`handlers/dipdup_patches.py`: applied from `on_restart`, before datasources start. Currently one
-patch — `EvmNodeDatasource._handle_subscription` enqueues each head `LevelData` at most once. With
-`ws_url` set, an `evm.events` index and an `evm.transactions` index open two `newHeads`
-subscriptions on one connection, the node announces every head twice, and `_emitter_loop`'s
-`del self._level_data[...]` raises `KeyError` and kills the process on the first realtime block.
-The patch **matches the installed source byte-for-byte** and raises if upstream changed it — a
-deliberate fail-loud. Upstream: dipdup-io/dipdup#1328 (unmerged, absent from 8.6.1). Removal gate:
-`tests/unit/datasource/test_evm_node_duplicate_head.py` must pass with the patch gone.
+There is no runtime patching of DipDup any more. The one patch the repo used to carry — dedup of
+duplicate `newHeads` announcements in `EvmNodeDatasource._handle_subscription`, which otherwise
+killed the process on the first realtime block whenever `ws_url` opened two subscriptions —
+shipped upstream in 8.6.2 (dipdup-io/dipdup#1328). `tests/unit/datasource/test_evm_node_duplicate_head.py`
+stays as the regression guard against stock DipDup; a DipDup bump that turns it red is a bump to
+refuse.
 
 Worth knowing when reading indexer state: with `ws_url` set, an `evm.events` index writes its
 `dipdup_index` row only when a matching log arrives, so its `level` / `updated_at` stop tracking
