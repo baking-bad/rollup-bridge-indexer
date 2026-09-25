@@ -631,7 +631,7 @@ wheels = [
 
 [[package]]
 name = "dipdup"
-version = "8.6.1"
+version = "8.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -668,9 +668,9 @@ dependencies = [
     { name = "uvloop" },
     { name = "web3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/53/f9/17353ec24bc7b14cdde1b7d09ffec5c1e5532e37573aaf5776df60e1cf1d/dipdup-8.6.1.tar.gz", hash = "sha256:ebdc4732cae399f0da32cfa2eccab4997e2dbfccc4ead5172515004736617aa7", size = 224124, upload-time = "2026-08-03T18:20:30.058Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fa/fb/2dae68a505b62747d340290a36262bc45d63b9b07d0b928ed5ff06099099/dipdup-8.6.2.tar.gz", hash = "sha256:a9e0b4f5c8e0db0e1ad166ab84712be1e0248674a866594b733790d2463b4170", size = 225088, upload-time = "2026-09-24T01:46:28.541Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/76/6cf91da3088c7777706ef8381032256b41beea740398ee0dd827d094d4d2/dipdup-8.6.1-py3-none-any.whl", hash = "sha256:0f890e87d3aca9bdb8f0db7bd18a2fd533f789bd503f84dd42b80706cd143edb", size = 361952, upload-time = "2026-08-03T18:20:28.575Z" },
+    { url = "https://files.pythonhosted.org/packages/af/b1/aae229742517d33e3950e98e91d8de590c985cff2d9279baabca920ace99/dipdup-8.6.2-py3-none-any.whl", hash = "sha256:8a0a4641e79211268edf06595260914c943e1a2c57a8967c833647d6dddaee20", size = 362939, upload-time = "2026-09-24T01:46:27.142Z" },
 ]
 
 [[package]]
@@ -2240,7 +2240,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "base58", specifier = ">=2.1.1" },
-    { name = "dipdup", specifier = ">=8.6.1" },
+    { name = "dipdup", specifier = ">=8.6.2" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
     { name = "pytezos", specifier = ">=3.16.1" },
 ]
