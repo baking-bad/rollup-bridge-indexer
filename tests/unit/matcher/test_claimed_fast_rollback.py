@@ -20,6 +20,7 @@ the journal, selected the way `ctx.rollback` selects it.
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 from typing import Any
@@ -116,22 +117,28 @@ async def _assert_back_to_before_the_reorg(l2: Any) -> None:
     assert await TezosWithdrawOperation.all().count() == 0
 
 
-async def test_a_reorg_rolls_back_the_head_before_the_claim(db: Any) -> None:
-    """The order that took mainnet down: `tezos_head` reverts first and deletes the kernel
-    message, then the claim index restores the customer's reference to it."""
-    l2 = await _claimed_fast_withdrawal_at_reorg_level()
-
-    assert await _roll_back(HEAD_INDEX, REORG_LEVEL - 1) == 1
+async def _head_then_claim() -> None:
+    await _roll_back(HEAD_INDEX, REORG_LEVEL - 1)
     await _roll_back(CLAIM_INDEX, REORG_LEVEL - 1)
 
-    await _assert_back_to_before_the_reorg(l2)
+
+async def _claim_then_head() -> None:
+    await _roll_back(CLAIM_INDEX, REORG_LEVEL - 1)
+    await _roll_back(HEAD_INDEX, REORG_LEVEL - 1)
 
 
-async def test_a_reorg_rolls_back_the_claim_before_the_head(db: Any) -> None:
-    """The opposite order, in which every reference is restored while its target still exists."""
+async def _concurrently() -> None:
+    # Both reorg messages landed before the same pass of DipDup's main loop, which `gather`s
+    # every index's queue, so the two rollbacks run side by side in two transactions.
+    await asyncio.gather(_roll_back(HEAD_INDEX, REORG_LEVEL - 1), _roll_back(CLAIM_INDEX, REORG_LEVEL - 1))
+
+
+@pytest.mark.parametrize('roll_back', [_head_then_claim, _claim_then_head, _concurrently], ids=lambda fn: fn.__name__.strip('_'))
+async def test_a_reorg_restores_the_claimed_fast_withdrawal_in_any_rollback_order(db: Any, roll_back: Any) -> None:
+    """The reorg reaches `tezos_head` and the claim index as two messages on two TzKT channels,
+    and DipDup fixes no order between them: whichever arrives first, or both at once."""
     l2 = await _claimed_fast_withdrawal_at_reorg_level()
 
-    await _roll_back(CLAIM_INDEX, REORG_LEVEL - 1)
-    assert await _roll_back(HEAD_INDEX, REORG_LEVEL - 1) == 1
+    await roll_back()
 
     await _assert_back_to_before_the_reorg(l2)
