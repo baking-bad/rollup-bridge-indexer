@@ -173,9 +173,9 @@ async def test_stale_l2_backlog_is_not_stitched_to_fresh_identical_l1(db):
 
 
 async def test_l1_on_lower_window_edge_matches(db):
-    # B1: L1 exactly 140s before L2 — the inclusive lower bound (`__gte`).
+    # B1: L1 exactly 300s before L2 — the inclusive lower bound (`__gte`).
     xtz = await seed_xtz()
-    l1 = await mk_l1(xtz, level=100, ts=TS - timedelta(seconds=140))
+    l1 = await mk_l1(xtz, level=100, ts=TS - timedelta(seconds=300))
     l2 = await mk_l2(xtz, level=200, ts=TS)
 
     await run_deposit_matching()
