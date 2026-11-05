@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+from rollup_bridge_indexer.handlers.bridge_matcher import BridgeMatcher
 from rollup_bridge_indexer.handlers.rollup_message import OutboxMessageService
 from rollup_bridge_indexer.handlers.rollup_message import RollupMessageIndex
 from rollup_bridge_indexer.handlers.ticket import TicketService
@@ -72,6 +73,8 @@ class ServiceContainer:
             rollup_node=rollup_node,
             protocol=protocol,
         )
+
+        BridgeMatcher.smart_rollup_address = bridge.smart_rollup_address
 
         self.bridge = bridge
         self.ticket_service = ticket_service

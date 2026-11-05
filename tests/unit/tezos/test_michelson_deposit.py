@@ -104,8 +104,20 @@ def test_unsupported_version_raises():
 @pytest.mark.parametrize(
     ('amount_mutez', 'receiver', 'level', 'index', 'tx_hash'),
     [
-        (1001000, 'f9e0f0a650716e7d626c66ed13459cb92491ac05', 15660790, 2, '6bcb6a6d58b9aa934216d939436b3b481a537d540e9d4db581d1064891f93d2f'),
-        (219000000, 'edbe62a59eceb6e3b11d04ee14315ff5d3c29ec6', 7056014, 2, '96ffdc48cda144179913f566766f0bb0a82d88d397cb8f16a715081ed6bdd4c9'),
+        (
+            1001000,
+            'f9e0f0a650716e7d626c66ed13459cb92491ac05',
+            15660790,
+            2,
+            '6bcb6a6d58b9aa934216d939436b3b481a537d540e9d4db581d1064891f93d2f',
+        ),
+        (
+            219000000,
+            'edbe62a59eceb6e3b11d04ee14315ff5d3c29ec6',
+            7056014,
+            2,
+            '96ffdc48cda144179913f566766f0bb0a82d88d397cb8f16a715081ed6bdd4c9',
+        ),
     ],
 )
 def test_evm_deposit_tx_hash_real_mainnet_vectors(amount_mutez, receiver, level, index, tx_hash):

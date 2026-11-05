@@ -8,7 +8,7 @@ unique and only the window + ordering separate the legs.
 
 Production incident (mainnet, 2026-06-17..21): 18 completed deposits paired a fresh L1 to a
 stale 2025 L2 of a *different* account and amount, L2 ~470 days before L1. The current value
-filters (receiver-eq + scaled-amount-eq + `l1.timestamp ∈ [l2-140s, l2]`) forbid every one of
+filters (receiver-eq + scaled-amount-eq + `l1.timestamp ∈ [l2-300s, l2]`) forbid every one of
 those, so these tests pin that the live code stays immune and the leg-integrity invariant holds.
 
 `assert_pairs_are_possible` is the invariant the prod residue violated; it is the unit-test
@@ -106,13 +106,13 @@ async def test_two_identical_close_pair_one_to_one(db):
 
 
 async def test_identical_deposits_far_apart_do_not_cross(db):
-    # A2: two identical deposits >140s apart. Each L2's window excludes the other's L1, so
+    # A2: two identical deposits >300s apart. Each L2's window excludes the other's L1, so
     # they must pair within their own time neighbourhood — never cross.
     xtz = await seed_xtz()
     early = await mk_l1(xtz, level=100, ts=TS)
-    late = await mk_l1(xtz, level=101, ts=TS + timedelta(seconds=300))
+    late = await mk_l1(xtz, level=101, ts=TS + timedelta(seconds=400))
     l2_early = await mk_l2(xtz, level=200, ts=TS)
-    l2_late = await mk_l2(xtz, level=201, ts=TS + timedelta(seconds=300))
+    l2_late = await mk_l2(xtz, level=201, ts=TS + timedelta(seconds=400))
 
     await run_deposit_matching()
 
@@ -197,9 +197,9 @@ async def test_l1_equal_timestamp_matches(db):
 
 
 async def test_l1_just_below_lower_window_edge_does_not_match(db):
-    # B3: one second past the 140s window — must not match, L2 stays pending.
+    # B3: one second past the 300s window — must not match, L2 stays pending.
     xtz = await seed_xtz()
-    l1 = await mk_l1(xtz, level=100, ts=TS - timedelta(seconds=141))
+    l1 = await mk_l1(xtz, level=100, ts=TS - timedelta(seconds=301))
     l2 = await mk_l2(xtz, level=200, ts=TS)
 
     await run_deposit_matching()

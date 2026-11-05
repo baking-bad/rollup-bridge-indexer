@@ -38,6 +38,7 @@ from rollup_bridge_indexer.models import RollupOutboxMessage
 from rollup_bridge_indexer.models import RollupOutboxMessageBuilder
 from rollup_bridge_indexer.models import RuntimeKind
 from rollup_bridge_indexer.models import TezosWithdrawOperation
+from tests.perf.seed import ROLLUP
 from tests.perf.seed import PoolSizes
 from tests.perf.seed import seed
 from tests.unit.conftest import DB_URL
@@ -157,6 +158,7 @@ async def run(scale: float, passes: int, label: str | None) -> dict:
     if DB_URL.startswith('sqlite'):
         raise SystemExit('TEST_DB_URL must point at a Postgres — sqlite has neither the round-trips nor the scans this measures.')
 
+    BridgeMatcher.smart_rollup_address = ROLLUP
     sizes = PoolSizes.scaled(scale)
     await init_empty_schema()
     async with TransactionManager().register():

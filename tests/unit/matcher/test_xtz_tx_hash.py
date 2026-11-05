@@ -37,10 +37,10 @@ def kernel_tx_hash(amount_mutez: int, receiver: str, level: int, index: int, rol
     return keccak.new(digest_bits=256, data=body + base58_decode(rollup.encode())).hexdigest()
 
 
-async def open_deposit(xtz, *, level, index=2, inbox_level=None, amount='1000000', receiver=ACCT, ts=TS):
+async def open_deposit(xtz, *, level, index=2, amount='1000000', receiver=ACCT, ts=TS):
     ph = format(level, '032d')
     l1 = await l1_deposit(xtz.ticket, level=level, amount=amount, l2_account=receiver, parameters_hash=ph, timestamp=ts)
-    await inbox_message(id=level, level=inbox_level or level, index=index, parameters_hash=ph)
+    await inbox_message(id=level, level=level, index=index, parameters_hash=ph)
     return l1
 
 
@@ -93,12 +93,12 @@ async def test_real_late_credit_finishes_a_deposit_already_marked_as_timed_out(
     # can pair it finally runs, and the pass has to bring it back.
     BridgeMatcher.smart_rollup_address = MAINNET_ROLLUP
     xtz = await seed_xtz()
-    l1 = await open_deposit(xtz, level=100, inbox_level=inbox_level, index=index, amount=amount, receiver=receiver, ts=l1_ts)
+    l1 = await open_deposit(xtz, level=inbox_level, index=index, amount=amount, receiver=receiver, ts=l1_ts)
     await run_deposit_matching()
     deposit = await BridgeDepositOperation.get(l1_transaction_id=l1.id)
     await BridgeOperation.filter(id=deposit.id).update(status=BridgeOperationStatus.inbox_matching_timeout)
 
-    l2 = await credit(xtz, level=200, ts=l2_ts, transaction_hash=tx_hash, amount=amount, receiver=receiver)
+    l2 = await credit(xtz, level=inbox_level + 1, ts=l2_ts, transaction_hash=tx_hash, amount=amount, receiver=receiver)
     await run_deposit_matching()
 
     assert await linked_l2_of(l1) == l2.id

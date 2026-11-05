@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.candidate_pool import CandidatePool
+from rollup_bridge_indexer.handlers.michelson_deposit import compute_evm_deposit_tx_hash
 from rollup_bridge_indexer.models import BridgeDepositOperation
 from rollup_bridge_indexer.models import BridgeOperation
 from rollup_bridge_indexer.models import BridgeOperationKind
@@ -26,11 +27,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('rollup_bridge_indexer.handlers.bridge_matcher')
 
-LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=20 * 7)
+LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=300)
+EVM_ADDRESS_HEX_LENGTH = 40
 
 
 class BridgeMatcher:
     matcher_lock = threading.Lock()
+    # Set while the service container is built, which precedes every matcher pass.
+    smart_rollup_address: str
 
     @classmethod
     async def check_pending_tezos_deposits(cls):
@@ -251,36 +255,94 @@ class BridgeMatcher:
             await bridge_operation.save()
 
     @classmethod
+    def _expected_xtz_tx_hash(cls, deposit):
+        l1_transaction = deposit.l1_transaction
+        receiver = l1_transaction.l2_account_id
+        if receiver is None or len(receiver) != EVM_ADDRESS_HEX_LENGTH:
+            return None
+        inbox_message = deposit.inbox_message
+        return compute_evm_deposit_tx_hash(
+            int(l1_transaction.amount),
+            receiver,
+            inbox_message.level,
+            inbox_message.index,
+            cls.smart_rollup_address,
+        )
+
+    @staticmethod
+    async def _finish_xtz_deposit(bridge_deposit, l2_deposit):
+        bridge_deposit.l2_transaction = l2_deposit
+        await bridge_deposit.save()
+        bridge_deposit.l1_transaction.parameters_hash = None
+        await bridge_deposit.l1_transaction.save()
+        bridge_deposit.inbox_message.parameters_hash = None
+        await bridge_deposit.inbox_message.save()
+
+        bridge_operation = await BridgeOperation.get(id=bridge_deposit.id)
+        bridge_operation.is_completed = True
+        bridge_operation.is_successful = l2_deposit.l2_token is not None
+        bridge_operation.runtime_kind = l2_deposit.runtime_kind
+        bridge_operation.updated_at = l2_deposit.timestamp
+        bridge_operation.status = BridgeOperationStatus.finished
+        await bridge_operation.save()
+
+    @classmethod
     async def check_pending_etherlink_xtz_deposits(cls):
         if not BridgeMatcherLocks.pending_etherlink_xtz_deposits:
             return
         BridgeMatcherLocks.pending_etherlink_xtz_deposits = False
 
-        qs = (
+        pending = await (
             EtherlinkDepositOperation.filter(
                 bridge_deposits=None,
                 l2_token_id='xtz_evm',
                 # EVM-runtime rows only. Michelson rows carry a deterministic op-hash key
-                # (coords via check_pending_michelson_deposits) and this value-based zip must
-                # not preempt it — the `runtime_kind` discriminator replaced the old `o…`-prefix exclude.
+                # (coords via check_pending_michelson_deposits) and this step must not preempt
+                # it — the `runtime_kind` discriminator replaced the old `o…`-prefix exclude.
                 runtime_kind=RuntimeKind.evm,
             )
             .order_by('level', 'transaction_index')
             .prefetch_related('l2_token', 'l2_token__ticket', 'l2_token__ticket__token')
         )
+        if not pending:
+            return
 
-        # This step has no exact key — an XTZ deposit is recognised by its value. Three of the
-        # four things that must agree are equalities and become the pool's key; only the time
-        # window is left to scan. The pairing is a heuristic, so a key that fits more than one
-        # open deposit is the case worth hearing about, and the pool says so.
-        candidates: CandidatePool[BridgeDepositOperation, tuple[str, str, str]] = CandidatePool(
-            'pending_etherlink_xtz_deposits',
-            BridgeDepositOperation.filter(
-                l2_transaction=None,
-                inbox_message_id__isnull=False,
+        def open_deposits():
+            return (
+                BridgeDepositOperation.filter(
+                    l2_transaction=None,
+                    inbox_message_id__isnull=False,
+                )
+                .order_by('l1_transaction__timestamp')
+                .prefetch_related('inbox_message', 'l1_transaction')
             )
-            .order_by('l1_transaction__timestamp')
-            .prefetch_related('inbox_message', 'l1_transaction'),
+
+        # The credit's hash names its deposit however late the credit lands, so this pass has no
+        # time window and no tie to break.
+        by_tx_hash: CandidatePool[BridgeDepositOperation, str] = CandidatePool(
+            'pending_etherlink_xtz_deposits',
+            open_deposits(),
+            key=cls._expected_xtz_tx_hash,
+        )
+        unnamed: list[EtherlinkDepositOperation] = []
+        for l2_deposit in pending:
+            bridge_deposit = await by_tx_hash.take(l2_deposit.transaction_hash)
+            if bridge_deposit is None:
+                unnamed.append(l2_deposit)
+                continue
+            await cls._finish_xtz_deposit(bridge_deposit, l2_deposit)
+
+        if not unnamed:
+            return
+
+        # What the hash could not name is recognised by its value. Three of the four things that
+        # must agree are equalities and become the pool's key; only the time window is left to
+        # scan. The pairing is a heuristic, so a key that fits more than one open deposit is the
+        # case worth hearing about, and the pool says so. The pool reads after the pass above, so
+        # the deposits it claimed are no longer offered.
+        by_value: CandidatePool[BridgeDepositOperation, tuple[str, str, str]] = CandidatePool(
+            'pending_etherlink_xtz_deposits_by_value',
+            open_deposits(),
             key=lambda deposit: (
                 deposit.l1_transaction.ticket_id,
                 deposit.l1_transaction.l2_account_id,
@@ -288,14 +350,13 @@ class BridgeMatcher:
             ),
         )
 
-        async for l2_deposit in qs:
-            l2_deposit: EtherlinkDepositOperation
+        for l2_deposit in unnamed:
             # L1 stores mutez, the L2 EVM handle stores wei; the scale is the decimal gap
             # between the two token representations of the same native ticket (no magic 12).
             scale = 10 ** (l2_deposit.l2_token.decimals - l2_deposit.l2_token.ticket.token.decimals)
             l1_amount = str(int(l2_deposit.amount) // scale)
             window_start = l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX
-            bridge_deposit = await candidates.take(
+            bridge_deposit = await by_value.take(
                 (l2_deposit.l2_token.ticket_id, l2_deposit.l2_account_id, l1_amount),
                 where=lambda d, start=window_start, end=l2_deposit.timestamp: start <= d.l1_transaction.timestamp <= end,
             )
@@ -303,20 +364,10 @@ class BridgeMatcher:
             if bridge_deposit is None:
                 continue
 
-            bridge_deposit.l2_transaction = l2_deposit
-            await bridge_deposit.save()
-            bridge_deposit.l1_transaction.parameters_hash = None
-            await bridge_deposit.l1_transaction.save()
-            bridge_deposit.inbox_message.parameters_hash = None
-            await bridge_deposit.inbox_message.save()
-
-            bridge_operation = await BridgeOperation.get(id=bridge_deposit.id)
-            bridge_operation.is_completed = True
-            bridge_operation.is_successful = l2_deposit.l2_token is not None
-            bridge_operation.runtime_kind = l2_deposit.runtime_kind
-            bridge_operation.updated_at = l2_deposit.timestamp
-            bridge_operation.status = BridgeOperationStatus.finished
-            await bridge_operation.save()
+            # Expected only while indexing credits older than the derivation. On a live network it
+            # means a kernel changed the formula, which nothing else reports.
+            logger.warning('EVM XTZ credit %s paired by value: its transaction hash names no open deposit', l2_deposit.transaction_hash)
+            await cls._finish_xtz_deposit(bridge_deposit, l2_deposit)
 
     @classmethod
     async def check_pending_etherlink_withdrawals(cls):
