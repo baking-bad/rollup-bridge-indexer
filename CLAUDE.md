@@ -143,10 +143,14 @@ first. `on_restart` and `on_synchronized` set every flag — a full re-match pas
 a list here. What the *order* encodes, and what a reordering would break:
 
 - **Deterministic keys before heuristics.** Every step matches on a parameter hash or on inbox /
-  outbox coordinates except one: EVM XTZ deposits carry no coordinates, so they are zipped on
-  `(ticket, L2 account, amount)` within a 140 s window (`LAYERS_TIMESTAMP_GAP_MAX`), with
-  mutez→wei scaling taken from the two tokens' decimals.
-- **That heuristic step is filtered to `runtime_kind=evm`** so it cannot preempt the op-hash step
+  outbox coordinates except one: an EVM XTZ credit carries no coordinates. Its transaction hash is
+  derived from them (`compute_evm_deposit_tx_hash`), which pairs a credit however late it lands;
+  mainnet has credits up to 4 h 24 m behind their L1 operation.
+  What that hash cannot name — credits before 2024-11-07, or a kernel that changed the formula — is
+  zipped on `(ticket, L2 account, amount)` within a 300 s window (`LAYERS_TIMESTAMP_GAP_MAX`), with
+  mutez→wei scaling taken from the two tokens' decimals. That path logs `paired by value`, and on a
+  live network the line means the derivation moved.
+- **That step is filtered to `runtime_kind=evm`** so it cannot preempt the op-hash step
   that claims Michelson deposits. Without the filter the two runtimes steal each other's rows.
 - **A matched parameter hash is nulled on both sides** once consumed. That is what stops a hash
   being claimed twice, and what keeps the candidate pools small.

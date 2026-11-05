@@ -1,4 +1,4 @@
-"""Tezos X Michelson (tz1-receiver) XTZ-deposit support: pure helpers, no I/O.
+"""XTZ-deposit hash derivation and Michelson (tz1-receiver) routing: pure helpers, no I/O.
 
 An XTZ deposit routed to a Michelson `tz1` receiver lands on L2 as a synthetic
 pseudo-Michelson `transaction` from TEZLINK_DEPOSITOR. The L1<->L2 key is the
@@ -13,6 +13,10 @@ so we compute the expected hash from L1 and match the observed L2 op by equality
 derivation mirrors the Tezos X kernel (`etherlink/kernel_latest/` in gitlab.com/tezos/tezos);
 correctness is pinned by golden vectors (tests/unit/tezos/test_michelson_deposit.py),
 which fail if the kernel changes — not by the description here.
+
+An EVM-target deposit is the same kernel struct with a 20-byte receiver: the digest is the L2
+transaction hash, verified against every mainnet XTZ credit since 2024-11-07 07:13 UTC. Earlier
+credits were named differently.
 
 Versioning: the op-hash carries NO in-band version — it is tied to the kernel snapshot.
 If a kernel changes the RLP shape, the 10**12 scaling, or the seed, this computes the
@@ -149,9 +153,17 @@ def compute_deposit_op_hash(
     `amount_mutez` is the ticket amount in mutez (scaled to wei here); `rollup_address`
     is the `sr1…` rollup the deposit went to. See module docstring for the formula.
     """
+    return base58_encode(_deposit_digest(amount_mutez, receiver.rlp_item, inbox_level, inbox_msg_id, rollup_address), b'o').decode()
+
+
+def compute_evm_deposit_tx_hash(amount_mutez: int, receiver: str, inbox_level: int, inbox_msg_id: int, rollup_address: str) -> str:
+    """The bare-hex L2 transaction hash of an XTZ deposit to the 40-hex EVM `receiver`."""
+    return _deposit_digest(amount_mutez, bytes.fromhex(receiver), inbox_level, inbox_msg_id, rollup_address).hex()
+
+
+def _deposit_digest(amount_mutez: int, receiver_rlp_item: object, inbox_level: int, inbox_msg_id: int, rollup_address: str) -> bytes:
     # RLP order: amount (wei = mutez*10**12), receiver, inbox_level, inbox_msg_id.
-    body = rlp.encode([amount_mutez * WEI_PER_MUTEZ, receiver.rlp_item, inbox_level, inbox_msg_id])
-    # seed = raw rollup address, appended after the rlp; digest -> base58 'o' op-hash.
+    body = rlp.encode([amount_mutez * WEI_PER_MUTEZ, receiver_rlp_item, inbox_level, inbox_msg_id])
+    # seed = raw rollup address, appended after the rlp.
     seed = base58_decode(rollup_address.encode())
-    digest = keccak.new(digest_bits=256, data=body + seed).digest()
-    return base58_encode(digest, b'o').decode()
+    return keccak.new(digest_bits=256, data=body + seed).digest()

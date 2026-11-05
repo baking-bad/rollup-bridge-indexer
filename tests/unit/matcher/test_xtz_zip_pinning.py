@@ -1,7 +1,7 @@
 """What `check_pending_etherlink_xtz_deposits` does today, pinned leg by leg.
 
 The step is the matcher's only heuristic: EVM XTZ credits carry no inbox coords, so it zips
-an L2 row to a bridge deposit by ticket + receiver + decimals-scaled amount inside a 140s
+an L2 row to a bridge deposit by ticket + receiver + decimals-scaled amount inside a 300s
 backward window, and among the survivors takes the *earliest* L1 by timestamp.
 `test_identical_amount_collisions.py` pins that whatever pair it produces is admissible; this
 file pins the rest — every filter that narrows the candidate pool, which candidate wins when
@@ -147,18 +147,18 @@ async def test_amount_scale_follows_the_token_decimals_and_not_a_hardcoded_gap(d
     assert await linked_l2_of(l1) == l2.id
 
 
-async def test_l1_outside_the_140s_window_on_either_side_does_not_pair(db):
+async def test_l1_outside_the_300s_window_on_either_side_does_not_pair(db):
     # Both bounds of LAYERS_TIMESTAMP_GAP_MAX. `late` is one second AFTER the credit (an L1 can
-    # never follow its own L2 credit); `stale` is one second past the 140s reach behind it.
+    # never follow its own L2 credit); `stale` is one second past the 300s reach behind it.
     xtz = await seed_xtz()
     late = await mk_l1(xtz, level=100, ts=TS + timedelta(seconds=1))
-    stale = await mk_l1(xtz, level=101, ts=TS - timedelta(seconds=141))
+    stale = await mk_l1(xtz, level=101, ts=TS - timedelta(seconds=301))
     l2 = await mk_l2(xtz, level=200, ts=TS)
 
     await run_deposit_matching()
 
     assert await linked_l2_of(late) is None, 'an L1 after the L2 credit was paired'
-    assert await linked_l2_of(stale) is None, 'an L1 older than the 140s window was paired'
+    assert await linked_l2_of(stale) is None, 'an L1 older than the 300s window was paired'
     assert await BridgeDepositOperation.filter(l2_transaction_id=l2.id).count() == 0
 
 

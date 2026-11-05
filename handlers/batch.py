@@ -14,8 +14,8 @@ async def run_matcher_steps() -> None:
 
     Each step is a no-op unless its pending flag is set. Deposit steps run
     deterministic-before-heuristic: op-hash (needs the inbox attached above) and coords
-    are exact keys, the xtz value-zip is a heuristic; their candidate pools are disjoint
-    regardless (see the queryset filters).
+    are exact keys, the xtz step tries the derived transaction hash before its value-zip;
+    their candidate pools are disjoint regardless (see the queryset filters).
     """
     await BridgeMatcher.check_pending_tezos_deposits()
     await BridgeMatcher.check_pending_inbox()

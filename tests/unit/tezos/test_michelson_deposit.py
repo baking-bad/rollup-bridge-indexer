@@ -5,10 +5,12 @@ the L2 synthetic transaction hash served by TzKT — i.e. they prove the L1->L2
 hash reconstruction is correct on live chain data, not just self-consistent.
 """
 
+import pytest
 import rlp
 
 from rollup_bridge_indexer.handlers.michelson_deposit import DepositReceiver
 from rollup_bridge_indexer.handlers.michelson_deposit import compute_deposit_op_hash
+from rollup_bridge_indexer.handlers.michelson_deposit import compute_evm_deposit_tx_hash
 from rollup_bridge_indexer.handlers.michelson_deposit import expected_op_hash_from_inbox
 from rollup_bridge_indexer.handlers.michelson_deposit import l2_account_from_routing_info
 from rollup_bridge_indexer.handlers.michelson_deposit import parse_routing_info
@@ -97,6 +99,30 @@ def test_unsupported_version_raises():
     except ValueError:
         return
     raise AssertionError('expected ValueError for unknown version')
+
+
+@pytest.mark.parametrize(
+    ('amount_mutez', 'receiver', 'level', 'index', 'tx_hash'),
+    [
+        (
+            1001000,
+            'f9e0f0a650716e7d626c66ed13459cb92491ac05',
+            15660790,
+            2,
+            '6bcb6a6d58b9aa934216d939436b3b481a537d540e9d4db581d1064891f93d2f',
+        ),
+        (
+            219000000,
+            'edbe62a59eceb6e3b11d04ee14315ff5d3c29ec6',
+            7056014,
+            2,
+            '96ffdc48cda144179913f566766f0bb0a82d88d397cb8f16a715081ed6bdd4c9',
+        ),
+    ],
+)
+def test_evm_deposit_tx_hash_real_mainnet_vectors(amount_mutez, receiver, level, index, tx_hash):
+    # Real mainnet credits. The first is from the current kernel, the second from 2024-11-07.
+    assert compute_evm_deposit_tx_hash(amount_mutez, receiver, level, index, 'sr1Ghq66tYK9y3r8CC1Tf8i8m5nxh8nTvZEf') == tx_hash
 
 
 def test_op_hash_golden_vector():

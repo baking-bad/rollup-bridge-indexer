@@ -120,6 +120,7 @@ async def evm_l2_deposit(
     timestamp: datetime = TS,
     ticket: TezosTicket | None = None,
     ticket_owner: str | None = None,
+    transaction_hash: str = 'ef' * 32,
 ) -> EtherlinkDepositOperation:
     """An L2 deposit row as the EVM-side handlers store it (bare-hex tx hash).
 
@@ -131,7 +132,7 @@ async def evm_l2_deposit(
         timestamp=timestamp,
         level=level,
         address='cd' * 20,
-        transaction_hash='ef' * 32,
+        transaction_hash=transaction_hash,
         transaction_index=0,
         log_index=0,
         l2_account=await _l2_account(l2_account),
