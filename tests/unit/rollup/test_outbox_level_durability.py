@@ -141,6 +141,15 @@ def _server_error() -> aiohttp.ClientResponseError:
     return aiohttp.ClientResponseError(request_info=None, history=(), status=500, message='Internal Server Error')  # type: ignore[arg-type]
 
 
+class ProcessDied(Exception):
+    """The process going down mid-drain (OOM, SIGKILL, a bug) — not an answer from the node.
+
+    An HTTP error from the node ends the pass instead (see the tests at the end of this
+    module); what these crash tests guard is the queue a process leaves behind when it
+    gets no chance to end the pass at all.
+    """
+
+
 def _index(tzkt: Any, rollup_node: Any) -> RollupMessageIndex:
     # Stand-ins for the container's settings objects; only the fields below are read on
     # these paths, and `ticket_service` is never reached (every message here is unhashable).
@@ -225,13 +234,13 @@ async def test_pending_levels_survive_a_failed_drain(db: Any) -> None:
             'parameter': {'entrypoint': 'default', 'value': {}},
         },
     ]
-    node = FakeRollupNode({10: [], 11: _server_error()})
+    node = FakeRollupNode({10: [], 11: ProcessDied()})
     index = _index(FakeTzkt([page], head_level=12), node)
     index._status = IndexStatus.syncing
     # The window floor `_prepare_new_index` would have settled on the way into `syncing`.
     index._inbox_start_id = 0
 
-    with pytest.raises(aiohttp.ClientResponseError):
+    with pytest.raises(ProcessDied):
         await index._process()
 
     # The cursor is already past both externals...
@@ -282,12 +291,12 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
     full_outbox = [_outbox_message(100, 0), _outbox_message(100, 1)]
     assert len(full_outbox) == MAX_OUTBOX_MESSAGES_PER_LEVEL
 
-    node = FakeRollupNode({100: full_outbox, 101: _server_error()})
+    node = FakeRollupNode({100: full_outbox, 101: ProcessDied()})
     index = _index(FakeTzkt([page], head_level=head), node)
     index._status = IndexStatus.syncing
     index._inbox_start_id = 0
 
-    with pytest.raises(aiohttp.ClientResponseError):
+    with pytest.raises(ProcessDied):
         await index._process()
 
     # The full outbox at 100 asked for 101, and the chain had reached it — so it was fetched
@@ -485,3 +494,93 @@ async def test_the_queue_of_the_dipdup_meta_version_is_adopted_on_the_first_boot
 
     assert await _pending_levels() == [100, 101], 'the second boot is a no-op'
     assert set(restarted._pending_outbox_levels) == {100, 101}
+
+
+# --- A rollup node that fails to answer ends the pass, not the process ------------------------
+#
+# The drain runs inside the `tezos_head` handler, so an exception out of it is an exception out
+# of DipDup's callback: the process exits and Swarm restarts it. Mainnet did that about 65 times
+# between 2026-10-02 and 2026-11-12, each time a `*-smart.tzkt.io` node blinked. The queue is
+# durable, so there is nothing to protect by dying: the owed level stays a row, and the next
+# head asks for it again.
+
+
+def _connection_refused() -> aiohttp.ClientConnectorError:
+    return aiohttp.ClientConnectorError(SimpleNamespace(ssl=None, host='rollup-node', port=443), OSError(111, 'Connection refused'))  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    'failure',
+    [_server_error, _connection_refused, TimeoutError],
+    ids=['500', 'connection-refused', 'timeout'],
+)
+async def test_a_failed_level_fetch_ends_the_pass_and_stays_owed(db: Any, failure: Any) -> None:
+    """What was fetched before the failure is committed; the failed level is asked for again next pass."""
+    node = FakeRollupNode({10: [_outbox_message(10, 0)], 11: failure(), 12: [_outbox_message(12, 0)]})
+    index = _index(FakeTzkt(head_level=12), node)
+    index._status = IndexStatus.realtime
+    for level in (10, 11, 12):
+        index._pending_outbox_levels.add(level)
+
+    assert await index._drain_outbox_levels() is True, 'the rows of level 10 were committed, so the matcher has work'
+
+    assert node.requested == [10, 11], 'the pass ends at the level the node failed on'
+    assert await _outbox_rows() == [(10, 0)]
+    assert await _pending_levels() == [11, 12]
+
+    node.responses[11] = [_outbox_message(11, 0)]
+    await index._drain_outbox_levels()
+
+    assert node.requested == [10, 11, 11, 12]
+    assert await _outbox_rows() == [(10, 0), (11, 0), (12, 0)]
+    assert await _pending_levels() == []
+
+
+async def test_a_failed_continuation_fetch_keeps_the_continuation_owed(db: Any) -> None:
+    """A full level's rows are committed even when its continuation fails, so the continuation must be a row.
+
+    This is the case where ending the pass differs from dying: the parent leaves the queue with
+    its rows, and the continuation, which exists only in this process's memory, has to be
+    written to the queue by the same save.
+    """
+    full_outbox = [_outbox_message(100, 0), _outbox_message(100, 1)]
+    node = FakeRollupNode({100: full_outbox, 101: _server_error()})
+    index = _index(FakeTzkt(head_level=101), node)
+    index._status = IndexStatus.realtime
+    index._pending_outbox_levels.add(100)
+
+    await index._drain_outbox_levels()
+
+    assert node.requested == [100, 101]
+    assert await _outbox_rows() == [(100, 0), (100, 1)]
+    assert await _pending_levels() == [101]
+
+    restarted_node = FakeRollupNode({101: [_outbox_message(101, 0)]})
+    # A fresh object knows nothing; only the rows say 101 is owed.
+    restarted = _index(FakeTzkt(head_level=101), restarted_node)
+    restarted._status = IndexStatus.realtime
+    await restarted._drain_outbox_levels()
+
+    assert restarted_node.requested == [101]
+    assert await _outbox_rows() == [(100, 0), (100, 1), (101, 0)]
+    assert await _pending_levels() == []
+
+
+async def test_a_failed_head_level_request_leaves_the_queue_untouched(db: Any) -> None:
+    """`global/block/head/level` is the first thing the drain asks; its failure must end the pass too."""
+
+    class NodeWithoutHead(FakeRollupNode):
+        async def request(self, method: Any = None, url: Any = None, **kwargs: Any) -> Any:
+            if url == 'global/block/head/level':
+                raise _connection_refused()
+            return await super().request(method, url, **kwargs)
+
+    node = NodeWithoutHead({10: [_outbox_message(10, 0)]})
+    index = _index(FakeTzkt(head_level=10), node)
+    index._status = IndexStatus.realtime
+    index._pending_outbox_levels.add(10)
+
+    assert await index._drain_outbox_levels() is False
+
+    assert node.requested == []
+    assert await _pending_levels() == [10]
