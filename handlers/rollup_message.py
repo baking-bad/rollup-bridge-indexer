@@ -10,6 +10,7 @@ from uuid import uuid5
 
 import aiohttp
 import orjson
+from dipdup.http import safe_exceptions
 from dipdup.models import IndexStatus
 from dipdup.models import Meta
 from pydantic import BaseModel
@@ -64,6 +65,10 @@ if TYPE_CHECKING:
 
 _WITHDRAW_MICHELSON_TYPE = MichelsonType.match(michelson_to_micheline(WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE))
 _FAST_WITHDRAW_MICHELSON_TYPE = MichelsonType.match(michelson_to_micheline(FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE))
+
+
+# What DipDup's HTTP client retries and then re-raises once `retry_count` is spent.
+TRANSIENT_HTTP_ERRORS = safe_exceptions
 
 
 class InboxMessageService:
@@ -583,9 +588,18 @@ class RollupMessageIndex:
         # from the queue that rollback restored rather than from what this object remembers.
         await self._pending_outbox_levels.refresh()
         if len(self._pending_outbox_levels):
-            processed_level = await self._rollup_processed_level()
-            while (outbox_level := self._pending_outbox_levels.take_lowest(processed_level)) is not None:
-                await self._handle_outbox_level(outbox_level)
+            # A node that fails to answer ends the pass, not the process: this runs inside the
+            # `tezos_head` handler, where an exception exits DipDup. The level is still owed, so
+            # it goes back to the queue and the next head asks for it again.
+            outbox_level = None
+            try:
+                processed_level = await self._rollup_processed_level()
+                while (outbox_level := self._pending_outbox_levels.take_lowest(processed_level)) is not None:
+                    await self._handle_outbox_level(outbox_level)
+            except TRANSIENT_HTTP_ERRORS as e:
+                if outbox_level is not None:
+                    self._pending_outbox_levels.add(outbox_level)
+                self._logger.error('Outbox drain stopped at level %s, retrying on the next head: %r', outbox_level, e)
 
         committed = bool(self._create_outbox_batch)
         if committed:

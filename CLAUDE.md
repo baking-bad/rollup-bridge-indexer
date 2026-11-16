@@ -127,6 +127,9 @@ indexes start and pumped afterwards from `on_head`.
   the rows it is about are gone by the time anyone reads the log.
 - The drain ceiling is the rollup node's own `global/block/head/level`, not the L1 head: a node
   that stopped applying blocks still answers RPC but cannot resolve levels above what it applied.
+  A node that fails to answer at all ends the pass, not the process: the drain runs inside the
+  `tezos_head` handler, the level stays queued, and the next head asks again. The ERROR line
+  `Outbox drain stopped at level` is what an outage leaves behind.
 - The same module owns all **parameter hashing** — `uuid5(NAMESPACE_OID, orjson.dumps(dto,
   OPT_SORT_KEYS))` over normalized DTOs — for inbox messages, L1 deposit transactions, outbox
   messages (plain + fast) and L2 withdrawal events. Matching hashes is how L1 ops and L2 events
