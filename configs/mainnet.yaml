@@ -31,7 +31,7 @@ datasources:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
     # Mirrored from the base config, where the full rationale lives: `ws_url` carries the node's
-    # websocket path for realtime heads (and the duplicate-head patch that goes with it), `http` is
+    # websocket path for realtime heads, `http` is
     # the client-side ratelimit — without it `ratelimit_rate` defaults to 0, i.e. no throttling.
     ws_url: ${ETHERLINK_NODE_WS:-~}
     http:
