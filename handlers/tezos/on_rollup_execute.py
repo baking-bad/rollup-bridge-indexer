@@ -1,4 +1,11 @@
+import asyncio
+from http import HTTPStatus
+from logging import Logger
+from typing import Any
+
+import aiohttp
 from dipdup.context import HandlerContext
+from dipdup.datasources.http import HttpDatasource
 from dipdup.models.tezos import TezosSmartRollupExecute
 from eth_abi.exceptions import ParseError
 from tortoise.exceptions import DoesNotExist
@@ -13,6 +20,24 @@ from rollup_bridge_indexer.models import BridgeOperationType
 from rollup_bridge_indexer.models import BridgeWithdrawOperation
 from rollup_bridge_indexer.models import TezosWithdrawOperation
 from rollup_bridge_indexer.types.output_proof.output_proof import OutputProofData
+
+
+async def fetch_block_operations(rpc: HttpDatasource, level: int, logger: Logger, attempts: int = 10, delay: float = 3.0) -> Any:
+    """The operations of block `level`, asked for again while the RPC answers 404.
+
+    TzKT reported the execute, the RPC is a separate service and can be a block behind it;
+    a block it has not applied yet answers 404, and DipDup does not retry a 4xx.
+    """
+    url = f'chains/main/blocks/{level}/operations'
+    for attempt in range(1, attempts):
+        try:
+            return await rpc.request('GET', url)
+        except aiohttp.ClientResponseError as e:
+            if e.status != HTTPStatus.NOT_FOUND:
+                raise
+            logger.warning('Tezos RPC has no block %d yet (attempt %d/%d)', level, attempt, attempts)
+            await asyncio.sleep(delay)
+    return await rpc.request('GET', url)
 
 
 async def on_rollup_execute(
@@ -39,7 +64,7 @@ async def on_rollup_execute(
         assert outbox_message
     else:
         rpc = ctx.get_http_datasource('tezos_node')
-        block_operations = await rpc.request('GET', f'chains/main/blocks/{execute.data.level}/operations')
+        block_operations = await fetch_block_operations(rpc, execute.data.level, ctx.logger)
         for group in block_operations[3]:
             if group['hash'] != execute.data.hash:
                 continue

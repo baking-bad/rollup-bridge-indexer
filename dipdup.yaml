@@ -52,10 +52,9 @@ datasources:
     # carry the node's websocket path (`wss://host/ws`) -- a bare host answers 405 to the upgrade and
     # fails at connect time; unset (`~`) falls back to polling.
     # Every deployment pairs an `evm.events` index with an `evm.transactions` one, so DipDup opens two
-    # `newHeads` subscriptions on one connection and the node announces every head twice. The duplicate
-    # is dropped by `handlers/dipdup_patches.py`, without which `_emitter_loop` dies on
-    # `del self._level_data[head.hash]` at the first realtime block. Upstream fix:
-    # https://github.com/dipdup-io/dipdup/pull/1328 -- unmerged, absent from 8.6.1.
+    # `newHeads` subscriptions on one connection and the node announces every head twice. DipDup drops
+    # the duplicate since 8.6.2 (dipdup-io/dipdup#1328); `tests/unit/datasource/test_evm_node_duplicate_head.py`
+    # guards it.
     # NOTE for anything reading indexer state: with `ws_url` set, an `evm.events` index writes its
     # `dipdup_index` row only when a matching log arrives, so its `level`/`updated_at` stop tracking the
     # head. Liveness must be read from `dipdup_head[etherlink_node]` or from the `evm.transactions`
