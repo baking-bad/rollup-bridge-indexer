@@ -1,16 +1,3 @@
-"""Contract: an L1 rollback of an outbox message keeps the bridge withdrawal attached to it.
-
-The kernel's outbox message is stored by the rollup-message drain in the `tezos_head` handler, so
-its INSERT is journalled under `tezos_head`. The withdrawal that claims it is attached by
-`check_pending_outbox` in the `batch` of whichever index delivered the pass — on mainnet usually
-an L2 index, whose journal an L1 rollback does not touch. Reverting the INSERT deletes the message,
-and `bridge_withdrawal.outbox_message` is a plain Tortoise FK, `ON DELETE CASCADE`: the database
-deletes the bridge withdrawal with it, past DipDup's journal, and leaves its `bridge_operation`
-behind with no withdrawal row. Mainnet lost withdrawals that way on 2026-10-13 and 2026-10-14.
-
-The withdrawal has to survive, and it has to match again once the drain stores the message anew.
-"""
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -43,11 +30,7 @@ AMOUNT_MUTEZ = 1_000_000
 
 
 async def _native_withdrawal_message() -> tuple[dict[str, Any], str]:
-    """An XTZ withdrawal outbox message as the rollup node serves it, with its real ticket.
-
-    The hash comes from the drain's own derivation, which needs the ticket row its content names.
-    """
-    ticket_service = TicketService(None, None, None)  # type: ignore[arg-type]  # a registered ticket needs no datasource
+    ticket_service = TicketService(None, None, None)  # type: ignore[arg-type]
     ticket_hash = ticket_service.get_ticket_hash(f.NATIVE_TICKETER, TicketContent.model_validate({'nat': '0', 'bytes': None}))
     token = await TezosToken.create(id='xtz', contract_address=f.NATIVE_TICKETER, decimals=6, type='native')
     ticket = await TezosTicket.create(hash=str(ticket_hash), ticketer_address=f.NATIVE_TICKETER, token=token, whitelisted=True)
@@ -84,10 +67,9 @@ async def test_a_reorg_of_the_outbox_message_keeps_its_bridge_withdrawal(db: Any
     assert await RollupOutboxMessage.all().count() == 0
     withdrawal = await BridgeWithdrawOperation.get_or_none(l2_transaction_id=l2.id)
     assert withdrawal is not None, 'the rollback deleted the bridge withdrawal'
-    assert withdrawal.outbox_message_id is None  # type: ignore[attr-defined]  # tortoise generates the FK id attr
+    assert withdrawal.outbox_message_id is None  # type: ignore[attr-defined]
     assert await BridgeOperation.filter(id=withdrawal.id).exists()
 
-    # The reorged chain carries the message again, one level later, and the drain stores it.
     redrained = await f.outbox_message(level=REORG_LEVEL + 1, message=message, parameters_hash=parameters_hash)
     BridgeMatcherLocks.set_pending_outbox()
     await f.run_matcher_pass()

@@ -61,15 +61,6 @@ async def _revert_datasource_journal(ctx: HookContext, index: Index, to_level: i
 
 
 async def _detach_withdrawals(ctx: HookContext, outbox_message_id: str) -> None:
-    """Hand the withdrawals attached to an outbox message that is about to be deleted back to the matcher.
-
-    What still points at the message once the journal above it is reverted was attached by an index
-    on another datasource — `check_pending_outbox` runs in whichever index's batch comes next, on
-    mainnet usually an L2 one — and an L1 rollback leaves that write alone. The foreign key is
-    `ON DELETE CASCADE`, so deleting the message would delete the bridge withdrawal too, outside the
-    journal, and orphan its `bridge_operation`. Detached instead, the withdrawal gets back the hash
-    the attach consumed, and the matcher pairs it with the message the drain stores again.
-    """
     withdrawals = await models.BridgeWithdrawOperation.filter(outbox_message_id=outbox_message_id).prefetch_related(
         'outbox_message', 'l2_transaction'
     )

@@ -78,8 +78,7 @@ def _datasources(index: str) -> tuple[Any, ...]:
 async def _roll_back(index: str, to_level: int, container: Any = None) -> None:
     """DipDup's response to a reorg on `index`'s channel: the package's `on_index_rollback`.
 
-    `ctx.rollback` is DipDup's own, bound to a context carrying only what it reads, plus the
-    service `container` when a test gives one.
+    `ctx.rollback` is DipDup's own, bound to a context carrying only what it reads.
     """
     config = SimpleNamespace(
         package='rollup_bridge_indexer',
