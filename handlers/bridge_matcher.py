@@ -28,6 +28,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger('rollup_bridge_indexer.handlers.bridge_matcher')
 
 LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=300)
+# The kernel rejects a blueprint stamped more than max_blueprint_lookahead_in_seconds (default 300)
+# after the last L1 timestamp it saw, so an L2 block is at most that far ahead of the L1 level applying it.
+# proof: https://gitlab.com/tezos/tezos/-/blob/413a880d1ea1e9c74a1c4e583fccef97e485ae64/etherlink/kernel_latest/kernel/src/blueprint_storage.rs#L641
+BLUEPRINT_LOOKAHEAD_MAX = timedelta(seconds=300)
 EVM_ADDRESS_HEX_LENGTH = 40
 
 
@@ -427,7 +431,11 @@ class BridgeMatcher:
 
         for bridge_withdrawal in pending:
             bridge_withdrawal: BridgeWithdrawOperation
-            outbox_message = await candidates.take(bridge_withdrawal.l2_transaction.parameters_hash)
+            not_before = bridge_withdrawal.l2_transaction.timestamp - BLUEPRINT_LOOKAHEAD_MAX
+            outbox_message = await candidates.take(
+                bridge_withdrawal.l2_transaction.parameters_hash,
+                where=lambda message, not_before=not_before: message.created_at >= not_before,
+            )
 
             if outbox_message:
                 bridge_withdrawal.outbox_message = outbox_message
