@@ -1,29 +1,3 @@
-"""Contract: a pending outbox level survives the process that queued it.
-
-`RollupMessageIndex` learns which outbox levels to fetch from the inbox page it is walking
-(`_handle_external_inbox_message`) and from a full outbox asking for its continuation
-(`_handle_outbox_level`, `outbox_level + 1`). Both used to live only in the in-memory
-`PendingOutboxLevels`, while the resume cursor, derived from the last saved inbox row, was
-written *before* the drain. A drain that died halfway therefore resumed above the external
-messages it had not served yet, and those outbox messages were gone for good.
-
-The fix stores the queue in a table of this package, one `rollup_pending_outbox_level` row per
-owed level, and drops a level from it only once the messages it produced are committed. (A
-package table rather than `dipdup_meta` because the queue has to be journalled with the rows it
-produces — see `test_outbox_head_rollback.py` for what an immune queue costs.)
-
-These tests cover the paths the block-bounded stand case (`tests/stand/cases/
-outbox_fetch_failure/`) cannot reach:
-
-  * the continuation level of a full outbox, which has no inbox message behind it at all —
-    both when the chain has not reached it yet and when its own fetch fails;
-  * the deferral of a level the rollup node has not applied yet, and the order the drain
-    serves the queue in.
-
-Offline: no TzKT, no rollup node — both datasources are fakes, and the database is the
-in-memory sqlite of the `db` fixture.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -51,11 +25,8 @@ ROLLUP = 'sr1BvTT7tVNneG2TeP18sixq57TxsZELebLu'
 ORIGINATION_LEVEL = 1
 BLOCK_TIMESTAMP = '2026-01-01T00:00:00Z'
 
-# Small enough that a two-message outbox counts as full and asks for its continuation.
 MAX_OUTBOX_MESSAGES_PER_LEVEL = 2
 
-# An outbox message the hasher cannot read: it is skipped with a warning, which keeps these
-# tests about the queue rather than about ticket hashing.
 UNHASHABLE_MESSAGE: dict[str, Any] = {'outbox_level': 0, 'message_index': 0, 'message': {}}
 
 _FAST_WITHDRAW_TYPE = MichelsonType.match(michelson_to_micheline(FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE))
@@ -64,11 +35,6 @@ RECEIVER = 'tz1burnburnburnburnburnburnburjAYjjX'
 
 
 def _outbox_message(level: int, index: int) -> dict[str, Any]:
-    """A fast-withdrawal outbox message the hasher *can* read, so it becomes a row.
-
-    The fast-withdrawal shape is the one whose hash needs no ticket lookup, which keeps
-    `ticket_service` out of these tests while still exercising the real insert path.
-    """
     parameters = _FAST_WITHDRAW_TYPE.from_python_object(
         {
             'withdrawal_id': level * 10 + index,
@@ -91,7 +57,6 @@ async def _outbox_rows() -> list[tuple[int, int]]:
 
 
 class FakeTzkt:
-    """Answers only the three URLs `RollupMessageIndex` asks TzKT for, plus the head block."""
 
     def __init__(self, inbox_pages: list[list[dict[str, Any]]] | None = None, head_level: int = 0) -> None:
         self.inbox_pages = list(inbox_pages or [])
@@ -111,12 +76,6 @@ class FakeTzkt:
 
 
 class FakeRollupNode:
-    """`global/block/<level>/outbox/<level>/messages`, per level, and a record of who asked.
-
-    `processed_level` is what the node says it has applied (`global/block/head/level`). A node
-    that stopped applying blocks keeps answering RPC and reports its frozen level; every level
-    above it has no hash it can resolve, so it answers 500.
-    """
 
     def __init__(self, responses: dict[int, Any], processed_level: int = 10**9) -> None:
         self.responses = responses
@@ -137,22 +96,13 @@ class FakeRollupNode:
 
 
 def _server_error() -> aiohttp.ClientResponseError:
-    """The shape a wedged rollup node has: 500 for every level above the one it processed."""
     return aiohttp.ClientResponseError(request_info=None, history=(), status=500, message='Internal Server Error')  # type: ignore[arg-type]
 
 
-class ProcessDied(Exception):
-    """The process going down mid-drain (OOM, SIGKILL, a bug) — not an answer from the node.
-
-    An HTTP error from the node ends the pass instead (see the tests at the end of this
-    module); what these crash tests guard is the queue a process leaves behind when it
-    gets no chance to end the pass at all.
-    """
+class ProcessDied(Exception): ...
 
 
 def _index(tzkt: Any, rollup_node: Any) -> RollupMessageIndex:
-    # Stand-ins for the container's settings objects; only the fields below are read on
-    # these paths, and `ticket_service` is never reached (every message here is unhashable).
     bridge: Any = SimpleNamespace(smart_rollup_address=ROLLUP)
     protocol: Any = SimpleNamespace(
         smart_rollup_commitment_period=60,
@@ -171,21 +121,13 @@ def _index(tzkt: Any, rollup_node: Any) -> RollupMessageIndex:
 
 
 async def _pending_levels() -> list[int]:
-    """The owed levels as the database holds them, plus the check that nothing else does."""
     assert await Meta.get_or_none(key=PendingOutboxLevels.key) is None, 'the obsolete `dipdup_meta` queue was written again'
     return [row.level for row in await RollupPendingOutboxLevel.all().order_by('level')]
 
 
 async def test_full_outbox_continuation_level_is_deferred_and_stored(db: Any) -> None:
-    """F6 + F7: `outbox_level + 1` above what the node has applied is stored, not fetched.
-
-    A level queued by a full outbox has no inbox message behind it, so the resume cursor
-    cannot describe it — the stored queue is its only record. And it must not be fetched
-    before the node can answer for it.
-    """
     node = FakeRollupNode(
         {
-            # A full outbox at 100 -> the drain queues 101 for the rest of the messages.
             100: [UNHASHABLE_MESSAGE] * MAX_OUTBOX_MESSAGES_PER_LEVEL,
             101: [],
         },
@@ -200,7 +142,6 @@ async def test_full_outbox_continuation_level_is_deferred_and_stored(db: Any) ->
     assert node.requested == [100], 'level 101 is above what the node has applied and must not be fetched yet'
     assert await _pending_levels() == [101], 'the continuation level must outlive the process that queued it'
 
-    # A restart takes it over — and still defers it until the node catches up.
     restarted = _index(FakeTzkt(), node)
     await restarted._pending_outbox_levels.load(floor=ORIGINATION_LEVEL)
     assert set(restarted._pending_outbox_levels) == {101}
@@ -216,12 +157,6 @@ async def test_full_outbox_continuation_level_is_deferred_and_stored(db: Any) ->
 
 
 async def test_pending_levels_survive_a_failed_drain(db: Any) -> None:
-    """F5: the queue is stored before the inbox rows that move the cursor past its externals.
-
-    The page here is the shape that made the production loss permanent: two external
-    messages followed by a transfer, so the committed transfer's id is above both externals
-    and the resume cursor can never reach them again.
-    """
     page = [
         {'id': 100, 'level': 10, 'index': 0, 'type': 'external'},
         {'id': 101, 'level': 11, 'index': 0, 'type': 'external'},
@@ -237,23 +172,16 @@ async def test_pending_levels_survive_a_failed_drain(db: Any) -> None:
     node = FakeRollupNode({10: [], 11: ProcessDied()})
     index = _index(FakeTzkt([page], head_level=12), node)
     index._status = IndexStatus.syncing
-    # The window floor `_prepare_new_index` would have settled on the way into `syncing`.
     index._inbox_start_id = 0
 
     with pytest.raises(ProcessDied):
         await index._process()
 
-    # The cursor is already past both externals...
     assert await RollupInboxMessage.filter(id=102).exists()
-    # ...and the queue is what still knows the work is owed. Level 10 was drained but its
-    # messages were never flushed, so it stays pending too.
     assert await _pending_levels() == [10, 11]
 
-    # Restart on the same database: the cursor cannot reach the externals, the queue can.
     restarted = _index(FakeTzkt([[]], head_level=12), FakeRollupNode({10: [], 11: []}))
     await restarted._prepare_new_index()
-    # At or above the last external, so `id.gt=` can never return either of them again. The
-    # exact resume arithmetic is not this test's business — being out of reach is.
     assert await restarted._inbox_cursor() >= 101
     assert set(restarted._pending_outbox_levels) == {10, 11}
 
@@ -263,22 +191,9 @@ async def test_pending_levels_survive_a_failed_drain(db: Any) -> None:
 
 
 async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any) -> None:
-    """The continuation level of a full outbox is recoverable when its own fetch dies.
-
-    `outbox_level + 1` is queued *during* the drain, after the durability write of the page
-    that started it, so it is never stored under its own name. What keeps it
-    reachable is its parent: level L only leaves the stored set once `bulk_create` has
-    committed the rows it produced, and a drain that dies before that flush leaves L owed.
-    The restart re-fetches L, the full outbox re-derives L+1, and both land.
-
-    That is the invariant a per-level flush would break — committing L's rows mid-drain drops
-    L from the stored set while L+1 exists nowhere but in the dead process's memory.
-    """
     head = 101
     page = [
-        # The external message that puts level 100 in the queue...
         {'id': 100, 'level': 100, 'index': 0, 'type': 'external'},
-        # ...followed by a transfer, so the committed cursor is above it.
         {
             'id': 101,
             'level': 100,
@@ -299,16 +214,10 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
     with pytest.raises(ProcessDied):
         await index._process()
 
-    # The full outbox at 100 asked for 101, and the chain had reached it — so it was fetched
-    # in the same drain, and died there.
     assert node.requested == [100, 101]
-    # Nothing was committed: the batch of level 100 went down with the process.
     assert await _outbox_rows() == []
-    # ...which is exactly why level 100 must still be owed. It is the only reachable record
-    # of level 101 as well.
     assert await _pending_levels() == [100]
 
-    # Restart on the same database, with a rollup node that now answers for both levels.
     restarted_node = FakeRollupNode({100: full_outbox, 101: [_outbox_message(101, 0)]})
     restarted = _index(FakeTzkt([[]], head_level=head), restarted_node)
     await restarted._prepare_new_index()
@@ -323,16 +232,6 @@ async def test_full_outbox_continuation_level_survives_its_failed_fetch(db: Any)
 
 
 async def test_drain_serves_the_lowest_level_and_stops_at_the_head(db: Any) -> None:
-    """The drain asks only for what the chain has reached — and takes the lowest level first.
-
-    Both levels are queued up front here, which is what a restored queue looks like: the
-    ordering is a real choice, not a side effect of one level queueing the next. An arbitrary
-    `pop()` would reach above the head and ask the rollup node for a block it cannot answer
-    for, which is how a wedged node starts answering 500 for everything.
-    """
-    # 207/208 rather than any round pair: these are levels for which an unordered `pop()`
-    # hands back the *higher* one first, so the wrong implementation is observably wrong
-    # here instead of getting the right answer by luck.
     head = 207
     node = FakeRollupNode({207: [_outbox_message(207, 0)], 208: [_outbox_message(208, 0)]}, processed_level=head)
     index = _index(FakeTzkt(head_level=head), node)
@@ -346,7 +245,6 @@ async def test_drain_serves_the_lowest_level_and_stops_at_the_head(db: Any) -> N
     assert await _outbox_rows() == [(207, 0)], 'only the reached level produced rows'
     assert await _pending_levels() == [208], 'the unreached level stays owed'
 
-    # Once the node applies it, the same queue drains the rest.
     node.processed_level = 208
     await index._drain_outbox_levels()
 
@@ -356,12 +254,6 @@ async def test_drain_serves_the_lowest_level_and_stops_at_the_head(db: Any) -> N
 
 
 async def test_a_wedged_node_is_not_asked_for_levels_it_cannot_answer(db: Any) -> None:
-    """The 2026-08-20 fault: a node stops applying L1 blocks and still answers RPC.
-
-    Its `head/level` freezes and every level above that answers 500. The L1 chain, meanwhile,
-    keeps producing — so a ceiling taken from the L1 head says "go ahead" for levels the node
-    demonstrably cannot serve, and the drain dies on the first one.
-    """
     node = FakeRollupNode({300: [_outbox_message(300, 0)], 301: [_outbox_message(301, 0)]}, processed_level=300)
     index = _index(FakeTzkt(head_level=999), node)
     index._status = IndexStatus.realtime
@@ -376,14 +268,6 @@ async def test_a_wedged_node_is_not_asked_for_levels_it_cannot_answer(db: Any) -
 
 
 async def test_a_full_level_owed_a_second_time_re_derives_its_continuation(db: Any) -> None:
-    """A full level whose rows are already stored must still be walked, not recognised and skipped.
-
-    The continuation of a full outbox exists nowhere but in that outbox: no inbox message
-    stands behind L + 1, and the queue forgets it the moment its rows are committed. So the
-    only way to get L + 1 back is to fetch L again and re-derive it — which is what both the
-    crash between the row commit and the queue write, and the rollback that restores the queue
-    row of an already-drained level, ask the drain to do.
-    """
     full_outbox = [_outbox_message(100, 0), _outbox_message(100, 1)]
     assert len(full_outbox) == MAX_OUTBOX_MESSAGES_PER_LEVEL
 
@@ -396,7 +280,6 @@ async def test_a_full_level_owed_a_second_time_re_derives_its_continuation(db: A
     stored = [(100, 0), (100, 1), (101, 0)]
     assert await _outbox_rows() == stored
 
-    # The same level owed again, on the same process, with its rows already in the database.
     index._pending_outbox_levels.add(100)
     await index._drain_outbox_levels()
 
@@ -406,13 +289,6 @@ async def test_a_full_level_owed_a_second_time_re_derives_its_continuation(db: A
 
 
 async def test_a_chain_of_full_outbox_levels_ends_at_the_first_level_that_is_not_full(db: Any) -> None:
-    """Every full outbox owes the level after it, so a run of them is a chain — and it terminates.
-
-    Nothing in this process decides a level has already been served: the continuation is derived
-    from the outbox itself, every time. What ends the chain is therefore the data, and the first
-    level whose outbox is not full is the end of it. Asked once each, in order, and once the
-    fourth answers short nothing is left owed.
-    """
     node = FakeRollupNode(
         {
             100: [_outbox_message(100, 0), _outbox_message(100, 1)],
@@ -434,12 +310,6 @@ async def test_a_chain_of_full_outbox_levels_ends_at_the_first_level_that_is_not
 
 
 async def test_an_unbroken_chain_of_full_levels_stops_at_what_the_node_has_applied(db: Any) -> None:
-    """The other end of the chain: a node that cannot answer for the next level.
-
-    A run of full outboxes that reaches the node's ceiling does not spin on it — the level the
-    node has not applied is owed, not fetched, and the pass ends. That is the bound on a chain
-    the data has not ended yet.
-    """
     node = FakeRollupNode(
         {
             100: [_outbox_message(100, 0), _outbox_message(100, 1)],
@@ -458,16 +328,6 @@ async def test_an_unbroken_chain_of_full_levels_stops_at_what_the_node_has_appli
 
 
 async def test_the_queue_of_the_dipdup_meta_version_is_adopted_on_the_first_boot(db: Any) -> None:
-    """The deploy: levels the previous binary owed have to arrive in the rows, once.
-
-    The boot that first runs this code meets a live database — inbox rows committed, the queue
-    in the `dipdup_meta` key of the version that kept it there, and no rows of its own. Nothing
-    else can carry those levels across: `drop` runs only on an empty inbox table, and the walk
-    cannot re-derive them, because the cursor sits above the externals that produced them.
-
-    The origination floor applies on the way in exactly as it did to the old key, so a database
-    wedged on an impossible level does not import its wedge.
-    """
     await RollupInboxMessage.create(
         id=500,
         level=ORIGINATION_LEVEL,
@@ -479,30 +339,18 @@ async def test_the_queue_of_the_dipdup_meta_version_is_adopted_on_the_first_boot
     await Meta.update_or_create(key=PendingOutboxLevels.key, defaults={'value': [50, 100, 101]})
 
     index = _index(FakeTzkt(), FakeRollupNode({}))
-    # The origination the boot clamps against; presetting it is what `_get_origination_level`
-    # would have cached, and it puts level 50 below the floor.
     index._origination_level = 100
     await index._prepare_new_index()
 
     assert await _pending_levels() == [100, 101], 'the owed levels are rows now, and the key they came from is gone'
     assert set(index._pending_outbox_levels) == {100, 101}, 'and the running index owes what the rows say'
 
-    # The next boot finds no key and must not resurrect anything — least of all level 50.
     restarted = _index(FakeTzkt(), FakeRollupNode({}))
     restarted._origination_level = 100
     await restarted._prepare_new_index()
 
     assert await _pending_levels() == [100, 101], 'the second boot is a no-op'
     assert set(restarted._pending_outbox_levels) == {100, 101}
-
-
-# --- A rollup node that fails to answer ends the pass, not the process ------------------------
-#
-# The drain runs inside the `tezos_head` handler, so an exception out of it is an exception out
-# of DipDup's callback: the process exits and Swarm restarts it. Mainnet did that about 65 times
-# between 2026-10-02 and 2026-11-12, each time a `*-smart.tzkt.io` node blinked. The queue is
-# durable, so there is nothing to protect by dying: the owed level stays a row, and the next
-# head asks for it again.
 
 
 def _connection_refused() -> aiohttp.ClientConnectorError:
@@ -515,7 +363,6 @@ def _connection_refused() -> aiohttp.ClientConnectorError:
     ids=['500', 'connection-refused', 'timeout'],
 )
 async def test_a_failed_level_fetch_ends_the_pass_and_stays_owed(db: Any, failure: Any) -> None:
-    """What was fetched before the failure is committed; the failed level is asked for again next pass."""
     node = FakeRollupNode({10: [_outbox_message(10, 0)], 11: failure(), 12: [_outbox_message(12, 0)]})
     index = _index(FakeTzkt(head_level=12), node)
     index._status = IndexStatus.realtime
@@ -537,12 +384,6 @@ async def test_a_failed_level_fetch_ends_the_pass_and_stays_owed(db: Any, failur
 
 
 async def test_a_failed_continuation_fetch_keeps_the_continuation_owed(db: Any) -> None:
-    """A full level's rows are committed even when its continuation fails, so the continuation must be a row.
-
-    This is the case where ending the pass differs from dying: the parent leaves the queue with
-    its rows, and the continuation, which exists only in this process's memory, has to be
-    written to the queue by the same save.
-    """
     full_outbox = [_outbox_message(100, 0), _outbox_message(100, 1)]
     node = FakeRollupNode({100: full_outbox, 101: _server_error()})
     index = _index(FakeTzkt(head_level=101), node)
@@ -556,7 +397,6 @@ async def test_a_failed_continuation_fetch_keeps_the_continuation_owed(db: Any) 
     assert await _pending_levels() == [101]
 
     restarted_node = FakeRollupNode({101: [_outbox_message(101, 0)]})
-    # A fresh object knows nothing; only the rows say 101 is owed.
     restarted = _index(FakeTzkt(head_level=101), restarted_node)
     restarted._status = IndexStatus.realtime
     await restarted._drain_outbox_levels()
@@ -567,7 +407,6 @@ async def test_a_failed_continuation_fetch_keeps_the_continuation_owed(db: Any) 
 
 
 async def test_a_failed_head_level_request_leaves_the_queue_untouched(db: Any) -> None:
-    """`global/block/head/level` is the first thing the drain asks; its failure must end the pass too."""
 
     class NodeWithoutHead(FakeRollupNode):
         async def request(self, method: Any = None, url: Any = None, **kwargs: Any) -> Any:

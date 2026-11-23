@@ -1,10 +1,6 @@
-# Ignore all
 *
 !*/
 
-# Add metadata and build files
-# Package is the repo root itself; rollup_bridge_indexer is a self-symlink (-> .) that
-# makes `import rollup_bridge_indexer` resolve. Track it so checkouts/CI/Docker get it.
 !rollup_bridge_indexer
 !.gitignore
 !.dockerignore
@@ -17,15 +13,12 @@
 !**/CLAUDE.md
 !**/.keep
 
-# Add Python code
 !**/*.py
 **/.*_cache
 **/__pycache__
 
-# Add docs
 !docs/**/*.html
 
-# Add configs and scripts (but not env!)
 !**/*.graphql
 !**/*.json
 !**/*.sql
@@ -33,18 +26,9 @@
 !**/*.yml
 !**/*.j2
 !**/*.sh
-# Docker smoke-test env fixture: dummy/public values only, used by tests/e2e/smoke_test.sh.
-# Allowlisted explicitly so the blanket `.env` exclusion above still hides real secret envs.
 !tests/e2e/smoke.env
-# Test-stand case env: public endpoints/addresses + block windows, committed so any setup
-# can reproduce a case. Allowlisted past the blanket `*` ignore (real secret envs stay hidden).
 !tests/stand/tezosx.env
 !tests/stand/cases/*/window.env
 
-# Per-developer local Claude Code settings — not shared. Must come AFTER the `!**/*.json`
-# allowlist above (last-match-wins) or `.claude/settings.local.json` leaks back in.
 /.claude/
-# Benchmark output: what one machine measured at one moment. Must come after the
-# `!**/*.json` allowlist above (last-match-wins). The numbers worth keeping live in
-# tests/perf/README.md.
 /tests/perf/snapshots/

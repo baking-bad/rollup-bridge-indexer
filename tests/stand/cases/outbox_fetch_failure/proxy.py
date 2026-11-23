@@ -1,41 +1,4 @@
 #!/usr/bin/env python3
-"""Fault-injecting pass-through proxy for the `rollup_node` datasource.
-
-Sits between the indexer and the real rollup node so a single outbox-message fetch can be
-made to fail deterministically, with everything else served byte-identically to the clean
-run. Arms of the same case differ only by `PROXY_FAIL_LEVELS` and `PROXY_WEDGED_AT`.
-
-Modes
-  serve                  run the proxy (default)
-  prewarm LO HI [WANT]   fill the response cache for `global/block/<L>/outbox/<L>/messages`,
-                         L in [LO, HI), concurrently — so a `serve` run never waits on
-                         upstream and both arms see identical upstream bodies. Exits
-                         non-zero unless the cache ends up holding every level of the range
-                         (and exactly WANT entries, when given): a cold entry would be
-                         fetched under the datasource's `request_timeout`, which is far
-                         below this proxy's 30s upstream timeout, and the resulting
-                         TimeoutError is indistinguishable from the injected fault.
-  check PORT TOKEN LEVELS STATUS
-                         poll `/__armed` until the proxy answers and assert it is the one
-                         this arm meant to start (same token) with the intended fault spec.
-                         Exits non-zero otherwise — an arm run against the previous arm's
-                         proxy proves nothing.
-
-Env
-  PROXY_PORT        listen port (default 8642)
-  PROXY_UPSTREAM    real rollup node (default https://previewnet-smart.tzkt.io)
-  PROXY_CACHE_DIR   response cache dir (default /tmp/bridge_outbox_fetch_failure_cache)
-  PROXY_FAIL_LEVELS comma-separated outbox levels to fail; empty = pass-through (CONTROL)
-  PROXY_WEDGED_AT   pretend the node stopped applying L1 blocks here: `global/block/head/level`
-                    reports this level and every outbox above it answers PROXY_FAIL_STATUS in
-                    the upstream's own error shape; 0 (default) passes the real level through
-  PROXY_FAIL_STATUS HTTP status to answer with (default 500 — the production shape: a wedged
-                    rollup node 500s for every level above its processed_level)
-  PROXY_TOKEN       identity string echoed by `/__armed` (default: a random one)
-  PROXY_LOG         request log path (default /tmp/bridge_outbox_fetch_failure_proxy.log)
-
-The failure is applied BEFORE the cache, so every retry of the same request fails too.
-"""
 
 from __future__ import annotations
 
@@ -63,9 +26,6 @@ LOG_PATH = Path(os.environ.get('PROXY_LOG', '/tmp/bridge_outbox_fetch_failure_pr
 
 FAIL_LEVELS = {int(x) for x in os.environ.get('PROXY_FAIL_LEVELS', '').replace(',', ' ').split()}
 
-# A wedged node: it stopped applying L1 blocks but still answers RPC. `head/level` reports the
-# last level it applied, and every level above that has no hash it can resolve — the shape of
-# the 2026-08-20 fault. 0 means the node is healthy and this is passed straight through.
 WEDGED_AT = int(os.environ.get('PROXY_WEDGED_AT', '0'))
 
 OUTBOX_RE = re.compile(r'^global/block/(\d+)/outbox/(\d+)/messages$')
@@ -89,7 +49,6 @@ async def _fetch(session: aiohttp.ClientSession, path: str, query: str) -> tuple
 
 
 async def armed(request: web.Request) -> web.Response:
-    """Identity + fault spec of THIS process. `check` asserts an arm talks to the right proxy."""
     return web.json_response(
         {
             'token': TOKEN,
@@ -113,7 +72,6 @@ async def handle(request: web.Request) -> web.Response:
         if WEDGED_AT:
             _log(f'WEDGE head/level -> {WEDGED_AT}')
             return web.Response(status=200, body=str(WEDGED_AT).encode(), content_type='application/json')
-        # Never cached: a frozen head level is the fault this case injects deliberately.
         status, body = await _fetch(request.app['session'], path, query)
         _log(f'HEAD {status} {path}')
         return web.Response(status=status, body=body, content_type='application/json')
@@ -163,14 +121,13 @@ def serve() -> int:
     print(f'proxy :{PORT} -> {UPSTREAM}  fail={spec}/{FAIL_STATUS}  token={TOKEN}  pid={os.getpid()}', flush=True)
     try:
         web.run_app(app, host='127.0.0.1', port=PORT, print=None)
-    except OSError as exc:  # a port still held by the previous arm must not look like a clean start
+    except OSError as exc:
         print(f'proxy: FAILED to bind 127.0.0.1:{PORT}: {exc}', flush=True)
         return 1
     return 0
 
 
 def check(port: int, token: str, levels: str, status: int, tries: int = 40) -> int:
-    """Poll `/__armed` and assert the answering proxy is this arm's, with this arm's fault."""
     want_levels = sorted({int(x) for x in levels.replace(',', ' ').split()})
     body: dict = {}
     for _ in range(tries):
@@ -213,7 +170,7 @@ async def _prewarm(lo: int, hi: int) -> int:
                 for _ in range(3):
                     try:
                         status, body = await _fetch(session, path, '')
-                    except Exception:  # retry any transport error
+                    except Exception:
                         await asyncio.sleep(1)
                         continue
                     if status == 200:

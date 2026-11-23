@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""alias-fast-withdrawal verdict: a fast XTZ withdrawal via NAC indexes on L2.
-
-A native tz account triggers a fast XTZ withdrawal through a NAC; on the EVM runtime it surfaces as
-a FastWithdrawal on 0xff…01 whose l2_caller is the account's EVM alias. on_xtz_withdraw must record
-an l2_withdrawal with fast_payload set (the fast marker) and resolve the alias back to its tz origin.
-
-See README.md for the on-chain sample; window.env for the block window.
-"""
 
 from __future__ import annotations
 

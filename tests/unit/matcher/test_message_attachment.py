@@ -1,9 +1,3 @@
-"""Attaching rollup messages to bridge rows: `check_pending_inbox` / `check_pending_outbox`.
-
-Both steps hand one message to one bridge row. Two operations with identical parameters
-share a hash, so the pass has to keep them apart — that is what these tests state.
-"""
-
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
@@ -61,7 +55,6 @@ async def test_an_attached_message_is_not_offered_again(db):
     await inbox_message(id=1, level=100, index=5, parameters_hash='a' * 32)
 
     await run_deposit_matching()
-    # A second deposit on the same hash arrives after the message is spoken for.
     late = await l1_deposit(xtz.ticket, level=100, amount='2000000', parameters_hash='a' * 32)
     await run_deposit_matching()
 

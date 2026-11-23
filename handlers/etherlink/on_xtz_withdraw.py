@@ -30,7 +30,7 @@ async def on_xtz_withdraw(
         l2_account_address = event.payload.l2_caller[-40:]
         fast_payload = event.payload.payload
 
-    assert l2_account_address is not None  # the payload is always one of the two variants above
+    assert l2_account_address is not None
     l2_account = await resolve_l2_account(ctx, l2_account_address)
 
     withdrawal = await EtherlinkWithdrawOperation.create(

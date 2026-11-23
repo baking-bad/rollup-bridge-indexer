@@ -1,5 +1,3 @@
-"""The rules `CandidatePool` gives every matching step that pairs two sides."""
-
 import logging
 
 import pytest
@@ -12,7 +10,6 @@ pytestmark = pytest.mark.anyio
 
 
 class _Recorded:
-    """Stands in for a queryset and remembers whether anyone iterated it."""
 
     def __init__(self, rows):
         self.rows = rows
@@ -42,7 +39,6 @@ async def test_a_candidate_is_handed_out_once(db):
 async def test_the_queryset_order_is_the_tie_break(db):
     newest = await inbox_message(id=1, level=200, index=0, parameters_hash='a' * 32)
     oldest = await inbox_message(id=2, level=100, index=0, parameters_hash='a' * 32)
-    # The pool preserves what the query returned; it never sorts on its own.
     pool, _ = _pool([newest, oldest])
 
     assert await pool.take('a' * 32) == newest
@@ -61,7 +57,6 @@ async def test_where_narrows_the_queue_without_reordering(db):
     pool, _ = _pool([low, high])
 
     assert await pool.take('a' * 32, where=lambda message: message.index > 5) == high
-    # Rejecting a candidate must not consume it.
     assert await pool.take('a' * 32) == low
 
 

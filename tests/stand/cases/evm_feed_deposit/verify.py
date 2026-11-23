@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Verdict for the evm-feed-deposit case: did the Tezos->EVM deposit index + match?"""
 
 from __future__ import annotations
 

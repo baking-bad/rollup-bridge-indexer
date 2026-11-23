@@ -1,15 +1,3 @@
-"""Property fuzz: deposit matching under independent-indexer lag.
-
-Each indexer is its own FIFO stream (L1 deposits, rollup inbox, L2-EVM, L2-Michelson). Each
-tick advances ONE random stream by a random batch off its front, then runs one matcher pass —
-so the streams drain at independent rates and overtake each other, like real indexers at
-different speeds. Locks are raised only via the producing handlers' setters, so the lock
-cascade — not a forced re-run — must settle every match.
-
-Not under test: how leg rows are read (amount scaling, parameters_hash, op-hash format) — only
-the matching. Will grow to cover aliases and the rest of the pipeline.
-"""
-
 import random
 
 import pytest
@@ -22,9 +10,6 @@ from tests.unit.matcher.factories import seed_xtz
 
 pytestmark = pytest.mark.anyio
 
-# Few cases, each large: many concurrently-pending ops is where cross-matches and
-# ordering races surface. Sized so the fuzz runs in roughly the same time as the rest
-# of the unit suite combined.
 N_OPS = 30
 
 
@@ -53,6 +38,5 @@ async def test_deposits_match_under_independent_indexer_lag(db, seed):
 
     await assert_all_deposits_finished(ops)
 
-    # Idempotence: a further pass over the settled state links and breaks nothing.
     await run_matcher_pass()
     await assert_all_deposits_finished(ops)

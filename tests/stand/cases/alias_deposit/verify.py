@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""alias-deposit verdict: deposits TO an EVM alias resolve the receiver to its tz origin.
-
-See README.md for the on-chain sample; window.env for the block window.
-"""
 
 from __future__ import annotations
 
@@ -12,7 +8,6 @@ ALIAS = '21ab829afe4b41dd3fb6eb5be4de2d20d9cebc21'
 NATIVE = 'tz1ekkzEN2LB1cpf7dCaonKt6x9KVd9YVydc'
 FA_TOKEN = '3dff505a2a69e6e0b05fdb71b5f6ddd514fdaf47'
 
-# Each deposit the handlers index in this window: (amount, token_id, label).
 EXPECTED = [
     ('1991000000000000', 'xtz_evm', 'XTZ #1'),
     ('1997', FA_TOKEN, 'FA'),
@@ -27,10 +22,6 @@ def main() -> int:
     deposits = lib.dump(cur, 'l2_deposit', 'level, l2_account_id, amount, token_id', order_by='level')
     seen = {(r['amount'], r['token_id']) for r in deposits}
 
-    # Independent regression (NOT alias-related): this case happens to index an FA deposit, so it
-    # also guards that the FA L2 proxy token inherits L1 metadata via register_etherlink_token
-    # (model defaults are symbol null / decimals 0). It lives here only because this is the sole
-    # stand case exercising the FA Deposit path.
     fa_token = lib.dump(cur, 'etherlink_token', 'id, symbol, decimals')
     fa = next((r for r in fa_token if r['id'] == FA_TOKEN), None)
 

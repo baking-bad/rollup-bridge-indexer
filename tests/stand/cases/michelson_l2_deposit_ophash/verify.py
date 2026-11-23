@@ -1,17 +1,4 @@
 #!/usr/bin/env python3
-"""Verdict for the michelson-l2-deposit OP-HASH case — production matcher output.
-
-This is the regression for the PRODUCTION op-hash path: `tezos_x.on_michelson_deposit_ophash`
-records the full L2 row (xtz_michelson token, mutez amount); the op-hash is precomputed onto each inbox
-message (`expected_l2_op_hash`) and `BridgeMatcher.check_pending_michelson_deposits` backfills
-the L2 row's coords from the matching message, after which `check_pending_etherlink_deposits`
-links the legs (no event, no node call). GREEN means the real `bridge_operation` is FINISHED
-with both legs and the inbox coords backfilled — not a verifier-side replay.
-
-A reconstruction spot-check (replaying `expected_op_hash_from_inbox` over the inbox
-rows) is kept as a secondary assert so a matcher bug and a derivation bug are
-distinguishable in the output.
-"""
 
 from __future__ import annotations
 
@@ -20,10 +7,8 @@ import json
 from rollup_bridge_indexer.handlers.michelson_deposit import expected_op_hash_from_inbox
 from tests.stand import verify_lib as lib
 
-# The rollup the deposits target (constant; same as the unit vectors / live demo).
 ROLLUP = 'sr1TCYofXUuJjmQvZ26XE4YAwXdfetQfZ6rR'
 
-# The verified on-chain pair (see README.md / window.env).
 L2_OP_HASH = 'opAhDWYxwDWFnKXG892itvC1TmMtUbeuSThVopzVDGd41mRxomE'
 RECEIVER = 'tz1PSJR6wBtoiv56Uz1w1bBxeoBnWpDYMwV7'
 INBOX_COORDS = (3599297, 8)
@@ -31,7 +16,6 @@ AMOUNT_MUTEZ = 1_000_000
 
 
 def _reconstructed_op_hashes(cur) -> dict[str, tuple[int, int]]:
-    """expected L2 op-hash -> (inbox_level, inbox_index) for every tz1-target inbox row."""
     out: dict[str, tuple[int, int]] = {}
     for r in lib.rows(cur, 'SELECT level, "index", message FROM rollup_inbox_message ORDER BY level, "index"'):
         message = r['message']
@@ -88,10 +72,8 @@ def main() -> int:
         print(f'  inbox=({lvl},{idx})  ->  {op_hash}')
 
     v = lib.Verdict()
-    # L1 leg: indexed and routed to the real tz1 receiver (l2_account fix).
     v.check(len(l1) == 1, 'exactly one L1 deposit indexed')
     v.check(bool(l1) and l1[0]['l2_account_id'] == RECEIVER, f'l1_deposit.l2_account_id is the tz1 receiver ({RECEIVER})')
-    # L2 leg: full consumer-visible row — xtz_michelson token, mutez amount.
     v.check(len(l2) == 1, 'exactly one L2 Michelson deposit indexed')
     v.check(bool(l2) and l2[0]['transaction_hash'] == L2_OP_HASH, 'L2 row carries the synthetic op-hash')
     v.check(bool(l2) and l2[0]['token_id'] == 'xtz_michelson', 'L2 row carries the xtz_michelson token')
@@ -100,13 +82,11 @@ def main() -> int:
         bool(l2) and (l2[0]['inbox_message_level'], l2[0]['inbox_message_index']) == INBOX_COORDS,
         f'inbox coords backfilled onto the L2 row {INBOX_COORDS}',
     )
-    # The matcher verdict itself: FINISHED bridge operation with both legs.
     v.check(
         any(r['status'] == 'FINISHED' and bool(r['has_l1']) and bool(r['has_l2']) for r in bridge),
         'bridge_operation FINISHED with both legs (production matcher)',
     )
     v.check(any(r['l2_account_id'] == RECEIVER for r in bridge), 'bridge_operation.l2_account_id is the tz1 receiver')
-    # Secondary: the derivation itself still reproduces the L2 op-hash.
     v.check(L2_OP_HASH in expected, 'inbox row reconstructs to the expected op-hash (derivation sane)')
     conn.close()
     return v.report()

@@ -1,22 +1,3 @@
-"""Per-step cost of one matcher pass over a production-sized backlog.
-
-    make bench-matcher [SCALE=1.0] [PASSES=3] [LABEL=name]
-
-Reports two numbers per step. **Queries** is the verdict: it is exact, deterministic and
-independent of the machine, and every patch in this set is an attempt to make one step's
-query count stop tracking its pool size. **Milliseconds** is the corroboration — it is what
-the database actually spends, and it is the only number that reflects the unindexed foreign
-keys the per-row queries scan against.
-
-Postgres, not sqlite: the defect is round-trips to a database server plus server-side
-sequential scans, and an in-process sqlite has neither. Measuring this on sqlite would
-understate the win by exactly the mechanism being fixed.
-
-The bench does not check correctness. The seeded backlog is a fixed point where nothing
-matches, so a patch that silently stopped matching would look excellent here. Correctness
-lives in the pinning tests under tests/unit/matcher/.
-"""
-
 import argparse
 import asyncio
 import json
@@ -44,8 +25,6 @@ from tests.perf.seed import seed
 from tests.unit.conftest import DB_URL
 from tests.unit.conftest import init_empty_schema
 
-# (name, step, lock setter). Order and lock names copy `handlers/batch.run_matcher_steps`;
-# the bench arms one step at a time so each step's cost is attributed to that step alone.
 STEPS = (
     ('tezos_deposits', BridgeMatcher.check_pending_tezos_deposits, BridgeMatcherLocks.set_pending_tezos_deposits),
     ('inbox', BridgeMatcher.check_pending_inbox, BridgeMatcherLocks.set_pending_inbox),
@@ -74,7 +53,6 @@ _EXECUTORS = ('execute_query', 'execute_query_dict', 'execute_insert', 'execute_
 
 
 class QueryCounter:
-    """Counts statements issued through the Tortoise client for the duration of a block."""
 
     def __init__(self) -> None:
         self.count = 0
@@ -99,11 +77,6 @@ class QueryCounter:
 
 
 async def pool_census() -> dict[str, int]:
-    """Count the pools using the matcher's own filters.
-
-    A patch that drains a pool instead of walking it cheaper would report a beautiful time
-    for a step that no longer does the work; this is what makes that visible.
-    """
     return {
         'tezos_withdrawals': await TezosWithdrawOperation.filter(
             bridge_withdrawals=None, outbox_message__builder=RollupOutboxMessageBuilder.kernel
@@ -122,11 +95,7 @@ async def pool_census() -> dict[str, int]:
         'pending_inbox_deposits': await BridgeDepositOperation.filter(inbox_message=None).count(),
         'pending_outbox_withdrawals': await BridgeWithdrawOperation.filter(outbox_message=None).count(),
         'open_bridge_withdrawals': await BridgeWithdrawOperation.filter(l1_transaction_id__isnull=True).count(),
-        # The deposit steps' counter side is `l2_transaction=None` *with a message attached*
-        # — an unattached bridge deposit has no coords to key on and never enters that pool.
         'open_bridge_deposits': await BridgeDepositOperation.filter(l2_transaction_id__isnull=True, inbox_message_id__isnull=False).count(),
-        # The counter sides of the two attach steps: a message that still carries a hash is
-        # one nobody has claimed. Attaching nulls the hash, so an attach shows up right here.
         'unclaimed_inbox_messages': await RollupInboxMessage.filter(parameters_hash__isnull=False).count(),
         'unclaimed_outbox_messages': await RollupOutboxMessage.filter(parameters_hash__isnull=False, bridge_withdrawals=None).count(),
     }
@@ -180,8 +149,6 @@ async def run(scale: float, passes: int, label: str | None) -> dict:
         'seed_seconds': seed_seconds,
         'requested_pools': sizes.as_dict(),
         'pools': before,
-        # Equal to `pools` iff the seeded backlog really is a fixed point: every pass did
-        # the same work, so the medians above are comparable across runs and across patches.
         'pools_after': after,
         'fixed_point': before == after,
         'steps': steps,

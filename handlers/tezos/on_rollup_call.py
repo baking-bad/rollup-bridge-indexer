@@ -24,9 +24,6 @@ async def on_rollup_call(
 
     routing_info = bytes.fromhex(parameter.routing_info)
     l2_account_address, receiver_kind = l2_account_from_routing_info(routing_info)
-    # An EVM receiver may be an alias of a tz account; resolve it (and record the alias) the same
-    # way the L2 handlers do, so the shared L2Account row is correct whichever leg is indexed first.
-    # A tz receiver is an L2 Michelson account, never an alias — keep the non-resolving path.
     if receiver_kind == 'tezos':
         l2_account = await L2Account.get_or_create_for(l2_account_address, RuntimeKind.michelson)
     else:

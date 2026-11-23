@@ -1,10 +1,3 @@
-"""An EVM XTZ credit is paired by the transaction hash its L1 deposit derives.
-
-The kernel names the credit keccak256(rlp([wei, receiver, inbox_level, inbox_index]) ++ rollup),
-so the delay between the two legs says nothing about whether they belong together. The vectors
-below are real mainnet pairs whose credit arrived long after its L1 operation.
-"""
-
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
@@ -89,8 +82,6 @@ async def linked_l2_of(l1):
 async def test_real_late_credit_finishes_a_deposit_already_marked_as_timed_out(
     db, amount, receiver, inbox_level, index, l1_ts, l2_ts, tx_hash
 ):
-    # The historical shape: cementation has already written the deposit off when the pass that
-    # can pair it finally runs, and the pass has to bring it back.
     BridgeMatcher.smart_rollup_address = MAINNET_ROLLUP
     xtz = await seed_xtz()
     l1 = await open_deposit(xtz, level=inbox_level, index=index, amount=amount, receiver=receiver, ts=l1_ts)
@@ -108,7 +99,6 @@ async def test_real_late_credit_finishes_a_deposit_already_marked_as_timed_out(
 
 
 async def test_tx_hash_beats_the_earliest_first_tie_break(db):
-    # Two open deposits fit by value and the earlier one would win the value step's race.
     xtz = await seed_xtz()
     earlier = await open_deposit(xtz, level=100, ts=TS - timedelta(seconds=20))
     later = await open_deposit(xtz, level=101, ts=TS - timedelta(seconds=10))
@@ -121,8 +111,6 @@ async def test_tx_hash_beats_the_earliest_first_tie_break(db):
 
 
 async def test_deposit_claimed_by_tx_hash_is_not_offered_to_the_value_step(db):
-    # One credit is named by its hash, the other names nobody: the second must not take the
-    # deposit the first has just claimed in the same pass.
     xtz = await seed_xtz()
     named = await open_deposit(xtz, level=100, ts=TS - timedelta(seconds=20))
     other = await open_deposit(xtz, level=101, ts=TS - timedelta(seconds=10))
@@ -136,8 +124,6 @@ async def test_deposit_claimed_by_tx_hash_is_not_offered_to_the_value_step(db):
 
 
 async def test_pairing_by_value_warns_because_the_derived_hash_missed(db, caplog):
-    # Before the kernel era the derivation covers, and after any kernel that changes it, the value
-    # step still pairs the credit. On a live network this line is the signal that the formula moved.
     xtz = await seed_xtz()
     l1 = await open_deposit(xtz, level=100, ts=TS - timedelta(seconds=10))
     l2 = await credit(xtz, level=200, ts=TS, transaction_hash='aa' * 32)

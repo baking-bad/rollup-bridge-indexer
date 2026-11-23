@@ -1,7 +1,4 @@
 custom:
-  # TezosX runs a Michelson runtime alongside the EVM one, so EVM↔tz aliases exist and the
-  # RuntimeGateway `originOf` precompile is authoritative. Restated here because `custom` merges
-  # first-level only — this whole block replaces the base default (see dipdup.yaml).
   has_michelson_runtime: true
 
 datasources:
@@ -11,11 +8,6 @@ datasources:
 
   metadata:
     kind: tzip_metadata
-    # Hardcoded, NOT ${NETWORK} (= tezosx-shadownet, the docker-compose config selector).
-    # tzip_metadata looks up L1 Tezos contract addresses; this deployment's L1 is
-    # shadownet (TZKT_URL=api.shadownet.tzkt.io). The dipdup metadata service indexes
-    # that exact chain under the name `shadownet`. (Its `tezosx` network is a different
-    # chain — its contracts don't exist on this L1, so it would never resolve our tokens.)
     network: shadownet
     url: ${METADATA_URL}
 
@@ -26,13 +18,6 @@ datasources:
   etherlink_node:
     kind: evm.node
     url: ${ETHERLINK_NODE_URL}
-    # This overlay redefines the whole `datasources` block (to hardcode metadata.network).
-    # DipDup merges -c files with a shallow top-level dict.update, so the base dipdup.yaml
-    # `etherlink_node.http` is dropped entirely here. Without it ratelimit_rate defaults to 0
-    # (no client-side throttling) → we hammer the flaky previewnet node and self-inflict 503
-    # storms. Mirror the base values to throttle. tezosx has no Subsquid, so the node carries
-    # the full L2 backfill — batch_size/ratelimit matter even more than on mainnet.
-    # `ws_url` is mirrored for the same reason; the rationale for it lives in the base `dipdup.yaml`.
     ws_url: ${ETHERLINK_NODE_WS:-~}
     http:
       batch_size: 100
@@ -40,10 +25,6 @@ datasources:
       ratelimit_period: 60
       ratelimit_sleep: 10
 
-  # Etherlink L2 archive for fast historical backfill (node-only sync is slow). Declared here, not
-  # just in the base config: this overlay redefines `datasources`, and DipDup's shallow -c merge
-  # would otherwise drop it. No public SQD archive exists for TezosX previewnet, so
-  # ETHERLINK_SUBSQUID_URL must point at a private gateway — and it's required (the EVM indexes use it).
   etherlink_subsquid:
     kind: evm.subsquid
     url: ${ETHERLINK_SUBSQUID_URL:-~}
@@ -59,8 +40,6 @@ datasources:
       connection_timeout: 1
       request_timeout: 4
 
-  # L2 Michelson side of Tezos X — a TzKT over the rollup's Michelson chain
-  # (previewnet: https://api.previewnet.tezosx.tzkt.io — base host, DipDup appends /v1).
   tezos_x_michelson_tzkt:
     kind: tezos.tzkt
     url: ${TEZOSX_MICHELSON_TZKT_URL}
@@ -76,9 +55,6 @@ contracts:
     address: ${FAST_WITHDRAWAL_NATIVE_ADDRESS}
     typename: fast_withdrawal
 
-  # TEZLINK_DEPOSITOR — synthetic source of L1->L2 Michelson XTZ deposits: the kernel
-  # const [0u8; 22] (all-zero serialized implicit contract) rendered in base58.
-  # See handlers/michelson_deposit.py for the kernel citations.
   tezos_x_michelson_depositor:
     kind: tezos
     address: tz1Ke2h7sDdakHJQh8WX4Z372du1KChsksyU
@@ -90,7 +66,6 @@ contracts:
 
   etherlink_deposit_sender:
     kind: evm
-    # FEED_DEPOSIT_ADDR — synthetic `from` of all deposit-injection txs in the new kernel
     address: '0x000000000000000000000000000000000000feed'
     typename: kernel
 
@@ -187,7 +162,6 @@ indexes:
       - etherlink_subsquid
       - etherlink_node
     handlers:
-      # NOTE: here was etherlink_rollup_kernel which was a legacy 'precompile' for fa
       - callback: etherlink.on_deposit
         contract: l2_withdrawal_precompile_fa
         name: Deposit
@@ -203,11 +177,10 @@ indexes:
         from_: etherlink_deposit_sender
 
 
-  # L2 Michelson XTZ deposits (tz1 receiver): synthetic pseudo-transactions emitted by
-  # the kernel from TEZLINK_DEPOSITOR; matched to the L1 leg by reconstructed op-hash
-  # (handlers/michelson_matcher.py). Set L2_MICHELSON_FIRST_LEVEL to the first
-  # event-era kernel level — earlier synthetic ops use an unverified derivation and
-  # would sit unmatched forever.
+  # DipDup starts a fresh index at first_level - 1 and syncs it only while that is below the datasource's
+  # head at boot, and opens no realtime subscription until every index is realtime: a first_level above
+  # the Michelson TzKT's head at boot freezes every index, silently.
+  # proof: https://github.com/dipdup-io/dipdup/blob/8.6.3/src/dipdup/dipdup.py#L147-L150
   tezos_x_michelson_deposits:
     kind: tezos.operations
     first_level: ${L2_MICHELSON_FIRST_LEVEL}
@@ -230,7 +203,6 @@ indexes:
       - etherlink_subsquid
       - etherlink_node
     handlers:
-      # NOTE: etherlink_rollup_kernel no longer in use for withdrawal, never was for tezosx rollup
       - callback: etherlink.on_withdraw
         contract: l2_withdrawal_precompile_fa
         name: Withdrawal

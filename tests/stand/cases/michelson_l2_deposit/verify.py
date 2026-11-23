@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""Verdict for the michelson-l2-deposit case: L2 deposit indexed + matched to its L1 op.
-
-The Michelson deposit is stored in `l2_deposit` (EtherlinkDepositOperation, reused) and
-matched to the L1 side by inbox coords.
-"""
 
 from __future__ import annotations
 
@@ -34,9 +29,7 @@ def main() -> int:
         print(f'  status={r["status"]} type={r["type"]} l1={bool(r["has_l1"])} l2={bool(r["has_l2"])}')
 
     v = lib.Verdict()
-    # L1 side must work (confirms the window + on_rollup_call) — should PASS now.
     v.check(lib.count(cur, 'l1_deposit') >= 1, 'L1 deposit indexed (window + on_rollup_call OK)')
-    # The feature target — RED now, GREEN after Block 1.
     v.check(lib.count(cur, 'l2_deposit') >= 1, 'L2 Michelson deposit indexed')
     v.check(any(bool(r['has_l1']) and bool(r['has_l2']) for r in matched), 'deposit matched on both L1 and L2')
     conn.close()

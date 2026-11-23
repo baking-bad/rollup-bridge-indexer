@@ -1,5 +1,3 @@
-"""L2-deposit dispatch — one matcher pass over a mixed batch of all three row classes."""
-
 import pytest
 
 from tests.unit.matcher.factories import DEPOSIT_CLASSES
@@ -12,8 +10,6 @@ pytestmark = pytest.mark.anyio
 
 
 async def test_mixed_l2_classes_match_in_one_batch(db):
-    # One deposit of each class (coords / value / op-hash), all rows present, one matcher
-    # pass — all three link by their different keys without preempting each other.
     xtz = await seed_xtz()
     ops, actions = [], []
     for seq, kind in enumerate(DEPOSIT_CLASSES):

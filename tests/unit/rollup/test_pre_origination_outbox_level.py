@@ -1,35 +1,3 @@
-"""Contract: the inbox backfill survives an outbox level the rollup node will never serve.
-
-A rollup node is complete from the origination of the rollup and no further back — asking it
-for an outbox at an earlier level is not a transient fault, it is a question it can never
-answer. The backfill can reach that far back: `first_ticket_level` is derived from ticket
-activity, which predates the rollup, and TzKT's `external` inbox messages carry no rollup
-field at all (the inbox is shared), so `_handle_external_inbox_message` queues the level of
-every external it walks — including the ones below origination.
-
-That is the level the drain serves first, because `take_lowest` serves the lowest. The node
-answers 500, the error escapes `_drain_outbox_levels` and `_process`, and the process dies.
-
-What makes it permanent rather than a crash is `PendingOutboxLevels`: the set is durable, so
-the next boot restores exactly the same lowest level and dies on it again. Nothing in the
-inbox cursor can move past it, and a reindex does not help — a fresh database walks the same
-externals back into the same set. The backfill never reaches `dipdup_index` at all.
-
-Clamping the walk only saves a database that has not started yet. One already in the loop
-keeps its impossible levels in the stored queue, which the clamp never reads: its inbox rows
-are committed, so the resume branch is what runs, and the only door those levels can leave by
-is the floor `PendingOutboxLevels.load` applies on the way back in. That is the
-second test here, and the one that describes a database already wedged.
-
-The floor on the way out of storage only holds while nothing can put the level back. A cursor
-that itself sits below origination walks those externals again in the very same pass, so the
-level is owed again the moment it is dropped — the third test. What ends it is refusing the
-level where it is learned, in `_handle_external_inbox_message`.
-
-Offline: TzKT is a universe fake that applies the filter in the URL, and the rollup node is a
-fake with the one property that matters here — a floor it cannot see below.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -50,25 +18,16 @@ pytestmark = pytest.mark.anyio
 
 ROLLUP = 'sr1Ghq66tYK9y3r8CC1Tf8i8m5nxh8nTvZEf'
 
-# The mainnet numbers this was observed with: the rollup was originated 143_442 levels above
-# the first activity of the whitelisted tickets, and that is where the backfill starts.
 ORIGINATION_LEVEL = 5_518_507
 PRE_ORIGINATION_LEVEL = 5_375_065
 SERVABLE_LEVEL = 5_518_600
 
-# The wedged database owes work above the origination too, on both sides of what its rollup node
-# has actually applied: the drain may serve the first and must defer the second.
 APPLIED_LEVEL = 5_518_700
 UNAPPLIED_LEVEL = 5_518_900
 
 UNIVERSE: list[dict[str, Any]] = [
-    # An external below origination — no field on it says which rollup it belongs to, and none
-    # can: externals are a shared-inbox construct.
     {'id': 1, 'level': PRE_ORIGINATION_LEVEL, 'index': 0, 'type': RollupInboxMessageType.external.value},
-    # An external the node can answer for, so the backfill has visible work left to do.
     {'id': 2, 'level': SERVABLE_LEVEL, 'index': 0, 'type': RollupInboxMessageType.external.value},
-    # A transfer, so the first boot commits an inbox row: that row is what makes the restart
-    # take the resume branch of `_prepare_new_index` — the one that restores the pending set.
     {
         'id': 3,
         'level': SERVABLE_LEVEL + 1,
@@ -81,7 +40,6 @@ UNIVERSE: list[dict[str, Any]] = [
 
 
 class UniverseTzkt:
-    """Serves the inbox from a fixed universe by applying the filter it is handed."""
 
     @staticmethod
     def _param(url: str, name: str) -> int | None:
@@ -104,13 +62,6 @@ class UniverseTzkt:
 
 
 class FlooredRollupNode:
-    """A healthy node — with the floor every rollup node has: its origination.
-
-    `applied_level` is what it answers for `head/level`, and it defaults high, so the drain's
-    ceiling says go ahead. The refusal below the floor is not the wedged-node 500 of
-    `test_outbox_level_durability`: no amount of waiting, retrying or reindexing turns it into
-    an answer, because the data never existed.
-    """
 
     def __init__(self, first_available_level: int, applied_level: int = 10**9) -> None:
         self.first_available_level = first_available_level
@@ -125,8 +76,6 @@ class FlooredRollupNode:
         self.requested.append(level)
         if level < self.first_available_level:
             self.refused.append(level)
-            # dipdup's `HttpDatasource` raises for status, retries `retry_count` times and then
-            # re-raises this out of `request` — a 500 is not special-cased anywhere.
             raise aiohttp.ClientResponseError(
                 request_info=None,  # type: ignore[arg-type]
                 history=(),
@@ -140,8 +89,6 @@ class FlooredRollupNode:
 
 
 def _index(node: FlooredRollupNode) -> RollupMessageIndex:
-    # Stand-ins for the container's settings objects and the two datasources; only the fields
-    # and URLs above are ever read on these paths, so the fakes are bound through `Any`.
     tzkt: Any = UniverseTzkt()
     rollup_node: Any = node
     bridge: Any = SimpleNamespace(smart_rollup_address=ROLLUP)
@@ -162,13 +109,6 @@ def _index(node: FlooredRollupNode) -> RollupMessageIndex:
 
 
 async def _boot(node: FlooredRollupNode) -> int | None:
-    """One process lifetime: build the index the way a boot does, run one pass.
-
-    Returns the outbox level the run died on, or None if it survived. The error is caught
-    *here*, outside `_process`, precisely because it is not caught anywhere inside: in
-    production it escapes `on_restart` and takes the process with it. Catching it is what lets
-    this test ask the question a crash loop is about — what the NEXT boot does.
-    """
     index = _index(node)
     try:
         await index._prepare_new_index()
@@ -179,25 +119,17 @@ async def _boot(node: FlooredRollupNode) -> int | None:
 
 
 async def _owed_levels() -> list[int]:
-    """The owed levels as the database holds them, plus the check that nothing else does."""
     assert await Meta.get_or_none(key=PendingOutboxLevels.key) is None, 'the obsolete `dipdup_meta` queue was written again'
     return [row.level for row in await RollupPendingOutboxLevel.all().order_by('level')]
 
 
 async def test_a_pre_origination_outbox_level_does_not_wedge_the_backfill(db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A restart must get past a level the node will never serve. Today it cannot.
-
-    `first_ticket_level` is a class attribute written by `TicketService`; monkeypatch restores
-    it, or it would leak into every later test in the process.
-    """
     monkeypatch.setattr(RollupMessageIndex, 'first_ticket_level', PRE_ORIGINATION_LEVEL)
     node = FlooredRollupNode(first_available_level=ORIGINATION_LEVEL)
 
     first_death = await _boot(node)
     owed_after_the_crash = await _owed_levels()
 
-    # A second boot on the same database — the shape of a restart, and of every restart after
-    # it. The durable pending set is what it inherits.
     second_death = await _boot(node)
 
     assert second_death is None, (
@@ -209,13 +141,6 @@ async def test_a_pre_origination_outbox_level_does_not_wedge_the_backfill(db: An
 
 
 async def _wedge_the_database() -> None:
-    """The staging database as the crash loop left it: rows committed, impossible levels owed.
-
-    The committed row is the universe's transfer — the last id in it, so the resume cursor
-    lands above every external and the walk has nothing left to hand back. The owed set is
-    written through `PendingOutboxLevels` rather than as rows by hand, because that is the only
-    way a real process ever put it there.
-    """
     committed = UNIVERSE[-1]
     await RollupInboxMessage.create(
         id=committed['id'],
@@ -232,13 +157,6 @@ async def _wedge_the_database() -> None:
 
 
 async def test_a_wedged_database_heals_its_impossible_owed_levels_on_boot(db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A database already in the crash loop gets out of it without being wiped.
-
-    This is the half of the fix that the clamp cannot do. The rows are already committed, so
-    `_prepare_new_index` resumes and never computes a start level at all, and the walk that a
-    reindex would restart puts the same externals back into the queue. Only the floor on the
-    way out of storage removes levels whose data never existed.
-    """
     monkeypatch.setattr(RollupMessageIndex, 'first_ticket_level', PRE_ORIGINATION_LEVEL)
     await _wedge_the_database()
     node = FlooredRollupNode(first_available_level=ORIGINATION_LEVEL, applied_level=APPLIED_LEVEL)
@@ -248,13 +166,8 @@ async def test_a_wedged_database_heals_its_impossible_owed_levels_on_boot(db: An
         await index._prepare_new_index()
         await index._process()
     except aiohttp.ClientResponseError as error:
-        # `error.message`, not `str(error)`: the latter reads `request_info.real_url`, which the
-        # fake has no meaning for, and an AttributeError would bury what actually happened.
         pytest.fail(f'the boot died fetching outbox level {node.refused[-1]}, exactly as the previous one did: {error.message}')
 
-    # The resume branch is the one that ran: the walk stands on the committed row, and the
-    # window `inbox[0]['id'] - 1` a fresh database would compute was never computed at all.
-    # Without this the test could pass on the clamp instead of on the floor it is here to prove.
     assert index._inbox_start_id is None, 'the database read as wiped, so the clamp ran and the floor was never asked for'
     assert await index._inbox_cursor() == UNIVERSE[-1]['id']
     assert node.refused == [], f'the node was asked for {node.refused}, levels below its origination that it can never answer'
@@ -266,15 +179,6 @@ async def test_a_wedged_database_heals_its_impossible_owed_levels_on_boot(db: An
 
 
 async def _wedge_the_cursor_below_origination() -> None:
-    """The other wedged database: the resume cursor itself sits below origination.
-
-    Two live routes reach that state. The stand's `ROLLUP_SYNC_FIRST_LEVEL` sets the start
-    level directly, so a bounded window below origination never meets the clamp; and a
-    `SMART_ROLLUP_ADDRESS` repointed at a re-originated rollup lifts origination above a cursor
-    already stored. Either way the walk still has pre-origination externals ahead of it. A
-    level-0 sentinel row is how the cursor is stored when no real message carries its id, so
-    that is what the previous run left behind, together with the level it died on.
-    """
     await RollupInboxMessage.create(
         id=UNIVERSE[0]['id'] - 1,
         level=0,
@@ -289,13 +193,6 @@ async def _wedge_the_cursor_below_origination() -> None:
 
 
 async def test_a_cursor_below_origination_cannot_re_add_an_impossible_level(db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The floor on the way out of storage is not enough while the walk can put the level back.
-
-    `load` drops the impossible level, and then the very same pass walks the external that
-    produced it and owes it again — so the boot dies exactly where the previous one did, and
-    the level is back in the stored queue for the next one. Only refusing the level where it is
-    learned ends the loop.
-    """
     monkeypatch.setattr(RollupMessageIndex, 'first_ticket_level', PRE_ORIGINATION_LEVEL)
     await _wedge_the_cursor_below_origination()
     node = FlooredRollupNode(first_available_level=ORIGINATION_LEVEL)

@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""alias-withdrawal verdict: withdrawals FROM an EVM alias resolve the sender to its tz origin.
-
-See README.md for the on-chain sample; window.env for the block window.
-"""
 
 from __future__ import annotations
 
@@ -11,7 +7,6 @@ from tests.stand import verify_lib as lib
 ALIAS = '21ab829afe4b41dd3fb6eb5be4de2d20d9cebc21'
 NATIVE = 'tz1ekkzEN2LB1cpf7dCaonKt6x9KVd9YVydc'
 
-# Each withdrawal the handlers index in this window: (amount, label). XTZ amount is the raw EVM 0.5e18.
 EXPECTED = [
     ('500000000000000000', 'XTZ'),
     ('1', 'FA'),

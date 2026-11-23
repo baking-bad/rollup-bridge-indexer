@@ -88,6 +88,4 @@ class ServiceContainer:
 
 
 def get_container(ctx: DipDupContext) -> ServiceContainer:
-    # `register()` assigns `DipDupContext.container = self` at runtime; that dynamic
-    # class attribute is invisible to mypy, so the read is narrowed here once.
     return cast('ServiceContainer', ctx.container)  # type: ignore[attr-defined]
