@@ -675,13 +675,10 @@ class RollupMessageIndex:
 
         for outbox_message in outbox:
             try:
-                parameters_hash = await OutboxMessageParametersHash(outbox_message).from_outbox_message(self._ticket_service)
-            except (ValueError, MichelsonRuntimeError):
-                try:
-                    parameters_hash = await OutboxMessageParametersHash(outbox_message).from_fast_outbox_message(self._ticket_service)
-                except (ValueError, MichelsonRuntimeError) as e:
-                    self._logger.warning('Skip hashing outbox message. %s', str(e))
-                    continue
+                parameters_hash = await outbox_message_parameters_hash(outbox_message, self._ticket_service)
+            except (ValueError, MichelsonRuntimeError) as e:
+                self._logger.warning('Skip hashing outbox message. %s', str(e))
+                continue
 
             self._create_outbox_batch.append(
                 RollupOutboxMessage(
@@ -840,6 +837,18 @@ class OutboxMessageParametersHash:
             raise ValueError(f"Can't get FastOutboxParametersHash from message: {self._message}, {e}") from None
 
         return _comparable_parameters_hash(comparable_data)
+
+
+async def outbox_message_parameters_hash(outbox_message: dict[str, Any], ticket_service: TicketService) -> str:
+    """The hash an outbox message is matched by: a plain withdrawal's, else a fast withdrawal's.
+
+    `outbox_message` is the rollup node's item, the stored `RollupOutboxMessage.message` under
+    `'message'`. Raises `ValueError` or `MichelsonRuntimeError` when it is neither.
+    """
+    try:
+        return await OutboxMessageParametersHash(outbox_message).from_outbox_message(ticket_service)
+    except (ValueError, MichelsonRuntimeError):
+        return await OutboxMessageParametersHash(outbox_message).from_fast_outbox_message(ticket_service)
 
 
 class WithdrawalEventParametersHash:
