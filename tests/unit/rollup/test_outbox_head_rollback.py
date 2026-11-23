@@ -16,6 +16,7 @@ from pytezos import MichelsonType
 from pytezos import michelson_to_micheline
 
 from rollup_bridge_indexer import models
+from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
 from rollup_bridge_indexer.handlers.rollup_message import PendingOutboxLevels
 from rollup_bridge_indexer.handlers.rollup_message import RollupMessageIndex
 from rollup_bridge_indexer.handlers.ticket import FAST_WITHDRAW_MICHELSON_OUTBOX_MESSAGE_INTERFACE
@@ -214,6 +215,56 @@ async def test_the_outbox_of_a_drained_level_comes_back_after_a_rollback(db: Any
         (OUTBOX_LEVEL, 0)
     ], 'the outbox messages of the rolled-back drain were never fetched again — the level left a queue no revert can refill'
     assert await _pending_levels() == [], 'and nothing is left owed afterwards'
+
+
+def _outbox_matcher_steps_armed() -> dict[str, bool]:
+    return {
+        'outbox': BridgeMatcherLocks.pending_outbox,
+        'tezos_withdrawals': BridgeMatcherLocks.pending_tezos_withdrawals,
+        'claimed_fast_withdrawals': BridgeMatcherLocks.pending_claimed_fast_withdrawals,
+    }
+
+
+def _disarm_outbox_matcher_steps() -> None:
+    BridgeMatcherLocks.pending_outbox = False
+    BridgeMatcherLocks.pending_tezos_withdrawals = False
+    BridgeMatcherLocks.pending_claimed_fast_withdrawals = False
+
+
+ARMED = {'outbox': True, 'tezos_withdrawals': True, 'claimed_fast_withdrawals': True}
+DISARMED = {'outbox': False, 'tezos_withdrawals': False, 'claimed_fast_withdrawals': False}
+
+
+async def test_only_a_pass_that_commits_outbox_rows_arms_the_outbox_matcher_steps(db: Any) -> None:
+    tzkt = UniverseTzkt([_transfer(100, FIRST_LEVEL)])
+    node = FakeRollupNode({OUTBOX_LEVEL: [_outbox_message(OUTBOX_LEVEL, 0)]}, processed_level=OUTBOX_LEVEL - 1)
+    index = await _backfilled_index(tzkt, node)
+    _disarm_outbox_matcher_steps()
+
+    tzkt.universe.append(_external(101, OUTBOX_LEVEL))
+    async with _head_handler(OUTBOX_LEVEL):
+        await index.handle_realtime(OUTBOX_LEVEL)
+    assert await _outbox_rows() == []
+    assert _outbox_matcher_steps_armed() == DISARMED, 'a pass that committed no outbox rows armed the outbox matcher steps'
+
+    node.processed_level = OUTBOX_LEVEL
+    async with _head_handler(DRAIN_HEAD):
+        await index.handle_realtime(DRAIN_HEAD)
+    assert await _outbox_rows() == [(OUTBOX_LEVEL, 0)]
+    assert _outbox_matcher_steps_armed() == ARMED, 'committed outbox rows left the outbox matcher steps disarmed'
+    _disarm_outbox_matcher_steps()
+
+    async with _head_handler(DRAIN_HEAD + 1):
+        await index.handle_realtime(DRAIN_HEAD + 1)
+    assert _outbox_matcher_steps_armed() == DISARMED, 'a pass with nothing to drain armed the outbox matcher steps'
+
+    assert await _roll_back_head(to_level=DRAIN_HEAD - 1) == 2, 'the rollback reverted nothing, so it proves nothing'
+    assert await _outbox_rows() == []
+
+    async with _head_handler(DRAIN_HEAD):
+        await index.handle_realtime(DRAIN_HEAD)
+    assert await _outbox_rows() == [(OUTBOX_LEVEL, 0)]
+    assert _outbox_matcher_steps_armed() == ARMED, 're-draining a level a rollback reverted left the outbox matcher steps disarmed'
 
 
 async def test_a_rollback_before_the_drain_neither_loses_nor_duplicates_the_level(db: Any) -> None:

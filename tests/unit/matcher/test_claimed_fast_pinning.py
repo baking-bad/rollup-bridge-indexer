@@ -216,3 +216,30 @@ async def test_second_pass_over_a_split_withdrawal_creates_no_third_operation(db
     assert await BridgeOperation.all().count() == 2
     customer = await BridgeWithdrawOperation.get(l2_transaction_id=l2.id, l1_transaction_id=payout.id)
     assert (await BridgeOperation.get(id=customer.id)).kind == BridgeOperationKind.fast_withdrawal_claimed
+
+
+async def test_a_withdrawal_split_by_one_payout_is_not_split_again_by_a_second_payout_in_the_same_pass(db):
+    xtz = await f.seed_xtz()
+    l2, kernel_outbox, payout_outbox, payout = await _claimed_fast_rows(xtz)
+    second_payout_outbox = await f.outbox_message(
+        level=260,
+        builder=RollupOutboxMessageBuilder.service_provider,
+        message=f.fast_payout_message(l2, service_provider='tz1secondProviderXXXXXXXXXXXXXXXXXXX'),
+        parameters_hash=str(l2.kernel_withdrawal_id),
+    )
+    second_payout = await f.l1_withdrawal(second_payout_outbox, level=270, timestamp=PAYOUT_TS + timedelta(minutes=1))
+
+    await f.run_withdrawal_matching()
+
+    assert await BridgeWithdrawOperation.filter(l2_transaction_id=l2.id).count() == 2, 'the leg was split more than once'
+    assert await BridgeOperation.all().count() == 2
+    customer = await BridgeWithdrawOperation.get(l2_transaction_id=l2.id, l1_transaction_id=payout.id)
+    assert customer.outbox_message_id == payout_outbox.id
+    provider = await BridgeWithdrawOperation.get(l2_transaction_id=l2.id, l1_transaction_id=None)
+    assert provider.outbox_message_id == kernel_outbox.id
+    assert (await BridgeOperation.get(id=provider.id)).l1_account == PROVIDER
+
+    assert await BridgeWithdrawOperation.filter(l1_transaction_id=second_payout.id).count() == 0
+    assert await BridgeWithdrawOperation.filter(outbox_message_id=second_payout_outbox.id).count() == 0
+    await second_payout_outbox.refresh_from_db()
+    assert second_payout_outbox.parameters_hash is None

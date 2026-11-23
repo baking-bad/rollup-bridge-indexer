@@ -10,6 +10,9 @@ from typing import Any
 
 import pytest
 from dipdup.context import DipDupContext
+from dipdup.models import ReindexingAction
+from dipdup.models import ReindexingReason
+from dipdup.models import Schema
 from dipdup.transactions import TransactionManager
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
@@ -32,6 +35,7 @@ CLAIM_INDEX = 'tezos_claim_fast_withdrawal_operations'
 L2_INDEX = 'etherlink_withdrawal_events'
 DATASOURCES = {HEAD_INDEX: 'tzkt', CLAIM_INDEX: 'tzkt', L2_INDEX: 'etherlink_node'}
 ROLLBACK_DEPTH = 2
+SCHEMA_NAME = 'public'
 
 REORG_LEVEL = 300
 PROVIDER = 'tz1providerXXXXXXXXXXXXXXXXXXXXXXXXX'
@@ -49,10 +53,11 @@ def _datasources(index: str) -> tuple[Any, ...]:
     return (SimpleNamespace(name=DATASOURCES[index]),)
 
 
-async def _roll_back(index: str, to_level: int, container: Any = None) -> None:
+async def _roll_back(index: str, to_level: int, container: Any = None, from_level: int | None = None) -> Any:
     config = SimpleNamespace(
         package='rollup_bridge_indexer',
-        advanced=SimpleNamespace(rollback_depth=ROLLBACK_DEPTH),
+        schema_name=SCHEMA_NAME,
+        advanced=SimpleNamespace(rollback_depth=ROLLBACK_DEPTH, reindex={ReindexingReason.rollback: ReindexingAction.ignore}),
         indexes={name: SimpleNamespace(datasources=_datasources(name)) for name in DATASOURCES},
     )
     ctx: Any = SimpleNamespace(
@@ -64,6 +69,7 @@ async def _roll_back(index: str, to_level: int, container: Any = None) -> None:
         container=container,
     )
     ctx.rollback = partial(DipDupContext.rollback, ctx)
+    ctx.reindex = partial(DipDupContext.reindex, ctx)
 
     async def execute_sql(name: str) -> None:
         pass
@@ -71,7 +77,8 @@ async def _roll_back(index: str, to_level: int, container: Any = None) -> None:
     ctx.execute_sql = execute_sql
     rolled_back: Any = SimpleNamespace(name=index, datasources=_datasources(index))
     async with ctx.transactions.register():
-        await on_index_rollback(ctx, rolled_back, from_level=to_level + 1, to_level=to_level)
+        await on_index_rollback(ctx, rolled_back, from_level=to_level + 1 if from_level is None else from_level, to_level=to_level)
+    return ctx
 
 
 async def _claimed_fast_withdrawal_at_reorg_level() -> Any:
@@ -143,3 +150,26 @@ async def test_a_reorg_leaves_the_indexes_of_another_datasource_alone(db: Any) -
     assert [message.id for message in await RollupOutboxMessage.all()] == [l2_written.id]
     await l2_written.delete()
     await _assert_back_to_before_the_reorg(l2)
+
+
+async def _journalled_rows() -> dict[str, list[tuple[Any, ...]]]:
+    return {
+        'outbox': await RollupOutboxMessage.all().order_by('id').values_list('id', 'parameters_hash'),
+        'withdrawal': await BridgeWithdrawOperation.all().order_by('id').values_list('id', 'outbox_message_id', 'l1_transaction_id'),
+        'operation': await BridgeOperation.all().order_by('id').values_list('id', 'kind', 'status'),
+        'l1_withdrawal': await TezosWithdrawOperation.all().order_by('id').values_list('id', 'outbox_message_id'),
+    }
+
+
+@pytest.mark.parametrize('index', [HEAD_INDEX, CLAIM_INDEX])
+async def test_a_rollback_deeper_than_the_rollback_depth_reverts_nothing(db: Any, index: str) -> None:
+    await Schema.create(name=SCHEMA_NAME)
+    await _claimed_fast_withdrawal_at_reorg_level()
+    before = await _journalled_rows()
+
+    to_level = REORG_LEVEL - 1
+    ctx = await _roll_back(index, to_level, from_level=to_level + ROLLBACK_DEPTH + 1)
+
+    assert ctx._skipped_rollbacks == {index}, 'DipDup applied this rollback, so it was not too deep'
+    assert (await Schema.get(name=SCHEMA_NAME)).reindex == ReindexingReason.rollback
+    assert await _journalled_rows() == before, 'a rollback DipDup refused still reverted the journal'
