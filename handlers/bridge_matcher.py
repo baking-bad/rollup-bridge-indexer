@@ -28,6 +28,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger('rollup_bridge_indexer.handlers.bridge_matcher')
 
 LAYERS_TIMESTAMP_GAP_MAX = timedelta(seconds=300)
+# How far an L2 block's timestamp may run ahead of the L1 time the kernel applies it at: a
+# blueprint stamped later than the last seen L1 (predecessor) timestamp plus
+# `max_blueprint_lookahead_in_seconds` is rejected. 300 s is the kernel default
+# (`DEFAULT_MAX_BLUEPRINT_LOOKAHEAD_IN_SECONDS`, etherlink/kernel_*/kernel/src/blueprint_storage.rs),
+# and no network this indexer tracks sets the `max_blueprint_lookahead_in_seconds` key that would override it.
+BLUEPRINT_LOOKAHEAD_MAX = timedelta(seconds=300)
 EVM_ADDRESS_HEX_LENGTH = 40
 
 
@@ -427,7 +433,16 @@ class BridgeMatcher:
 
         for bridge_withdrawal in pending:
             bridge_withdrawal: BridgeWithdrawOperation
-            outbox_message = await candidates.take(bridge_withdrawal.l2_transaction.parameters_hash)
+            # The kernel writes the message at the L1 level that applies the withdrawal's L2
+            # block, so the message cannot predate that block by more than the blueprint
+            # lookahead. An older message on the same hash is an earlier identical withdrawal
+            # whose L2 leg this index never saw (one from before its first level); handed out
+            # oldest-first, it would shift every identical withdrawal after it by one message.
+            not_before = bridge_withdrawal.l2_transaction.timestamp - BLUEPRINT_LOOKAHEAD_MAX
+            outbox_message = await candidates.take(
+                bridge_withdrawal.l2_transaction.parameters_hash,
+                where=lambda message, not_before=not_before: message.created_at >= not_before,
+            )
 
             if outbox_message:
                 bridge_withdrawal.outbox_message = outbox_message
