@@ -83,10 +83,6 @@ async def test_attaching_an_outbox_message_consumes_both_hashes(db):
 
 
 async def test_an_outbox_message_older_than_the_withdrawal_is_not_its_own(db):
-    """Mainnet, withdrawal 8c0cdf8c: an outbox message the kernel wrote before the L2 index
-    started has no L2 leg, so its hash is never consumed. Taken oldest-first, it went to the
-    next identical withdrawal a month later — which then carried someone else's L1 execution
-    or expired — and every identical withdrawal after it took its predecessor's message."""
     xtz = await seed_xtz()
     first_ts = datetime(2024, 11, 11, 23, 51, 23, tzinfo=UTC)
     first = await l2_withdrawal(xtz, level=150, parameters_hash='b' * 32, timestamp=first_ts)
@@ -105,9 +101,6 @@ async def test_an_outbox_message_older_than_the_withdrawal_is_not_its_own(db):
 
 @pytest.mark.parametrize(('outbox_offset', 'attached'), [(-300, True), (-301, False)])
 async def test_an_outbox_level_may_precede_its_withdrawal_by_the_blueprint_lookahead(db, outbox_offset, attached):
-    """The kernel accepts a blueprint stamped up to `max_blueprint_lookahead_in_seconds` (300 s)
-    past the L1 time it has seen, so an outbox level's timestamp can trail the L2 block by that
-    much and no more."""
     xtz = await seed_xtz()
     l2 = await l2_withdrawal(xtz, parameters_hash='b' * 32)
     outbox = await outbox_message(parameters_hash='b' * 32, created_at=l2.timestamp + timedelta(seconds=outbox_offset))
