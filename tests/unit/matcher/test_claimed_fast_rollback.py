@@ -75,7 +75,7 @@ def _datasources(index: str) -> tuple[Any, ...]:
     return (SimpleNamespace(name=DATASOURCES[index]),)
 
 
-async def _roll_back(index: str, to_level: int) -> None:
+async def _roll_back(index: str, to_level: int, container: Any = None) -> None:
     """DipDup's response to a reorg on `index`'s channel: the package's `on_index_rollback`.
 
     `ctx.rollback` is DipDup's own, bound to a context carrying only what it reads.
@@ -91,6 +91,7 @@ async def _roll_back(index: str, to_level: int) -> None:
         logger=logging.getLogger('test.on_index_rollback'),
         _rolled_back_indexes=set(),
         _skipped_rollbacks=set(),
+        container=container,
     )
     ctx.rollback = partial(DipDupContext.rollback, ctx)
 

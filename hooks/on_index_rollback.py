@@ -3,8 +3,11 @@ import asyncio
 from dipdup.context import HookContext
 from dipdup.index import Index
 from dipdup.models import ModelUpdate
+from dipdup.models import ModelUpdateAction
 
 from rollup_bridge_indexer import models
+from rollup_bridge_indexer.handlers.rollup_message import outbox_message_parameters_hash
+from rollup_bridge_indexer.handlers.service_container import get_container
 
 # One reorg reaches the indexes of a datasource as one message per channel, and DipDup runs every
 # index's queue concurrently, so these hooks arrive in any order or at once.
@@ -51,4 +54,25 @@ async def _revert_datasource_journal(ctx: HookContext, index: Index, to_level: i
     async with ctx.transactions.in_transaction():
         updates = await ModelUpdate.filter(level__gt=to_level, index__in=siblings).order_by('-id')
         for update in updates:
-            await update.revert(getattr(models, update.model_name))
+            model = getattr(models, update.model_name)
+            if model is models.RollupOutboxMessage and update.action == ModelUpdateAction.INSERT:
+                await _detach_withdrawals(ctx, update.model_pk)
+            await update.revert(model)
+
+
+async def _detach_withdrawals(ctx: HookContext, outbox_message_id: str) -> None:
+    withdrawals = await models.BridgeWithdrawOperation.filter(outbox_message_id=outbox_message_id).prefetch_related(
+        'outbox_message', 'l2_transaction'
+    )
+    if not withdrawals:
+        return
+    parameters_hash = await outbox_message_parameters_hash(
+        {'message': withdrawals[0].outbox_message.message},
+        get_container(ctx).ticket_service,
+    )
+    for withdrawal in withdrawals:
+        withdrawal.outbox_message = None
+        await withdrawal.save()
+        withdrawal.l2_transaction.parameters_hash = parameters_hash
+        await withdrawal.l2_transaction.save()
+    ctx.logger.info('An L1 rollback detached %d bridge withdrawal(s) from outbox message %s', len(withdrawals), outbox_message_id)
