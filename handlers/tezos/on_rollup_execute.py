@@ -23,11 +23,6 @@ from rollup_bridge_indexer.types.output_proof.output_proof import OutputProofDat
 
 
 async def fetch_block_operations(rpc: HttpDatasource, level: int, logger: Logger, attempts: int = 10, delay: float = 3.0) -> Any:
-    """The operations of block `level`, asked for again while the RPC answers 404.
-
-    TzKT reported the execute, the RPC is a separate service and can be a block behind it;
-    a block it has not applied yet answers 404, and DipDup does not retry a 4xx.
-    """
     url = f'chains/main/blocks/{level}/operations'
     for attempt in range(1, attempts):
         try:

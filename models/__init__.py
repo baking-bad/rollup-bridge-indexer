@@ -19,7 +19,6 @@ from rollup_bridge_indexer.models.enum import RollupOutboxMessageBuilder
 from rollup_bridge_indexer.models.enum import RuntimeKind
 
 
-# TODO: move to framework
 def _custom_default(obj: Any) -> Any:
     if isinstance(obj, Decimal):
         return str(obj)
@@ -28,7 +27,6 @@ def _custom_default(obj: Any) -> Any:
     raise TypeError
 
 
-# TODO: move to framework
 def json_dumps_fallback(obj: Any, option: int | None = None) -> str:
     try:
         return orjson.dumps(
@@ -102,7 +100,6 @@ class EtherlinkToken(Model):
     name = fields.TextField(null=True)
     symbol = fields.TextField(null=True)
     decimals = fields.IntField(default=0)
-    # Not OneToOne: XTZ has two L2 tokens (xtz_evm, xtz_michelson) on one native ticket.
     ticket: ForeignKeyFieldInstance[TezosTicket] = fields.ForeignKeyField(
         model_name=TezosTicket.Meta.model,
         source_field='ticket_hash',
@@ -115,24 +112,13 @@ class L2Account(DatetimeModelMixin, Model):
         table = 'l2_account'
         model = 'models.L2Account'
 
-    # Runtime L2 address actually seen on-chain (EVM 0x… or tz…): stable and always known, so it is
-    # the PK. One native identity reached from several runtimes is several rows, one per address.
     runtime_address = fields.CharField(primary_key=True, max_length=40)
-    # Canonical native identity this address resolves to (originOf `nativeAddress`): an alias's
-    # native account, or the address itself when native / not yet classified. Group an account's
-    # runtime forms by `origin`.
     origin = fields.CharField(max_length=40, db_index=True)
-    # originOf classification of the address (unknown/native/alias) — NOT the operation runtime
-    # (that's RuntimeKind on the *_deposit/*_withdrawal tables). Re-resolved while `unknown`.
     kind = fields.EnumField(enum_type=OriginKind, db_index=True, default=OriginKind.unknown)
-    # The runtime `origin` lives in (originOf `homeRuntime`): for an alias the native account's
-    # runtime, for a native row the address's own runtime. Null while `unknown` (homeRuntime is ⊥).
     home_runtime = fields.EnumField(enum_type=RuntimeKind, db_index=True, null=True)
 
     @classmethod
     async def get_or_create_for(cls, address: str, home_runtime: RuntimeKind) -> 'L2Account':
-        # For addresses native by construction (tz-side Michelson receivers): origin is the address
-        # itself, kind native. EVM addresses instead go through handlers/alias.py::resolve_l2_account.
         account, _ = await cls.get_or_create(
             runtime_address=address,
             defaults={'origin': address, 'kind': OriginKind.native, 'home_runtime': home_runtime},
@@ -173,9 +159,6 @@ class RollupInboxMessage(AbstractRollupMessage):
 
     id = fields.BigIntField(primary_key=True)
     type = fields.EnumField(RollupInboxMessageType)
-    # For tz1-target XTZ deposits: the L2 synthetic-op hash derived from this message
-    # (handlers/michelson_deposit.py); null for every other message. The op-hash matcher
-    # keys L2 Michelson deposits on it (BridgeMatcher.check_pending_michelson_deposits).
     expected_l2_op_hash = fields.CharField(max_length=54, db_index=True, null=True)
 
     bridge_deposits: fields.ReverseRelation['BridgeDepositOperation']
@@ -207,17 +190,6 @@ class RollupOutboxMessage(AbstractRollupMessage):
 
 
 class RollupPendingOutboxLevel(Model):
-    """An L1 level whose outbox the index still owes — one row per owed level.
-
-    The queue is a table of this package rather than a `dipdup_meta` key because the index
-    that fills it (`handlers/rollup_message.py`) is pumped from the `tezos_head` handler:
-    everything written there is journalled and an L1 head rollback reverts it, outbox rows
-    included. Only a queue journalled alongside those rows comes back when they go — the
-    revert restores the row that says the level is owed, and the next pass drains it again.
-
-    `queued_at` is not decoration: `ModelUpdate` rebuilds a deleted row out of its
-    *non-primary* fields, so a row that has nothing but a primary key comes back without one.
-    """
 
     class Meta:
         table = 'rollup_pending_outbox_level'
@@ -296,7 +268,6 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
         table = 'l2_deposit'
         model = 'models.EtherlinkDepositOperation'
 
-        # etherlink and tezlink runtimes share level with each other
         ordering = ('-level', '-transaction_index', '-log_index')
 
         unique_together = (
@@ -304,7 +275,6 @@ class EtherlinkDepositOperation(AbstractEtherlinkOperation):
             'inbox_message_index',
         )
 
-    # The L2 runtime that produced this row.
     runtime_kind = fields.EnumField(enum_type=RuntimeKind, db_index=True, default=RuntimeKind.evm)
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
@@ -337,11 +307,8 @@ class EtherlinkWithdrawOperation(AbstractEtherlinkOperation):
         table = 'l2_withdrawal'
         model = 'models.EtherlinkWithdrawOperation'
 
-        # etherlink and tezlink runtimes share level with each other
         ordering = ('-level', '-transaction_index', '-log_index')
 
-    # Constant `evm` for now (no Michelson withdrawals yet); kept for symmetry with
-    # EtherlinkDepositOperation so consumers can filter withdrawals by runtime without a join.
     runtime_kind = fields.EnumField(enum_type=RuntimeKind, db_index=True, default=RuntimeKind.evm)
     l2_account: ForeignKeyFieldInstance[L2Account] = fields.ForeignKeyField(
         model_name=L2Account.Meta.model,
@@ -392,9 +359,6 @@ class BridgeOperation(AbstractBridgeOperation):
     )
     type = fields.EnumField(enum_type=BridgeOperationType, db_index=True)
     kind = fields.EnumField(enum_type=BridgeOperationKind, db_index=True, null=True)
-    # The L2 runtime of the operation, copied from the L2 leg. Null for a deposit until
-    # its L2 leg attaches (runtime genuinely unknown from L1 alone); set at creation for
-    # withdrawals (which start from the L2 leg). Lets UI/Hasura/Kuma filter without a join.
     runtime_kind = fields.EnumField(enum_type=RuntimeKind, db_index=True, null=True)
     is_completed = fields.BooleanField(default=False, db_index=True)
     is_successful = fields.BooleanField(default=False, db_index=True)

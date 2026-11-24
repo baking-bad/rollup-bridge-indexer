@@ -1,14 +1,7 @@
-# Standalone config for the alias-withdrawal case. See README.md.
-# sqlite + oneshot. Runs only the EVM withdrawal index (native 0xff…01 + FA 0xff…02);
-# no L1 / deposit indexes — this case exercises the withdrawal handlers' alias resolution
-# (and the matcher's raw-address comparison), not full bridge matching.
-
 spec_version: 3.0
 package: rollup_bridge_indexer
 
 custom:
-  # TezosX has a Michelson runtime, so originOf is authoritative (this case tests alias resolution).
-  # Required, no default (see handlers/alias.py::_has_michelson_runtime).
   has_michelson_runtime: true
 
 

@@ -14,8 +14,6 @@ from rollup_bridge_indexer.models import TezosTicket
 async def _validate_xtz_transaction(transaction: EvmTransactionData):
     validators = [
         transaction.value is not None and transaction.value > 0,
-        # The deposit-sender `from_` (0x…feed on the new kernel, 0x0 on the legacy one) is
-        # enforced per-network by the index `from_` filter, so we don't hardcode it here.
         transaction.to != transaction.from_,
         transaction.input == '0x',
         transaction.sighash == '0x',
@@ -39,7 +37,7 @@ async def on_xtz_deposit(
         ctx.logger.warning('Incorrect XTZ Deposit. %s. Operation ignored.', exception.args[0].format(*exception.args[1:]))
         return
 
-    assert transaction.to is not None  # validated above: a deposit always has a destination
+    assert transaction.to is not None
     etherlink_token = await EtherlinkToken.get(id='xtz_evm')
     tezos_ticket = await TezosTicket.get(token_id='xtz')
     l2_account = await resolve_l2_account(ctx, transaction.to[-40:])

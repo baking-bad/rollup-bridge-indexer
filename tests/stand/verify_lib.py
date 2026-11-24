@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""Shared helpers for per-case test-stand verifiers (`cases/<name>/verify.py`).
-
-Generic sqlite plumbing (read row counts / rows, print sections) plus tiny assertion
-helpers that build a pass/fail verdict. Each case's verify.py imports this, dumps the
-tables it cares about, declares its expectations, and exits non-zero if any fail.
-"""
 
 from __future__ import annotations
 
@@ -15,10 +9,6 @@ from pathlib import Path
 
 
 def open_db(default: str = '/tmp/bridge_test.sqlite') -> sqlite3.Connection:
-    """Open the sqlite produced by a test-stand run.
-
-    Path comes from argv[1], else $SQLITE_PATH, else `default`.
-    """
     path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('SQLITE_PATH', default)
     if not Path(path).exists():
         print(f'sqlite db not found: {path}\nrun `make test-indexer CASE=<name>` first.')
@@ -35,7 +25,6 @@ def table_exists(cur: sqlite3.Cursor, name: str) -> bool:
 
 
 def count(cur: sqlite3.Cursor, table: str) -> int:
-    """Row count, or -1 if the table is missing."""
     if not table_exists(cur, table):
         return -1
     cur.execute(f'SELECT count(*) FROM {table}')
@@ -58,7 +47,6 @@ def section(title: str) -> None:
 
 
 def counts(cur: sqlite3.Cursor, *tables: str) -> None:
-    """Print a `Row counts` section (`(missing)` if a table is absent)."""
     section('Row counts')
     for t in tables:
         c = count(cur, t)
@@ -66,7 +54,6 @@ def counts(cur: sqlite3.Cursor, *tables: str) -> None:
 
 
 def dump(cur: sqlite3.Cursor, table: str, columns: str, order_by: str | None = None) -> list[sqlite3.Row]:
-    """Print `table` as `key=value` lines and return its rows. `columns` is a comma-list."""
     cols = [c.strip() for c in columns.split(',')]
     section(table)
     sql = f'SELECT {columns} FROM {table}' + (f' ORDER BY {order_by}' if order_by else '')
@@ -77,18 +64,10 @@ def dump(cur: sqlite3.Cursor, table: str, columns: str, order_by: str | None = N
 
 
 def dump_accounts(cur: sqlite3.Cursor) -> dict[str, sqlite3.Row]:
-    """Dump `l2_account`, return it keyed by `runtime_address` (feed to `Verdict.check_alias`)."""
     return {r['runtime_address']: r for r in dump(cur, 'l2_account', 'origin, runtime_address, kind')}
 
 
 class Verdict:
-    """Accumulates pass/fail checks and renders a final verdict + exit code.
-
-    Usage in a case verify.py:
-        v = Verdict()
-        v.check(lib.count(cur, 'l2_deposit') >= 1, 'l2_deposit indexed')
-        raise SystemExit(v.report())
-    """
 
     def __init__(self) -> None:
         self._results: list[tuple[bool, str]] = []
@@ -98,7 +77,6 @@ class Verdict:
         return bool(ok)
 
     def check_alias(self, accounts: dict[str, sqlite3.Row], alias: str, native: str) -> None:
-        """Assert the alias `l2_account` row exists and resolved to `native` (kind=alias)."""
         row = accounts.get(alias)
         self.check(row is not None, f'l2_account row exists for alias {alias}')
         self.check(row is not None and row['kind'] == 'alias', 'alias resolved: kind == alias')

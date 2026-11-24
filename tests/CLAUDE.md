@@ -7,7 +7,10 @@ shape. The whole `tests/` tree is excluded from the prod image (`.dockerignore: 
 - **Purpose:** fast, deterministic pytest over pure logic — decoders, commitment/rollup math,
   type (de)serialization, and the bridge-matcher harness (`matcher/`: real models + real
   matcher steps over in-memory sqlite; `conftest.py` registers DipDup's TransactionManager,
-  `factories.py` builds handler-shaped rows and runs one batch pass).
+  `factories.py` builds handler-shaped rows and runs one batch pass). The harness never runs the
+  real handlers: the `set_pending_*` calls in `factories.py` are a hand copy of each producing
+  handler's, so a handler that changes which matcher flag it raises needs the same change there,
+  or the matcher suite stays green while realtime matching stalls.
 - **Belongs:** anything testable with in-memory fixtures (in-memory sqlite included); group
   by area (`decoder/`, `rollup/`, `types/`, `matcher/`).
 - **Does NOT belong:** anything that boots the indexer, hits TzKT/RPC, or needs external

@@ -82,8 +82,6 @@ class Proof(BaseBinarySchema):
     _schema: ClassVar[list[tuple]] = [
         ('size_of_pvm_step', 4, 'uint32'),
         ('pvm_step', '&size_of_pvm_step', 'hex'),
-        # ('presence_of_input_proof', 1, 'Boolean1'),
-        # ('input_proof', None, 'X2'),
     ]
 
 

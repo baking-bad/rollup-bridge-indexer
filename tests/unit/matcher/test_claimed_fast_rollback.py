@@ -1,24 +1,3 @@
-"""Contract: an L1 rollback leaves a claimed fast withdrawal as it was before the claim.
-
-The claimed-fast split is written by two indexes, and DipDup journals and reverts each one
-separately. The kernel's outbox message is stored by the rollup-message drain, which runs in
-the `tezos_head` handler, so its INSERT is journalled under `tezos_head`. The split
-(`check_pending_claimed_fast_withdrawals`) runs in the `batch` of the index that delivered the
-payout, `tezos_claim_fast_withdrawal_operations`, and journals its writes under that index.
-One of those writes moves the customer's `bridge_withdrawal.outbox_message` off the kernel
-message, and the revert of that write puts the kernel message's id back.
-
-When both writes fall in the window of one L1 reorg and each index reverts only its own
-journal, `tezos_head` going first deletes the kernel message before the claim index restores
-the customer's reference to it, and the database refuses the UPDATE with
-`bridge_withdrawal_outbox_message_id_fkey`. `hooks/on_index_rollback.py` therefore reverts the
-journal of every index on the datasource in one pass.
-
-Offline: rows come from the matcher factories, the two indexes' writes are made inside
-DipDup's own versioned transactions, and each rollback is the package's `on_index_rollback`
-hook calling DipDup's own `DipDupContext.rollback`.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -31,6 +10,9 @@ from typing import Any
 
 import pytest
 from dipdup.context import DipDupContext
+from dipdup.models import ReindexingAction
+from dipdup.models import ReindexingReason
+from dipdup.models import Schema
 from dipdup.transactions import TransactionManager
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
@@ -50,14 +32,11 @@ pytestmark = pytest.mark.anyio
 
 HEAD_INDEX = 'tezos_head'
 CLAIM_INDEX = 'tezos_claim_fast_withdrawal_operations'
-# An index on another datasource: its levels count L2 blocks, not L1 ones.
 L2_INDEX = 'etherlink_withdrawal_events'
 DATASOURCES = {HEAD_INDEX: 'tzkt', CLAIM_INDEX: 'tzkt', L2_INDEX: 'etherlink_node'}
-# Any non-zero depth opens a versioned transaction.
 ROLLBACK_DEPTH = 2
+SCHEMA_NAME = 'public'
 
-# The L1 block that both the drain of the kernel message and the payout land in, and that the
-# reorg removes.
 REORG_LEVEL = 300
 PROVIDER = 'tz1providerXXXXXXXXXXXXXXXXXXXXXXXXX'
 WITHDRAWAL_ID = 7
@@ -65,7 +44,6 @@ WITHDRAWAL_ID = 7
 
 @asynccontextmanager
 async def _handler_of(index: str, level: int) -> AsyncIterator[None]:
-    """The versioned transaction DipDup opens around an index's handlers at `level`."""
     manager = TransactionManager(depth=ROLLBACK_DEPTH)
     async with manager.register(), manager.in_transaction(level=level, index=index):
         yield
@@ -75,14 +53,11 @@ def _datasources(index: str) -> tuple[Any, ...]:
     return (SimpleNamespace(name=DATASOURCES[index]),)
 
 
-async def _roll_back(index: str, to_level: int, container: Any = None) -> None:
-    """DipDup's response to a reorg on `index`'s channel: the package's `on_index_rollback`.
-
-    `ctx.rollback` is DipDup's own, bound to a context carrying only what it reads.
-    """
+async def _roll_back(index: str, to_level: int, container: Any = None, from_level: int | None = None) -> Any:
     config = SimpleNamespace(
         package='rollup_bridge_indexer',
-        advanced=SimpleNamespace(rollback_depth=ROLLBACK_DEPTH),
+        schema_name=SCHEMA_NAME,
+        advanced=SimpleNamespace(rollback_depth=ROLLBACK_DEPTH, reindex={ReindexingReason.rollback: ReindexingAction.ignore}),
         indexes={name: SimpleNamespace(datasources=_datasources(name)) for name in DATASOURCES},
     )
     ctx: Any = SimpleNamespace(
@@ -94,6 +69,7 @@ async def _roll_back(index: str, to_level: int, container: Any = None) -> None:
         container=container,
     )
     ctx.rollback = partial(DipDupContext.rollback, ctx)
+    ctx.reindex = partial(DipDupContext.reindex, ctx)
 
     async def execute_sql(name: str) -> None:
         pass
@@ -101,15 +77,11 @@ async def _roll_back(index: str, to_level: int, container: Any = None) -> None:
     ctx.execute_sql = execute_sql
     rolled_back: Any = SimpleNamespace(name=index, datasources=_datasources(index))
     async with ctx.transactions.register():
-        await on_index_rollback(ctx, rolled_back, from_level=to_level + 1, to_level=to_level)
+        await on_index_rollback(ctx, rolled_back, from_level=to_level + 1 if from_level is None else from_level, to_level=to_level)
+    return ctx
 
 
 async def _claimed_fast_withdrawal_at_reorg_level() -> Any:
-    """A fast withdrawal whose kernel message and payout both arrive in `REORG_LEVEL`.
-
-    The L2 withdrawal and its bridge row predate the reorg and are not journalled. Returns
-    the L2 withdrawal.
-    """
     xtz = await f.seed_xtz()
     params_hash = 'c' * 32
     l2 = await f.l2_withdrawal(xtz, parameters_hash=params_hash, fast_payload=b'\x01', kernel_withdrawal_id=WITHDRAWAL_ID)
@@ -135,7 +107,6 @@ async def _claimed_fast_withdrawal_at_reorg_level() -> Any:
 
 
 async def _assert_back_to_before_the_reorg(l2: Any) -> None:
-    """One bridge row for the withdrawal, waiting for its outbox message and its L1 leg."""
     customer = await BridgeWithdrawOperation.get(l2_transaction_id=l2.id)
     assert customer.outbox_message_id is None  # type: ignore[attr-defined]  # tortoise generates the FK id attr
     assert customer.l1_transaction_id is None  # type: ignore[attr-defined]
@@ -157,15 +128,11 @@ async def _claim_then_head() -> None:
 
 
 async def _concurrently() -> None:
-    # Both reorg messages landed before the same pass of DipDup's main loop, which `gather`s
-    # every index's queue, so the two rollbacks run side by side in two transactions.
     await asyncio.gather(_roll_back(HEAD_INDEX, REORG_LEVEL - 1), _roll_back(CLAIM_INDEX, REORG_LEVEL - 1))
 
 
 @pytest.mark.parametrize('roll_back', [_head_then_claim, _claim_then_head, _concurrently], ids=lambda fn: fn.__name__.strip('_'))
 async def test_a_reorg_restores_the_claimed_fast_withdrawal_in_any_rollback_order(db: Any, roll_back: Any) -> None:
-    """The reorg reaches `tezos_head` and the claim index as two messages on two TzKT channels,
-    and DipDup fixes no order between them: whichever arrives first, or both at once."""
     l2 = await _claimed_fast_withdrawal_at_reorg_level()
 
     await roll_back()
@@ -174,8 +141,6 @@ async def test_a_reorg_restores_the_claimed_fast_withdrawal_in_any_rollback_orde
 
 
 async def test_a_reorg_leaves_the_indexes_of_another_datasource_alone(db: Any) -> None:
-    """An L2 index writes at L2 levels, far above any L1 level, so an L1 rollback that reached
-    into its journal would revert rows the L2 chain never took back."""
     l2 = await _claimed_fast_withdrawal_at_reorg_level()
     async with _handler_of(L2_INDEX, REORG_LEVEL * 1000):
         l2_written = await f.outbox_message(level=REORG_LEVEL * 1000)
@@ -185,3 +150,26 @@ async def test_a_reorg_leaves_the_indexes_of_another_datasource_alone(db: Any) -
     assert [message.id for message in await RollupOutboxMessage.all()] == [l2_written.id]
     await l2_written.delete()
     await _assert_back_to_before_the_reorg(l2)
+
+
+async def _journalled_rows() -> dict[str, list[tuple[Any, ...]]]:
+    return {
+        'outbox': await RollupOutboxMessage.all().order_by('id').values_list('id', 'parameters_hash'),
+        'withdrawal': await BridgeWithdrawOperation.all().order_by('id').values_list('id', 'outbox_message_id', 'l1_transaction_id'),
+        'operation': await BridgeOperation.all().order_by('id').values_list('id', 'kind', 'status'),
+        'l1_withdrawal': await TezosWithdrawOperation.all().order_by('id').values_list('id', 'outbox_message_id'),
+    }
+
+
+@pytest.mark.parametrize('index', [HEAD_INDEX, CLAIM_INDEX])
+async def test_a_rollback_deeper_than_the_rollback_depth_reverts_nothing(db: Any, index: str) -> None:
+    await Schema.create(name=SCHEMA_NAME)
+    await _claimed_fast_withdrawal_at_reorg_level()
+    before = await _journalled_rows()
+
+    to_level = REORG_LEVEL - 1
+    ctx = await _roll_back(index, to_level, from_level=to_level + ROLLBACK_DEPTH + 1)
+
+    assert ctx._skipped_rollbacks == {index}, 'DipDup applied this rollback, so it was not too deep'
+    assert (await Schema.get(name=SCHEMA_NAME)).reindex == ReindexingReason.rollback
+    assert await _journalled_rows() == before, 'a rollback DipDup refused still reverted the journal'

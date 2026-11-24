@@ -1,37 +1,10 @@
 #!/usr/bin/env bash
-# Four-arm protocol for the outbox-fetch-failure case. See README.md.
-#
-#   CONTROL         proxy passes everything through       -> both outbox messages indexed
-#   TREATMENT       proxy fails one outbox level          -> indexer aborts, nothing saved
-#   TREATMENT-AGAIN restart, SAME db, fault STILL armed   -> prod stayed broken across restarts
-#   RECOVERY        proxy healthy again, SAME db, no wipe -> does the restart get them back?
-#
-# The script ASSERTS: every arm's facts go to $OUT/arms.json, an arm that cannot mean what it
-# is supposed to mean aborts the run, and the last thing it does is run the verifier and exit
-# with its status.
-#
-#   exit 0  GREEN — the outbox messages survived the failure
-#   exit 1  RED   — they are gone (the current, unfixed behaviour)
-#   exit 2  VOID  — the run proves nothing (harness/proxy/arm-precondition failure)
-#
-# Usage: tests/stand/cases/outbox_fetch_failure/run_arms.sh
-#
-# Env: SQLITE_PATH / PROXY_PORT / PROXY_CACHE_DIR / OUT_DIR override window.env, so a second
-# sequence can run beside this one from another worktree (the response cache is only read
-# after the prewarm and may be shared). ARM_TIMEOUT bounds a single dipdup arm.
-#
-# HARNESS_SELFTEST proves the gate can still move in both directions — see README.md:
-#   green  rewind the inbox cursor before each restart arm (what a real fix must achieve)
-#          => the sequence must end GREEN, exit 0
-#   void   run TREATMENT against a dead TzKT so it dies before the inbox bulk_create
-#          => the sequence must abort VOID, exit 2 (never GREEN off an empty database)
 set -u
 
 cd "$(dirname "$0")/../../../.." || exit 1
 CASE=outbox_fetch_failure
 CASE_DIR=tests/stand/cases/$CASE
 
-# Shell env wins over window.env; window.env holds the defaults and every window constant.
 _env_sqlite=${SQLITE_PATH:-}
 _env_port=${PROXY_PORT:-}
 _env_cache=${PROXY_CACHE_DIR:-}
@@ -50,8 +23,6 @@ SELFTEST=${HARNESS_SELFTEST:-}
 ARGS="-e tests/stand/tezosx.env -e ${CASE_DIR}/window.env -c ${CASE_DIR}/config.yaml"
 VERIFY="python3 -m tests.stand.cases.${CASE}.verify"
 
-# A fix must re-reach the external message whose outbox level was lost; the self-test does it
-# by hand, rewinding the cursor to the sentinel so the restart replays the page.
 REWIND_SQL='DELETE FROM rollup_inbox_message WHERE id > ?'
 SEED_SENTINEL_SQL=$(
 	cat <<-'SQL'
@@ -122,7 +93,6 @@ proxy_start() { # $1 = arm, $2 = PROXY_FAIL_LEVELS value
 	PROXY_FAIL_LEVELS="$2" PROXY_FAIL_STATUS="$FAIL_STATUS" PROXY_TOKEN="$PROXY_TOKEN" PROXY_LOG="$OUT/$1.proxy.log" \
 		PROXY_WEDGED_AT="${WEDGE:-0}" \
 		setsid uv run python "$CASE_DIR/proxy.py" >"$OUT/$1.proxy.out" 2>&1 &
-	# Identity, not liveness: the arm must talk to the proxy IT started, with ITS fault spec.
 	uv run python "$CASE_DIR/proxy.py" check "$PROXY_PORT" "$PROXY_TOKEN" "$2" "$FAIL_STATUS" || {
 		cat "$OUT/$1.proxy.out"
 		die "arm $1 is not talking to the proxy it started (see $OUT/$1.proxy.out)"
@@ -166,15 +136,9 @@ run_arm() { # $1 = arm, $2 = PROXY_FAIL_LEVELS value, $3.. = extra env lines for
 	echo "$ARM_FACTS"
 }
 
-# --- Prewarm: every level the drain can ask for must already be cached. A cold entry is
-# fetched under the datasource's request_timeout (4s) through the proxy's 30s upstream path,
-# and the resulting TimeoutError is indistinguishable from the injected fault. ---
 uv run python "$CASE_DIR/proxy.py" prewarm "$CASE_PREWARM_FIRST_LEVEL" "$CASE_PREWARM_LAST_LEVEL" "$CASE_PREWARM_ENTRIES" ||
 	die "prewarm did not leave $CASE_PREWARM_ENTRIES cached entries in $PROXY_CACHE_DIR"
 
-# --- WEDGED: the node stopped applying L1 blocks and still answers RPC. Its reported level is
-# below both outbox levels, so neither can be served — and neither may be asked for. A drain
-# that asks anyway takes the process down, which is the state this arm exists to rule out. ---
 rm -f "$SQLITE_PATH"
 WEDGE="$CASE_WEDGE_LEVEL" run_arm wedged ''
 [ "$(fact "$ARM_FACTS" exit_code)" = 0 ] ||
@@ -184,23 +148,16 @@ WEDGE="$CASE_WEDGE_LEVEL" run_arm wedged ''
 [ "$(fact "$ARM_FACTS" inbox_rows)" -gt 0 ] ||
 	die "WEDGED indexed no inbox rows — the arm never reached the drain and proves nothing"
 
-# --- WEDGE-RECOVERY: same database, the node has caught up. The debt the wedged arm recorded
-# is what makes this possible; without it the cursor is already past those externals. ---
 run_arm wedge_recovery ''
 [ "$(fact "$ARM_FACTS" outbox_levels_missing)" = 0 ] ||
 	red "WEDGE-RECOVERY left $(fact "$ARM_FACTS" outbox_levels_missing) outbox level(s) unindexed; see $OUT/wedge_recovery.log"
 
-# --- CONTROL: healthy node, fresh db. Anything but a complete index means the window rotted. ---
 rm -f "$SQLITE_PATH"
 run_arm control ''
 [ "$(fact "$ARM_FACTS" exit_code)" = 0 ] || die "CONTROL must exit 0 (got $(fact "$ARM_FACTS" exit_code)); see $OUT/control.log"
 [ "$(fact "$ARM_FACTS" outbox_levels_missing)" = 0 ] || die "CONTROL did not index $CASE_OUTBOX_LEVELS — the window no longer holds them"
 [ "$(fact "$ARM_FACTS" outbox_rows)" = "$CASE_OUTBOX_ROWS" ] || die "CONTROL left $(fact "$ARM_FACTS" outbox_rows) outbox rows, expected $CASE_OUTBOX_ROWS"
 
-# --- TREATMENT: the fault. It must crash IN the outbox drain: after the inbox bulk_create
-# (rows committed) and before any outbox row is flushed. A crash before the bulk_create leaves
-# an empty db, RECOVERY degenerates into a clean CONTROL run and the case would go GREEN with
-# no fix at all — that state is VOID, not RED. ---
 rm -f "$SQLITE_PATH"
 if [ "$SELFTEST" = void ]; then
 	run_arm treatment "$FAIL_LEVEL" 'TZKT_URL=http://127.0.0.1:1'
@@ -216,22 +173,15 @@ grep -qE 'rollup_message\.py|ClientResponseError' "$OUT/treatment.log" ||
 	die "TREATMENT's traceback does not mention rollup_message.py — it died somewhere else"
 TREATMENT_MAX_ID=$(fact "$ARM_FACTS" max_inbox_id)
 
-# Prod always carries the previous page's level=0 cursor sentinel; this window is one page, so
-# TREATMENT leaves none. Seed it so both restart arms inherit a prod-shaped database.
 sql "$SEED_SENTINEL_SQL" "$CASE_SENTINEL_SEED_ID" || die "could not seed the level=0 cursor sentinel"
 echo "seeded level=0 cursor sentinel at id $CASE_SENTINEL_SEED_ID"
 
-# --- TREATMENT-AGAIN: the node is still broken, as it was in production across many restarts.
-# A fix that remembers the pending level over one restart but forgets it on the next must not
-# reach RECOVERY with its state intact. Either exit code is legitimate here (a fix retries and
-# crashes again; the unfixed code never asks again), so only the database is asserted. ---
 if [ "$SELFTEST" = green ]; then
 	sql "$REWIND_SQL" "$CASE_SENTINEL_SEED_ID"
 fi
 run_arm treatment_again "$FAIL_LEVEL"
 [ "$(fact "$ARM_FACTS" transfers_present)" = 2 ] || die "TREATMENT-AGAIN lost the committed inbox transfers — the db was wiped between arms"
 
-# --- RECOVERY: healthy node, same db, no wipe. The verdict is taken on what it leaves. ---
 if [ "$SELFTEST" = green ]; then
 	sql "$REWIND_SQL" "$CASE_SENTINEL_SEED_ID"
 fi

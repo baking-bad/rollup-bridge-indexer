@@ -1,9 +1,3 @@
-"""Behavior of one batch-handler matching pass over indexed deposit rows.
-
-Each test states a world (rows the handlers indexed), runs one production
-matching pass, and asserts which bridge links exist afterwards.
-"""
-
 import pytest
 
 from rollup_bridge_indexer.handlers.bridge_matcher_locks import BridgeMatcherLocks
@@ -20,7 +14,6 @@ from tests.unit.matcher.factories import seed_xtz
 
 pytestmark = pytest.mark.anyio
 
-# Live golden vector: inbox (3599297, 8) -> opAhDW... (1 XTZ to tz1PSJ...).
 GOLDEN_INBOX_PAYLOAD = {
     'LL': {
         'bytes': '01dad80196000029a8a3205033f6d4f0fb7c218e4a7e8bc12a798cc0',
@@ -32,8 +25,6 @@ GOLDEN_OP_HASH = 'opAhDWYxwDWFnKXG892itvC1TmMtUbeuSThVopzVDGd41mRxomE'
 
 
 async def test_deposit_with_matching_inbox_coords_is_finished(db):
-    # The regular path: L1 deposit + its inbox message (same parameters hash),
-    # L2 event carrying that message's coords -> one finished bridge operation.
     xtz = await seed_xtz()
     l1 = await l1_deposit(xtz.ticket, level=100, parameters_hash='a' * 32)
     await inbox_message(level=100, index=5, parameters_hash='a' * 32)
@@ -50,9 +41,6 @@ async def test_deposit_with_matching_inbox_coords_is_finished(db):
 
 
 async def test_evm_xtz_deposit_without_coords_still_matches_by_value(db):
-    # EVM XTZ deposits carry no inbox coords either — they must keep flowing
-    # through the value-based xtz step (ticket + receiver + amount + time window)
-    # once the deposit's inbox message is attached.
     xtz = await seed_xtz()
     receiver = 'ab' * 20
     l1 = await l1_deposit(xtz.ticket, level=100, amount='1000000', l2_account=receiver, parameters_hash='a' * 32)
@@ -69,14 +57,8 @@ async def test_evm_xtz_deposit_without_coords_still_matches_by_value(db):
 
 
 async def test_l2_deposit_without_coords_never_links_to_unrelated_deposit(db):
-    # tezosx-shadownet prod incident (2026-06-11): a Michelson L2 row carries no
-    # inbox coords, and the deposit whose inbox message is missing carries no
-    # coords either — coords-based matching has nothing to compare, so it must
-    # NOT link them, however plausible the pair looks. (Tortoise renders the
-    # None-coords filter as LEFT JOIN ... IS NULL, which matched everything.)
     xtz = await seed_xtz()
     l1 = await l1_deposit(xtz.ticket, level=100, amount='5000000', l2_account='tz1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
-    # No inbox message indexed for this deposit (inbox backfill gap).
     michelson = await michelson_l2_deposit(xtz, amount_mutez=1000000, l2_account='tz1bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
 
     await run_deposit_matching()
@@ -91,9 +73,6 @@ async def test_l2_deposit_without_coords_never_links_to_unrelated_deposit(db):
 
 
 async def test_michelson_deposit_matches_by_op_hash_and_backfills_coords(db):
-    # The intended Michelson path: once the deposit's inbox message is indexed, the
-    # op-hash matcher reconstructs the L2 synthetic-op hash from the inbox data and
-    # links deterministically, backfilling coords so the row looks event-matched.
     xtz = await seed_xtz()
     l1 = await l1_deposit(xtz.ticket, level=3599297, amount='1000000', l2_account=GOLDEN_RECEIVER, parameters_hash='a' * 32)
     await inbox_message(level=3599297, index=8, message=GOLDEN_INBOX_PAYLOAD, parameters_hash='a' * 32)
@@ -112,19 +91,13 @@ async def test_michelson_deposit_matches_by_op_hash_and_backfills_coords(db):
 
 
 async def test_deposit_arriving_after_inbox_lock_was_consumed_still_matches(db):
-    # Fresh-DB bootstrap race (tezosx-shadownet 2026-06-12): on_restart writes the
-    # whole inbox backfill and raises every lock BEFORE the indexes spawn, so the
-    # first batch consumes pending_inbox over a deposit-less DB. Rows indexed later
-    # re-raise only their own handlers' locks — here the L1 deposit arrives LAST
-    # (the L2 Michelson index synced ahead), so on_rollup_call's lock alone must
-    # cascade through inbox attach and the op-hash match within one pass.
     xtz = await seed_xtz()
     await inbox_message(level=3599297, index=8, message=GOLDEN_INBOX_PAYLOAD, parameters_hash='a' * 32)
     michelson = await michelson_l2_deposit(xtz, op_hash=GOLDEN_OP_HASH, amount_mutez=1000000, l2_account=GOLDEN_RECEIVER)
-    await run_deposit_matching()  # the lock-consuming early batch: nothing to link yet
+    await run_deposit_matching()
 
     l1 = await l1_deposit(xtz.ticket, level=3599297, amount='1000000', l2_account=GOLDEN_RECEIVER, parameters_hash='a' * 32)
-    BridgeMatcherLocks.set_pending_tezos_deposits()  # what on_rollup_call sets — and nothing else
+    BridgeMatcherLocks.set_pending_tezos_deposits()
     await run_matcher_pass()
 
     bridge = await BridgeDepositOperation.get(l1_transaction_id=l1.id)

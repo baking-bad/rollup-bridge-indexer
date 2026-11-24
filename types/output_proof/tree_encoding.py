@@ -56,13 +56,6 @@ class TreeEncoding130(BaseBinarySchema):
     ]
 
 
-# class TreeEncoding131(BaseBinarySchema):
-#     _schema: ClassVar[list[tuple]] = [         ('Tag', 1, 'uint8'),
-#         (' # bytes in next field', 4, 'uint30'),
-#         ('Unnamed field 0', None, 'X5'),  # sequence
-#     ]
-
-
 class TreeEncoding192(BaseBinarySchema):
     _schema: ClassVar[list[tuple]] = [
         ('Tag', 1, 'uint8'),

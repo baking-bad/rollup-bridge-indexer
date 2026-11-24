@@ -13,7 +13,6 @@ def output_proof() -> bytes:
 
 
 class TestOctezDecoder:
-    # @pytest.mark.skip
     def test_output_proof_schema_version(self, output_proof: bytes):
         decoded, _ = OutputProofData(output_proof).unpack()
         assert isinstance(decoded, OrderedDict)

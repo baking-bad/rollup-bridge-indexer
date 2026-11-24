@@ -1,19 +1,4 @@
 #!/usr/bin/env python3
-"""Throughput snapshot of a deployed indexer, for before/after comparison of a matcher patch.
-
-Usage:  python3 tests/perf/baseline.py [window_seconds] [--url URL] > snapshots/<name>.json
-
-The verdict is `derived.throughput_per_backlog_row`: useful rows written per minute, divided
-by the backlog the matcher is obliged to walk. Rows per minute alone says nothing here — an
-instance that has drained its backlog writes fewer of them for the best possible reason, and
-the same indexer writes more of them simply because more operations arrived.
-
-This measures a *deployed* instance over the network, so it sees only what a matcher pass
-costs in aggregate. For per-step cost against a controlled backlog, use `make bench-matcher`.
-
-`derived.pool_shares` is each pool's share of the walked backlog — the expected signal size:
-a patch fixing a pool worth 3% of the backlog is invisible from outside and needs the bench.
-"""
 import json
 import subprocess
 import sys
@@ -36,9 +21,6 @@ Q_COUNTS = '''{
  outbox: rollup_outbox_message_aggregate { aggregate { count } }
 }'''
 
-# The pools the matcher walks (the outer side), against the pools it queries into once per
-# walked row (the inner side). Pass cost = the size of the OUTER pool; a patch's win is
-# moving the work onto the inner one.
 Q_POOLS = '''{
  outer_tezos_withdrawals: l1_withdrawal_aggregate(where:{_not:{bridge_withdrawals:{}}, outbox_message:{builder:{_eq:"kernel"}}}) { aggregate { count } }
  outer_claimed_fast: l1_withdrawal_aggregate(where:{_not:{bridge_withdrawals:{}}, outbox_message:{builder:{_eq:"service_provider"}, parameters_hash:{_is_null:false}}}) { aggregate { count } }
@@ -114,13 +96,7 @@ def main() -> None:
             'rows_per_min': round(rows_per_min, 1),
             'outer_pool_total': outer_total,
             'inner_pool_total': inner_total,
-            # THE VERDICT IS READ HERE. Useful rows per minute per row of backlog the matcher
-            # walks. Higher is better. A patch must raise this AND do so at a backlog no
-            # smaller than the baseline's: if outer_pool_total fell, the backlog explains the
-            # rise, not the patch.
             'throughput_per_backlog_row': round(rows_per_min / outer_total, 6) if outer_total else None,
-            # Each pool's share of the walked backlog = the expected signal size from a patch
-            # fixing that pool. Below a few percent it is not distinguishable from outside.
             'pool_shares': (
                 {
                     k[len('outer_') :]: round(v / outer_total, 3)
@@ -130,8 +106,6 @@ def main() -> None:
                 if outer_total
                 else {}
             ),
-            # How many times fewer rows the matcher would walk if it went down the counter
-            # side. An estimate of the ceiling, not a measurement.
             'inversion_factor': round(outer_total / inner_total, 1) if inner_total else None,
         },
     }

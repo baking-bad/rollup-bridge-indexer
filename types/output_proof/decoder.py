@@ -1,6 +1,3 @@
-# from eth_abi import decode, encode
-# from eth_abi.decoding import StringDecoder
-# from eth_abi.encoding import TextStringEncoder
 from eth_abi.base import parse_type_str
 from eth_abi.codec import ABICodec
 from eth_abi.decoding import SignedIntegerDecoder

@@ -1,13 +1,7 @@
-# Standalone config for the alias-fast-withdrawal case. See README.md.
-# sqlite + oneshot. Runs only the native FastWithdrawal event index (0xff…01) — exercises the
-# fast XTZ withdrawal handler (fast_payload + alias resolution of the l2_caller). No L1 / matching.
-
 spec_version: 3.0
 package: rollup_bridge_indexer
 
 custom:
-  # TezosX has a Michelson runtime, so originOf is authoritative (this case tests alias resolution).
-  # Required, no default (see handlers/alias.py::_has_michelson_runtime).
   has_michelson_runtime: true
 
 

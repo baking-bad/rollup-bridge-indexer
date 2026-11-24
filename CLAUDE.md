@@ -52,7 +52,10 @@ Consequences you will trip over:
 `dipdup.yaml` is the base (database, hasura, sentry, datasources, `advanced.reindex`, and the
 `custom` block). `configs/<network>.yaml` is an overlay applied with `-c . -c configs/<net>.yaml`:
 `mainnet`, `ghostnet`, `quebecnet`, `rainbownet`, `shadownet`, `tezosx-shadownet`. Everything else — endpoints,
-ticketer addresses, first levels — comes from env vars, all of them `${…}` in the YAML. Three knobs
+ticketer addresses, first levels — comes from env vars, all of them `${…}` in the YAML, with one
+literal: `tzip_metadata.network` in `tezosx-shadownet.yaml` is `shadownet`, the name the metadata
+service gives that L1, not the compose selector `${NETWORK}`. `ETHERLINK_NODE_WS` is opened verbatim
+and must carry the node's websocket path (`wss://host/ws`); the bare host answers 405. Three knobs
 exist only in code and appear in no config: `ALIAS_RECHECK_SECONDS`, and the stand's
 `ROLLUP_SYNC_FIRST_LEVEL` / `ROLLUP_SYNC_LAST_LEVEL` bounds for the rollup backfill.
 
@@ -192,7 +195,9 @@ as `unknown` / `native` / `alias` (an EVM stand-in for a native tz account). Res
 An undecodable answer raises `RuntimeGatewayUnsupportedError` rather than silently recording a
 native — but that takes L1 indexing down with it if `has_michelson_runtime` is wrong.
 
-EVM handlers call `resolve_l2_account(ctx, addr)`; tz receivers are native by construction and use
+Every handler that sees an EVM address calls `resolve_l2_account(ctx, addr)`, the L1 deposit handler
+`on_rollup_call` included: both legs share one `l2_account` row and a classified row is never asked
+again, so the leg indexed first fixes the kind for good. tz receivers are native by construction and use
 `L2Account.get_or_create_for(addr, RuntimeKind.michelson)` with no precompile call.
 
 `OriginKind` (identity of an address) and `RuntimeKind` (runtime that processed an *operation*) are
@@ -278,19 +283,13 @@ test.
 - **A changed or removed column in `models/` costs a full reindex; an added table does not.**
   `advanced.reindex.schema_modified: exception` makes DipDup refuse to start against a database
   whose schema hash no longer matches, so a changed field is not a deploy — it is a wipe and a
-  rebuild. Measured on mainnet from scratch: **3 d 11 h** end-to-end, of which the first 5 h 20 m
-  is the rollup inbox backfill inside `on_restart`, before `dipdup_index` has any rows at all.
-  A purely additive table is different, and the boot order is why: `_initialize_schema`
-  (`dipdup/dipdup.py:785-833`) calls `generate_schema` at line 796 — `Tortoise.generate_schemas()`
-  with its default `safe=True`, i.e. `CREATE TABLE IF NOT EXISTS` (`dipdup/database.py:245-252`) —
-  and only *then* compares the hash, at line 829. The table is therefore already created on the
-  populated database, every row kept, by the boot that refuses over the hash. Adopting the new
-  hash takes two boots: one with `advanced.reindex.schema_modified: ignore`, which nulls the
-  stored hash instead of raising (`dipdup/context.py:228-234`) and indexes on, then one with
-  `exception` restored, which finds the hash empty and stores the new one
-  (`dipdup/dipdup.py:825-827`). The risk is exactly what that first boot buys: it accepts *any*
-  schema difference, not only the intended one, so it must carry no other model change — and the
-  drift it would have caught is gone unremarked. `tests/unit/rollup/test_queue_table_deploy.py`
+  rebuild, most of whose first hours are the rollup inbox backfill inside `on_restart`.
+  A purely additive table is different: DipDup creates missing tables (`CREATE TABLE IF NOT
+  EXISTS`) before it compares the hash, so the refusing boot has already added the table to the
+  populated database. Adopting the new hash takes two boots: one with
+  `advanced.reindex.schema_modified: ignore`, which nulls the stored hash and indexes on, then one
+  with `exception` restored, which stores the new one. That first boot accepts *any* schema
+  difference, so it must carry no other model change. `tests/unit/rollup/test_queue_table_deploy.py`
   is the half of this that is ours to keep true.
   Prefer `dipdup_meta` for state that does not need to be queryable — but not for state a
   rollback must move: `dipdup_meta` is immune to `ctx.rollback` and to the reindex wipe, so
@@ -301,5 +300,8 @@ test.
 Line length 140; single quotes (Black `skip-string-normalization`); ruff isort with
 `force-single-line`; ruff extends `B, C4, FA, G, I, PTH, Q, RET, RUF, TCH, UP`; target py312.
 
-Comments here explain *why* a shape is load-bearing — merge semantics, ordering contracts, kernel
-invariants. When changing such code, update the reasoning rather than deleting it.
+No comments and no docstrings: a constraint on our own code is held by a test, not by prose. The
+one exception is a fact about an external system (the kernel, a node API, DipDup, Tortoise) that
+the code at that spot depends on and no test here can pin: at most three lines, followed by
+`# proof: <URL pinned to a commit or release | path::test>`. Tool directives (`type: ignore`,
+`noqa`) are not comments.

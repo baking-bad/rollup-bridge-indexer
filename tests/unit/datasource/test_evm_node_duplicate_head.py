@@ -1,32 +1,3 @@
-"""Contract: a duplicate `newHeads` announcement must not disturb the EVM node datasource.
-
-The node may announce the same head hash twice (sequencer replay, a reconnect that re-delivers the
-tip). `EvmNodeDatasource` keys realtime state by block hash in a `defaultdict` (`_level_data`) and
-pushes the *same* `LevelData` object onto `_emitter_queue` on every head frame, so two
-announcements of one hash leave two queue entries pointing at one key. The emitter drains them one
-by one and drops the key at the end of each pass -- the second pass finds nothing to drop.
-`defaultdict` autocreates on `__getitem__`, never on `__delitem__`.
-
-That matters because `EvmNodeDatasource.run()` gathers `_emitter_loop()` with the websocket loop
-and the watchdog (plain `asyncio.gather`, no `return_exceptions`), and `DipDup.run()` in turn
-gathers the per-datasource run tasks -- so an exception escaping the emitter loop unwinds all the
-way out and ends the process.
-
-Surviving the delete is not enough, so these tests do not assert it. A duplicate that reaches the
-emitter is processed a second time, and since `head.level <= known_level` it fires `emit_rollback`
-on all four EVM channels: a phantom one-level reorg that rewinds index state and re-runs every
-handler for that block. The contract asserted here is therefore *the duplicate is absorbed* --
-exactly one head emitted, no rollback, no leftover level data -- which a merely tolerant delete
-would fail. Both orderings are covered: the duplicate arriving before the emitter drains, and the
-duplicate arriving while the emitter is mid-pass.
-
-Offline: no node, no websocket, no HTTP -- frames are fed straight into `_handle_subscription` and
-the real `_emitter_loop` drains them.
-
-Upstream fixed this in DipDup 8.6.2 (dipdup-io/dipdup#1328); until then the repo carried a
-runtime patch. This file is the permanent regression guard and runs against stock DipDup.
-"""
-
 import asyncio
 from typing import TYPE_CHECKING
 from typing import Any
@@ -44,16 +15,12 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.anyio
 
-# The emitter loop only ever exits by raising; when healthy it parks on an empty queue. So "drain
-# it and see" is spelled as "run it under a timeout and expect the timeout". Each queued head costs
-# at most NODE_LEVEL_TIMEOUT (LevelData.wait_level), so this is a wide margin over two heads.
 _DRAIN_TIMEOUT = max(1.0, NODE_LEVEL_TIMEOUT * 20)
 
 _BLOCK_HASH = '0x' + 'ab' * 32
 
 
 def _head_frame(*, block_hash: str, level: int) -> dict[str, Any]:
-    """A `newHeads` result as an Etherlink EVM node sends it (hex-quantity fields)."""
     return {
         'baseFeePerGas': '0x3b9aca00',
         'difficulty': '0x0',
@@ -76,7 +43,6 @@ def _head_frame(*, block_hash: str, level: int) -> dict[str, Any]:
 
 
 class _Recorder:
-    """Records everything the emitter emits, via the datasource's public callback API."""
 
     def __init__(self) -> None:
         self.heads: list[EvmNodeHeadData] = []
@@ -99,13 +65,7 @@ class _Recorder:
 
 
 def _make_datasource() -> tuple[EvmNodeDatasource, _Recorder]:
-    """A datasource that is never started: no session, no websocket, no web3 client.
-
-    Only `_handle_subscription` and `_emitter_loop` are exercised, and neither touches the network
-    for a head-only subscription (`transactions=False` keeps `get_block_by_level` out of the path).
-    """
     config = EvmNodeDatasourceConfig(kind='evm.node', url='http://127.0.0.1:0', ws_url='ws://127.0.0.1:0')
-    # Datasource configs get their name from the config loader; there's no public setter.
     config._name = 'evm_node_under_test'
 
     datasource = EvmNodeDatasource(config)
@@ -115,10 +75,6 @@ def _make_datasource() -> tuple[EvmNodeDatasource, _Recorder]:
 
 
 async def _drain_emitter(datasource: EvmNodeDatasource) -> None:
-    """Run the real emitter loop until it parks on an empty queue.
-
-    Anything the loop raises propagates to the caller; a clean drain shows up as the timeout.
-    """
     try:
         await asyncio.wait_for(datasource._emitter_loop(), timeout=_DRAIN_TIMEOUT)
     except TimeoutError:
@@ -126,7 +82,6 @@ async def _drain_emitter(datasource: EvmNodeDatasource) -> None:
 
 
 async def test_single_head_drains_cleanly() -> None:
-    """Control: the harness really drives the emitter, and one head is the well-behaved case."""
     datasource, recorder = _make_datasource()
 
     await datasource._handle_subscription(EvmNodeHeadSubscription(), _head_frame(block_hash=_BLOCK_HASH, level=42))
@@ -138,7 +93,6 @@ async def test_single_head_drains_cleanly() -> None:
 
 
 async def test_distinct_heads_are_all_emitted() -> None:
-    """Control: deduplication must not swallow genuinely different blocks."""
     datasource, recorder = _make_datasource()
     subscription = EvmNodeHeadSubscription()
 
@@ -152,7 +106,6 @@ async def test_distinct_heads_are_all_emitted() -> None:
 
 
 async def test_duplicate_head_before_drain_is_absorbed() -> None:
-    """Same head announced twice back to back, before the emitter gets to it."""
     datasource, recorder = _make_datasource()
     subscription = EvmNodeHeadSubscription()
     frame = _head_frame(block_hash=_BLOCK_HASH, level=42)
@@ -168,11 +121,6 @@ async def test_duplicate_head_before_drain_is_absorbed() -> None:
 
 
 async def test_duplicate_head_while_emitter_in_flight_is_absorbed() -> None:
-    """Same head re-announced while the emitter is already inside the pass for it.
-
-    The `on_head` callback fires from within `emit_head`, i.e. after the queue entry was taken but
-    before the level data is dropped -- exactly the window a queue-level dedup would miss.
-    """
     datasource, recorder = _make_datasource()
     subscription = EvmNodeHeadSubscription()
     frame = _head_frame(block_hash=_BLOCK_HASH, level=42)

@@ -21,19 +21,15 @@ class TestCommitment:
     @pytest.mark.parametrize(
         ['outbox_level', 'origination_level', 'commitment_period', 'challenge_window', 'expected'],
         [
-            # legacy cases — origination is the LCC inbox level shifted onto the same residue class;
-            # ETA value must remain identical since the math depends only on the anchor's residue mod P.
             (726573, 726523, 20, 40, 726628),
             (726585, 726523, 20, 40, 726648),
             (726585, 726523, 20, 60, 726668),
             (783296, 783243, 20, 39, 783348),
             (803999, 803943, 20, 38, 804048),
             (803999, 803943, 20, 41, 804068),
-            # fresh-rollup cases — origination is far below outbox (no LCC has been produced yet);
-            # these are exactly the situations where the old LCC-based heuristic crashed.
             (1015, 1000, 60, 40, 1125),
             (1060, 1000, 60, 40, 1125),
-            (1015, 100, 60, 40, 1125),  # multi-period gap, equivalent residue
+            (1015, 100, 60, 40, 1125),
             (100, 5, 30, 20, 160),
             (50, 0, 25, 50, 105),
         ],

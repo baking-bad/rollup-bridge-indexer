@@ -1,12 +1,3 @@
-"""Contract: the block an execute was seen in is asked for again while the Tezos RPC answers 404.
-
-`on_rollup_execute` reads the execution's `output_proof` from the Tezos RPC, at the level TzKT
-reported it in. TzKT and the RPC are separate services, so the RPC can be a block behind and
-answer 404 for a level it simply has not applied yet (a level above the head answers 404 on
-`rpc.tzkt.io`). DipDup up to 8.6.2 retried that 404 as part of `http.retry_count`; since 8.6.3
-a 4xx reaches the caller at once, so the retry has to live here.
-"""
-
 from __future__ import annotations
 
 import logging

@@ -29,11 +29,6 @@ contracts:
     address: '0xff00000000000000000000000000000000000001'
     typename: kernel_native
 
-#  l2_sirs_token:
-#    kind: evm
-#    address: '0xbaa233e2f62f45e9d91dacd3d6c6a57bc2cbc575'
-#    typename: l2_token
-
 
 
 indexes:
@@ -158,12 +153,3 @@ indexes:
             destination: tezos_fast_withdrawal_native
 
 
-#  etherlink_token_balance_update_events:
-#    kind: evm.events
-#    datasources:
-#      - etherlink_subsquid
-#      - etherlink_node
-#    handlers:
-#      - callback: etherlink.on_transfer
-#        contract: l2_sirs_token
-#        name: Transfer

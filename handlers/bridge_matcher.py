@@ -37,7 +37,6 @@ EVM_ADDRESS_HEX_LENGTH = 40
 
 class BridgeMatcher:
     matcher_lock = threading.Lock()
-    # Set while the service container is built, which precedes every matcher pass.
     smart_rollup_address: str
 
     @classmethod
@@ -51,7 +50,6 @@ class BridgeMatcher:
         async for l1_deposit in qs:
             l1_deposit: TezosDepositOperation
             bridge_deposit = await BridgeDepositOperation.create(l1_transaction=l1_deposit)
-            # tz receiver -> Michelson L2, hex receiver -> EVM (known from the L1 routing).
             runtime_kind = RuntimeKind.michelson if l1_deposit.l2_account_id.startswith('tz') else RuntimeKind.evm
             await BridgeOperation.create(
                 id=bridge_deposit.id,
@@ -66,11 +64,6 @@ class BridgeMatcher:
             created = True
 
         if created:
-            # A new bridge deposit may already have its inbox message in the DB (a
-            # fresh-DB bootstrap backfills the whole inbox in on_restart, before the
-            # deposit indexes sync) — without this re-arm nothing raises the inbox
-            # lock again and attaching stalls until restart/on_synchronized. The
-            # attach step runs after this one in the same batch pass.
             BridgeMatcherLocks.set_pending_inbox()
 
     @classmethod
@@ -94,18 +87,12 @@ class BridgeMatcher:
         if not pending:
             return
 
-        # A deposit names its inbox message by the parameters hash it carries, at its own
-        # level. Only the hashes this walk asks about are read: most unclaimed inbox messages
-        # are not deposits at all and would sit in the pool forever, and this step runs after
-        # every level batch.
         candidates: CandidatePool[RollupInboxMessage, tuple[str | None, int]] = CandidatePool(
             'pending_inbox',
             RollupInboxMessage.filter(
                 parameters_hash__in=sorted({deposit.l1_transaction.parameters_hash for deposit in pending} - {None}),
             ).order_by('level', 'index'),
             key=lambda message: (message.parameters_hash, message.level),
-            # Two identical deposits in one block share a hash by construction, and either
-            # message will do — a tie here is not news.
             warn_on_tie=False,
         )
 
@@ -126,24 +113,12 @@ class BridgeMatcher:
                 attached = True
 
         if attached:
-            # Every L2 deposit step keys on an attached inbox message (op-hash lookup,
-            # coords join, the xtz zip's isnull guard) — re-arm them so an attach
-            # completes the match in this same pass even when their own producing
-            # handlers fired in earlier, fruitless passes.
             BridgeMatcherLocks.set_pending_michelson_deposits()
             BridgeMatcherLocks.set_pending_etherlink_deposits()
             BridgeMatcherLocks.set_pending_etherlink_xtz_deposits()
 
     @classmethod
     async def check_pending_michelson_deposits(cls):
-        """Backfill inbox coords onto L2 Michelson deposits via their precomputed op-hash.
-
-        These deposits land with no inbox coords (the kernel's coords event is not
-        observable). The op-hash is precomputed from L1 data on the inbox message
-        (`RollupInboxMessage.expected_l2_op_hash`); match the L2 row's op-hash to it and
-        copy the coords across. The link itself is left to `check_pending_etherlink_deposits`,
-        which then treats the row like any other coords-bearing deposit.
-        """
         if not BridgeMatcherLocks.pending_michelson_deposits:
             return
         BridgeMatcherLocks.pending_michelson_deposits = False
@@ -158,9 +133,6 @@ class BridgeMatcher:
         if not pending:
             return
 
-        # The op-hash is derived from the L1 deposit, so one hash names one message and one
-        # L2 row. Only the hashes this walk asks about are read — the op-hash is never
-        # cleared, so an unbounded pool would grow with the whole history of the network.
         candidates: CandidatePool[RollupInboxMessage, str] = CandidatePool(
             'pending_michelson_deposits',
             RollupInboxMessage.filter(
@@ -183,13 +155,8 @@ class BridgeMatcher:
             backfilled += 1
 
         if backfilled:
-            # The coords-based step (runs after this one) performs the link.
             BridgeMatcherLocks.set_pending_etherlink_deposits()
         if unmatched:
-            # Transiently normal: the L2 row landed before its inbox message was indexed.
-            # PERSISTENT rows mean a pre-event-era deposit or a kernel upgrade that changed
-            # the op-hash derivation — the one tripwire for that silent failure (see
-            # handlers/michelson_deposit.py "Versioning").
             logger.warning('%d L2 Michelson deposit(s) without a matching inbox op-hash', unmatched)
 
     @classmethod
@@ -198,15 +165,9 @@ class BridgeMatcher:
             return
         BridgeMatcherLocks.pending_etherlink_deposits = False
 
-        # Runtime-agnostic by design: the unique inbox coords are the key, so both EVM
-        # deposits (born with coords) and Michelson deposits (coords backfilled by the
-        # step above) link here. No `runtime_kind` filter — the coords themselves are disjoint.
         qs = (
             EtherlinkDepositOperation.filter(
                 bridge_deposits=None,
-                # Rows without coords (EVM XTZ, L2 Michelson) have nothing to compare here
-                # and belong to the xtz/michelson steps. Without this guard the None coords
-                # render as LEFT JOIN ... IS NULL and link any inbox-less bridge deposit.
                 inbox_message_level__isnull=False,
                 inbox_message_index__isnull=False,
             )
@@ -214,15 +175,10 @@ class BridgeMatcher:
             .order_by('level', 'transaction_index', 'log_index')
         )
 
-        # An open bridge deposit is one whose L1 leg has landed and whose L2 leg has not; the
-        # inbox coords on its message are what an L2 row names it by. This side stays small
-        # by construction while the walk above runs ahead by a backfill's index-speed gap.
         candidates: CandidatePool[BridgeDepositOperation, tuple[int, int]] = CandidatePool(
             'pending_etherlink_deposits',
             BridgeDepositOperation.filter(
                 l2_transaction=None,
-                # Only an attached message has coords to key on, and a missing one must not
-                # collapse into one (None, None) key shared by every inbox-less deposit.
                 inbox_message_id__isnull=False,
             )
             .order_by('-created_at')
@@ -300,9 +256,6 @@ class BridgeMatcher:
             EtherlinkDepositOperation.filter(
                 bridge_deposits=None,
                 l2_token_id='xtz_evm',
-                # EVM-runtime rows only. Michelson rows carry a deterministic op-hash key
-                # (coords via check_pending_michelson_deposits) and this step must not preempt
-                # it — the `runtime_kind` discriminator replaced the old `o…`-prefix exclude.
                 runtime_kind=RuntimeKind.evm,
             )
             .order_by('level', 'transaction_index')
@@ -321,8 +274,6 @@ class BridgeMatcher:
                 .prefetch_related('inbox_message', 'l1_transaction')
             )
 
-        # The credit's hash names its deposit however late the credit lands, so this pass has no
-        # time window and no tie to break.
         by_tx_hash: CandidatePool[BridgeDepositOperation, str] = CandidatePool(
             'pending_etherlink_xtz_deposits',
             open_deposits(),
@@ -339,11 +290,6 @@ class BridgeMatcher:
         if not unnamed:
             return
 
-        # What the hash could not name is recognised by its value. Three of the four things that
-        # must agree are equalities and become the pool's key; only the time window is left to
-        # scan. The pairing is a heuristic, so a key that fits more than one open deposit is the
-        # case worth hearing about, and the pool says so. The pool reads after the pass above, so
-        # the deposits it claimed are no longer offered.
         by_value: CandidatePool[BridgeDepositOperation, tuple[str, str, str]] = CandidatePool(
             'pending_etherlink_xtz_deposits_by_value',
             open_deposits(),
@@ -355,8 +301,6 @@ class BridgeMatcher:
         )
 
         for l2_deposit in unnamed:
-            # L1 stores mutez, the L2 EVM handle stores wei; the scale is the decimal gap
-            # between the two token representations of the same native ticket (no magic 12).
             scale = 10 ** (l2_deposit.l2_token.decimals - l2_deposit.l2_token.ticket.token.decimals)
             l1_amount = str(int(l2_deposit.amount) // scale)
             window_start = l2_deposit.timestamp - LAYERS_TIMESTAMP_GAP_MAX
@@ -368,8 +312,6 @@ class BridgeMatcher:
             if bridge_deposit is None:
                 continue
 
-            # Expected only while indexing credits older than the derivation. On a live network it
-            # means a kernel changed the formula, which nothing else reports.
             logger.warning('EVM XTZ credit %s paired by value: its transaction hash names no open deposit', l2_deposit.transaction_hash)
             await cls._finish_xtz_deposit(bridge_deposit, l2_deposit)
 
@@ -415,9 +357,6 @@ class BridgeMatcher:
         if not pending:
             return
 
-        # A withdrawal names its outbox message by the parameters hash it carries, and only
-        # an unclaimed message can answer. Read by the hashes this walk asks about, for the
-        # same reason as the inbox side: the step runs after every level batch.
         candidates: CandidatePool[RollupOutboxMessage, str | None] = CandidatePool(
             'pending_outbox',
             RollupOutboxMessage.filter(
@@ -425,7 +364,6 @@ class BridgeMatcher:
                 bridge_withdrawals=None,
             ).order_by('level', 'index'),
             key=lambda message: message.parameters_hash,
-            # Two identical withdrawals share a hash by construction; either message will do.
             warn_on_tie=False,
         )
 
@@ -456,11 +394,6 @@ class BridgeMatcher:
             outbox_message__builder=RollupOutboxMessageBuilder.kernel,
         ).order_by('level')
 
-        # An open bridge withdrawal is one whose L2 leg has landed and whose L1 execution has
-        # not; the outbox message it points at is what an execution names it by. This side
-        # stays small while the walk grows with every execution a backfill piles up. Reaching
-        # for a candidate by `outbox_message_id` costs a sequential scan — the column carries
-        # no index — so the pool is worth its one query even when the walk is short.
         candidates: CandidatePool[BridgeWithdrawOperation, UUID] = CandidatePool(
             'pending_tezos_withdrawals',
             BridgeWithdrawOperation.filter(l1_transaction=None).order_by('-created_at'),
@@ -500,10 +433,6 @@ class BridgeMatcher:
             .order_by('level')
         )
 
-        # The payout carries its withdrawal id in `parameters_hash`, a CharField, while the
-        # column it joins is an integer. Tortoise coerces a scalar lookup but not the members
-        # of an `__in` list, so cast here — and a hash that is no number names no withdrawal
-        # id, so it drops out instead of failing the cast for every other payout in the pass.
         payouts: list[tuple[TezosWithdrawOperation, int]] = []
         async for l1_payout in qs:
             l1_payout: TezosWithdrawOperation
@@ -515,8 +444,6 @@ class BridgeMatcher:
         if not payouts:
             return
 
-        # `kernel_withdrawal_id` is unique, so each id maps to a single L2 leg and there is no
-        # candidate tie-break here.
         l2_withdrawals: dict[int, EtherlinkWithdrawOperation] = {
             l2_withdrawal.kernel_withdrawal_id: l2_withdrawal
             async for l2_withdrawal in EtherlinkWithdrawOperation.filter(
@@ -526,9 +453,6 @@ class BridgeMatcher:
         if not l2_withdrawals:
             return
 
-        # L2 legs already paid out on L1 — the slow way, or by an earlier payout of this very
-        # pass, which is why the walk below keeps adding to the set: a leg must not be handed
-        # to a second payout.
         settled_l2_ids: set[int] = set(
             await BridgeWithdrawOperation.filter(
                 l1_transaction_id__isnull=False,
@@ -550,8 +474,6 @@ class BridgeMatcher:
             if (
                 l1_payout_parameters['withdrawal']['ticketer'] == l2_withdrawal.l1_ticket_owner
                 and l1_payout_parameters['withdrawal']['payload'] == l2_withdrawal.fast_payload.hex()
-                # `l2_caller` is the raw EVM caller the kernel emits; `l2_account_id` is the runtime
-                # address (the FK keys on it), not the resolved tz origin
                 and l1_payout_parameters['withdrawal']['l2_caller'] == l2_withdrawal.l2_account_id
                 and int(datetime.fromisoformat(l1_payout_parameters['withdrawal']['timestamp']).timestamp())
                 == int(l2_withdrawal.timestamp.timestamp())
