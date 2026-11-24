@@ -52,7 +52,10 @@ Consequences you will trip over:
 `dipdup.yaml` is the base (database, hasura, sentry, datasources, `advanced.reindex`, and the
 `custom` block). `configs/<network>.yaml` is an overlay applied with `-c . -c configs/<net>.yaml`:
 `mainnet`, `ghostnet`, `quebecnet`, `rainbownet`, `shadownet`, `tezosx-shadownet`. Everything else — endpoints,
-ticketer addresses, first levels — comes from env vars, all of them `${…}` in the YAML. Three knobs
+ticketer addresses, first levels — comes from env vars, all of them `${…}` in the YAML, with one
+literal: `tzip_metadata.network` in `tezosx-shadownet.yaml` is `shadownet`, the name the metadata
+service gives that L1, not the compose selector `${NETWORK}`. `ETHERLINK_NODE_WS` is opened verbatim
+and must carry the node's websocket path (`wss://host/ws`); the bare host answers 405. Three knobs
 exist only in code and appear in no config: `ALIAS_RECHECK_SECONDS`, and the stand's
 `ROLLUP_SYNC_FIRST_LEVEL` / `ROLLUP_SYNC_LAST_LEVEL` bounds for the rollup backfill.
 
@@ -192,7 +195,9 @@ as `unknown` / `native` / `alias` (an EVM stand-in for a native tz account). Res
 An undecodable answer raises `RuntimeGatewayUnsupportedError` rather than silently recording a
 native — but that takes L1 indexing down with it if `has_michelson_runtime` is wrong.
 
-EVM handlers call `resolve_l2_account(ctx, addr)`; tz receivers are native by construction and use
+Every handler that sees an EVM address calls `resolve_l2_account(ctx, addr)`, the L1 deposit handler
+`on_rollup_call` included: both legs share one `l2_account` row and a classified row is never asked
+again, so the leg indexed first fixes the kind for good. tz receivers are native by construction and use
 `L2Account.get_or_create_for(addr, RuntimeKind.michelson)` with no precompile call.
 
 `OriginKind` (identity of an address) and `RuntimeKind` (runtime that processed an *operation*) are

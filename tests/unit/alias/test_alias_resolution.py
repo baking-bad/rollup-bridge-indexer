@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
@@ -11,14 +12,22 @@ from eth_abi import encode
 from rollup_bridge_indexer.handlers.alias import ORIGIN_KIND_ALIAS
 from rollup_bridge_indexer.handlers.alias import RuntimeGatewayUnsupportedError
 from rollup_bridge_indexer.handlers.alias import resolve_l2_account
+from rollup_bridge_indexer.handlers.tezos.on_rollup_call import on_rollup_call
 from rollup_bridge_indexer.models import L2Account
 from rollup_bridge_indexer.models import OriginKind
 from rollup_bridge_indexer.models import RuntimeKind
+from rollup_bridge_indexer.models import TezosDepositOperation
+from rollup_bridge_indexer.models import TezosTicket
+from rollup_bridge_indexer.models import TezosToken
+from rollup_bridge_indexer.types.rollup.tezos_parameters.default import DefaultParameter
 
 pytestmark = pytest.mark.anyio
 
 NATIVE = 'tz1ekkzEN2LB1cpf7dCaonKt6x9KVd9YVydc'
 ALIAS = '21ab829afe4b41dd3fb6eb5be4de2d20d9cebc21'
+ROLLUP = 'sr1BvTT7tVNneG2TeP18sixq57TxsZELebLu'
+NATIVE_TICKETER = 'KT1FcWeWiEC7Ve5JMdZpKyvaFdsJv7n4GFzi'
+DEPOSITOR = 'tz1initiatorXXXXXXXXXXXXXXXXXXXXXXXX'
 
 
 def _ctx(eth_call: AsyncMock, has_michelson_runtime: bool = True):
@@ -148,3 +157,39 @@ async def test_within_cooldown_not_rechecked(db):
     row = await resolve_l2_account(ctx, ALIAS)
     ctx.get_evm_node_datasource('etherlink_node').web3.eth.call.assert_not_called()
     assert (row.origin, row.kind) == (ALIAS, OriginKind.unknown)
+
+
+def _l1_deposit_to(routing_info_hex: str):
+    parameter_json = {
+        'LL': {
+            'bytes': routing_info_hex,
+            'ticket': {'address': NATIVE_TICKETER, 'content': {'nat': '0', 'bytes': None}, 'amount': '1000000'},
+        }
+    }
+    data = SimpleNamespace(
+        hash='o' + 'l1' * 25,
+        timestamp=datetime(2026, 6, 1, 12, 0, tzinfo=UTC),
+        level=100,
+        counter=1,
+        nonce=None,
+        initiator_address=DEPOSITOR,
+        sender_address=DEPOSITOR,
+        target_address=ROLLUP,
+        parameter_json=parameter_json,
+    )
+    return SimpleNamespace(parameter=DefaultParameter.model_validate(parameter_json), data=data)
+
+
+async def test_l1_deposit_to_an_evm_alias_records_the_alias_not_a_native(db):
+    token = await TezosToken.create(id='xtz', contract_address=NATIVE_TICKETER, name='Tezos', symbol='XTZ', decimals=6, type='native')
+    ticket = await TezosTicket.create(hash='1', ticketer_address=NATIVE_TICKETER, token=token, whitelisted=True)
+    ctx = _ctx_resolving_alias(NATIVE)
+    ctx.logger = logging.getLogger('test.on_rollup_call')
+    ctx.container = SimpleNamespace(ticket_service=SimpleNamespace(fetch_ticket=AsyncMock(return_value=ticket)))
+
+    await on_rollup_call(ctx, _l1_deposit_to(ALIAS))
+
+    deposit = await TezosDepositOperation.get()
+    assert deposit.l2_account_id == ALIAS
+    row = await L2Account.get(runtime_address=ALIAS)
+    assert (row.kind, row.origin) == (OriginKind.alias, NATIVE), 'the L1 deposit leg recorded an EVM alias as a native account'
