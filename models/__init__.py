@@ -194,6 +194,7 @@ class RollupPendingOutboxLevel(Model):
     class Meta:
         table = 'rollup_pending_outbox_level'
         model = 'models.RollupPendingOutboxLevel'
+        table_description = 'An L1 level whose outbox the index still owes — one row per owed level.'
 
         ordering = ('level',)
 
