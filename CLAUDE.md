@@ -283,7 +283,9 @@ test.
 - **A changed or removed column in `models/` costs a full reindex; an added table does not.**
   `advanced.reindex.schema_modified: exception` makes DipDup refuse to start against a database
   whose schema hash no longer matches, so a changed field is not a deploy — it is a wipe and a
-  rebuild, most of whose first hours are the rollup inbox backfill inside `on_restart`.
+  rebuild, most of whose first hours are the rollup inbox backfill inside `on_restart`. The hash
+  covers the whole generated DDL, table and column comments included: a model docstring or a field
+  `description=` is schema. `tests/unit/test_deployed_schema_hash.py` pins the deployed Postgres hash.
   A purely additive table is different: DipDup creates missing tables (`CREATE TABLE IF NOT
   EXISTS`) before it compares the hash, so the refusing boot has already added the table to the
   populated database. Adopting the new hash takes two boots: one with
